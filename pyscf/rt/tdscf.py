@@ -1,642 +1,658 @@
-# Copyright 2014-2018 The PySCF Developers. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-# 3. Use proper functions provided by PySCF
-#   * Switch between df.incore and df.outcore according to system memory
-#   *   (Koh: Is there an identical function in outcore? which one, incore or outcore, is used when need of more memory?)
-#   * Use get_veff of scf object instead of get_vxc
-#   *   (Koh: get_vxc cannot generate correct J,K matrix from complex density matrix)
-#
+import time
+import sys
+import tempfile
+
+from functools import reduce
 
 import numpy as np
-import scipy, time
-import scipy.linalg
+import scipy
+from scipy.fftpack import fft
+
 from pyscf import gto, dft, df
-from pyscf import lib
+from pyscf import lib, lo
 from pyscf.lib import logger
-from pyscf.scf import diis
-import sys
+from pyscf.rt  import chkfile
 
-FSPERAU = 0.0241888
+from pyscf import __config__
 
-def transmat(M,U,inv = 1):
-    if inv == 1:
-        # U.t() * M * U
-        Mtilde = np.dot(np.dot(U.T.conj(),M),U)
-    elif inv == -1:
-        # U * M * U.t()
-        Mtilde = np.dot(np.dot(U,M),U.T.conj())
-    return Mtilde
+# TODO: chk file 
+write = sys.stdout.write
+MUTE_CHKFILE      = getattr(__config__, 'rt_tdscf_mute_chkfile', False)
+DAMP_EXPO         = getattr(__config__, 'rt_tdscf_damp_expo',     1000)
+PRINT_MAT_NCOL    = getattr(__config__, 'rt_tdscf_print_mat_ncol',   7)
 
-def trdot(A,B):
-    C = np.trace(np.dot(A,B))
-    return C
+def print_matrix(title, array_, ncols=7, fmt=' % 11.6e'):
+    ''' printing a real rectangular matrix, or the real part of a complex matrix, ncols columns per batch '''
+    array = array_.real
+    write(title+'\n')
+    m = array.shape[1]
+    n = array.shape[0]
+    #write('m=%d n=%d\n' % (m, n))
+    nbatches = int(n/ncols)
+    if nbatches * ncols < n: nbatches += 1
+    for k in range(0, nbatches):
+        write('     ')  
+        j1 = ncols*k
+        j2 = ncols*(k+1)
+        if k == nbatches-1: j2 = n 
+        for j in range(j1, j2):
+            write('   %7d  ' % (j+1))
+        write('\n')
+        for i in range(0, m): 
+            write(' %3d -' % (i+1))
+            for j in range(j1, j2):
+                write( fmt % array[j,i])
+            write('\n')
 
-def matrixpower(A,p,PrintCondition=False):
-    """ Raise a Hermitian Matrix to a possibly fractional power. """
-    u,s,v = np.linalg.svd(A)
-    if (PrintCondition):
-        print("matrixpower: Minimal Eigenvalue =", np.min(s))
-    for i in range(len(s)):
-        if (abs(s[i]) < np.power(10.0,-14.0)):
-            s[i] = np.power(10.0,-14.0)
-    return np.dot(u,np.dot(np.diag(np.power(s,p)),v))
+def print_cx_matrix(title, cx_array_, ncols=7, fmt=' % 11.6e'):
+    ''' printing a complex rectangular matrix, ncols columns per batch '''
+    print_matrix(title+" Real Part ", cx_array_.real, ncols=ncols, fmt=fmt)
+    print_matrix(title+" Imag Part ", cx_array_.imag, ncols=ncols, fmt=fmt)
 
+def build_absorption_spectrum(tdscf, ndipole=None, damp_expo=DAMP_EXPO):
+    if ndipole is None:
+        ndipole = tdscf.ndipole
 
+    ndipole_x = ndipole[:,0]
+    ndipole_y = ndipole[:,1]
+    ndipole_z = ndipole[:,2]
+    
+    ndipole_x = ndipole_x-ndipole_x[0]
+    ndipole_y = ndipole_y-ndipole_y[0]
+    ndipole_z = ndipole_z-ndipole_z[0]
+    
+    mw = 2.0 * np.pi * np.fft.fftfreq(
+        tdscf.ntime.size, tdscf.dt
+    )
+    damp = np.exp(-tdscf.ntime/damp_expo)
+    fwx = np.fft.fft(ndipole_x*damp)
+    fwy = np.fft.fft(ndipole_y*damp)
+    fwz = np.fft.fft(ndipole_z*damp)
+    fw = (fwx.imag + fwy.imag + fwz.imag) / 3.0 
+    sigma = - mw * fw
+    mm = mw.size
+    m  = mm//2
 
-class RTTDSCF(lib.StreamObject):
-    """
-    RT-TDSCF base object.
-    Other types of propagations may inherit from this.
-    Calling this class starts the propagation
-    Attributes:
-        verbose: int
-            Print level.  Default value equals to :class:`ks.verbose`
-        conv_tol: float
-            converge threshold.  Default value equals to :class:`ks.conv_tol`
-        auxbas: str
-            auxilliary basis for 2c/3c eri. Default is weigend
-        prm: str
-            string object with |variable    value| on each line
-    Saved results
+    mw = mw[:m]
+    sigma = sigma[:m]
+    scale = np.abs(sigma.max())
+    return mw, sigma/scale
 
-        output: str
-            name of the file with result of propagation
-
-
-    """
-    def __init__(self,ks,prm=None,output = "log.dat", auxbas = "weigend"):
-        self.stdout = sys.stdout
-        self.verbose = ks.verbose
-        self.enuc = ks.energy_nuc()
-        self.conv_tol = ks.conv_tol
-        self.auxbas = auxbas
-        self.hyb = ks._numint.hybrid_coeff(ks.xc, spin=(ks.mol.spin>0)+1)
-        self.adiis = None
-        self.ks  = ks
-        self.eri3c = None
-        self.eri2c = None
-        self.s = ks.mol.intor_symmetric('int1e_ovlp')
-        self.x = matrixpower(self.s,-1./2.)
-        self._keys = set(self.__dict__.keys())
-
-        fmat, c_am, v_lm, rho = self.initialcondition(prm)
-        start = time.time()
-        self.prop(fmat, c_am, v_lm, rho, output)
-        end = time.time()
-        logger.info(self,"Propagation time: %f", end-start)
-
-        logger.warn(self, 'RT-TDSCF is an experimental feature. It is '
-                    'still in testing.\nFeatures and APIs may be changed '
-                    'in the future.')
-
-
-    def auxmol_set(self, mol, auxbas = "weigend"):
-        """
-        Generate 2c/3c electron integral (eri2c,eri3c)
-        Generate ovlp matrix (S), and AO to Lowdin AO matrix transformation matrix (X)
-
-        Args:
-            mol: Mole class
-                Default is ks.mol
-
-        Kwargs:
-            auxbas: str
-                auxilliary basis for 2c/3c eri. Default is weigend
-
-        Returns:
-            eri3c: float
-                3 center eri. shape: (AO,AO,AUX)
-            eri2c: float
-                2 center eri. shape: (AUX,AUX)
-
-        """
-        auxmol = gto.Mole()
-        auxmol.atom = mol.atom
-        auxmol.basis = auxbas
-        auxmol.build()
-        self.auxmol = auxmol
-        nao = mol.nao_nr()
-        naux = auxmol.nao_nr()
-        atm, bas, env = gto.conc_env(mol._atm, mol._bas, mol._env, auxmol._atm,\
-        auxmol._bas, auxmol._env)
-        eri3c = df.incore.aux_e2(mol, auxmol, intor="cint3c2e_sph", aosym="s1",\
-        comp=1 )
-        eri2c = df.incore.fill_2c2e(mol,auxmol)
-        self.eri3c = eri3c.copy()
-        self.eri2c = eri2c.copy()
-        return eri3c, eri2c
+def merr(m1,m2):
+    ''' check consistency '''
+    n   = np.linalg.norm(m1-m2)
+    r   = m1.shape[0]
+    v   = np.linalg.eigvals(m1)
+    vm  = v.max()
+    e   = n/r/vm
+    return np.abs(e)
 
 
-    def fockbuild(self,dm_lao,it = -1):
-        """
-        Updates Fock matrix
+def expm(m, do_bch=False):
+    if not do_bch:
+        return scipy.linalg.expm(m)
+    else:
+        raise NotImplementedError("BCH not implemented here")
 
-        Args:
-            dm_lao: float or complex
-                Lowdin AO density matrix.
-            it: int
-                iterator for SCF DIIS
+def prop_step(tdscf, t_start, dm_prim, fock_prim, dt = None, build_fock = True):
+    if dt == None:
+        dt = tdscf.dt
+    
+    propogator = expm(-1j*dt*fock_prim)
+    dm_prim_ = reduce(np.dot, [propogator, dm_prim, propogator.conj().T])
 
-        Returns:
-            fmat: float or complex
-                Fock matrix in Lowdin AO basis
-            jmat: float or complex
-                Coulomb matrix in AO basis
-            kmat: float or complex
-                Exact Exchange in AO basis
-        """
-        if self.params["Model"] == "TDHF":
-            Pt = 2.0*transmat(dm_lao,self.x,-1)
-            jmat,kmat = self.get_jk(Pt)
-            veff = 0.5*(jmat+jmat.T.conj()) - 0.5*(0.5*(kmat + kmat.T.conj()))
-            if self.adiis and it > 0:
-                return transmat(self.adiis.update(self.s,Pt,self.h + veff),\
-                self.x), jmat, kmat
+    dm_prim_   = (dm_prim_ + dm_prim_.conj().T)/2
+
+    if tdscf.verbose >= logger.DEBUG1:
+        print_cx_matrix("fock_prim"
+        , fock_prim, ncols=PRINT_MAT_NCOL)
+        print_cx_matrix("dm_prim"
+        , dm_prim, ncols=PRINT_MAT_NCOL)
+    dm_ao_     = orth2ao_dm(dm_prim_, tdscf.orth_xtuple)
+    
+    if build_fock:
+        fock_ao_   = tdscf.mf.get_fock(dm=dm_ao_, h1e=tdscf.mf.get_hcore(t=(dt+t_start)))
+        fock_prim_ = ao2orth_fock(fock_ao_, tdscf.orth_xtuple)
+        return dm_prim_, dm_ao_, fock_prim_, fock_ao_
+    else:
+        return dm_prim_, dm_ao_
+
+def euler_prop(tdscf,                  
+               _temp_ts,         _temp_dm_prims,   _temp_dm_aos,
+               _temp_fock_prims, _temp_fock_aos,        dt=None):
+    if dt == None:
+        dt = tdscf.dt
+    _temp_dm_prims[4],   _temp_dm_aos[4],\
+    _temp_fock_prims[4], _temp_fock_aos[4] = prop_step(
+        tdscf, _temp_ts[2], _temp_dm_prims[2], _temp_fock_prims[2], dt = dt
+        )
+    _temp_dm_prims[2]   = _temp_dm_prims[4]
+    _temp_dm_aos[2]     = _temp_dm_aos[4]
+    _temp_fock_prims[2] = _temp_fock_prims[4]
+    _temp_fock_aos[2]   = _temp_fock_aos[4]
+
+def amut1_prop(tdscf,                  
+               _temp_ts,         _temp_dm_prims,   _temp_dm_aos,
+               _temp_fock_prims, _temp_fock_aos,        dt=None):
+    if dt == None:
+        dt = tdscf.dt
+
+    _temp_dm_prims[3],   _temp_dm_aos[3],\
+    _temp_fock_prims[3], _temp_fock_aos[3] = prop_step(
+        tdscf, _temp_ts[2], _temp_dm_prims[2], _temp_fock_prims[2], dt = dt/2
+        )
+    
+    _temp_dm_prims[4],   _temp_dm_aos[4],\
+    _temp_fock_prims[4], _temp_fock_aos[4] = prop_step(
+        tdscf, _temp_ts[2], _temp_dm_prims[2], _temp_fock_prims[3], dt = dt
+        )
+
+    _temp_dm_prims[2]   = _temp_dm_prims[4]
+    _temp_dm_aos[2]     = _temp_dm_aos[4]
+    _temp_fock_prims[2] = _temp_fock_prims[4]
+    _temp_fock_aos[2]   = _temp_fock_aos[4]
+
+    # _temp_dm_prims[1]   = _temp_dm_prims[3]
+    # _temp_dm_aos[1]     = _temp_dm_aos[3]
+    # _temp_fock_prims[1] = _temp_fock_prims[3]
+    # _temp_fock_aos[1]   = _temp_fock_aos[3]
+
+def amut2_prop(tdscf,                  
+               _temp_ts,         _temp_dm_prims,   _temp_dm_aos,
+               _temp_fock_prims, _temp_fock_aos,        dt=None):
+    if dt == None:
+        dt = tdscf.dt
+
+    _p_prim_2,   _p_ao_2,\
+    _f_prim_2,   _f_ao_2  = prop_step(
+        tdscf, _temp_ts[2], _temp_dm_prims[2], _temp_fock_prims[2], dt = dt/2
+        )
+    
+    _p_prim_3,   _p_ao_3,\
+    _f_prim_3,   _f_ao_3  = prop_step(
+        tdscf, _temp_ts[2], _temp_dm_prims[2], _f_prim_2, dt = dt/2
+        )
+
+    _temp_dm_prims[4],   _temp_dm_aos[4],\
+    _temp_fock_prims[4], _temp_fock_aos[4]  = prop_step(
+        tdscf, _temp_ts[2], _temp_dm_prims[2], _f_prim_3, dt = dt
+        )
+
+    _temp_dm_prims[2]   = _temp_dm_prims[4]
+    _temp_dm_aos[2]     = _temp_dm_aos[4]
+    _temp_fock_prims[2] = _temp_fock_prims[4]
+    _temp_fock_aos[2]   = _temp_fock_aos[4]
+
+    # _temp_dm_prims[1]   = _temp_dm_prims[3]
+    # _temp_dm_aos[1]     = _temp_dm_aos[3]
+    # _temp_fock_prims[1] = _temp_fock_prims[3]
+    # _temp_fock_aos[1]   = _temp_fock_aos[3]
+
+def amut3_prop(tdscf,                  
+               _temp_ts,         _temp_dm_prims,   _temp_dm_aos,
+               _temp_fock_prims, _temp_fock_aos,        dt=None):
+    if dt == None:
+        dt = tdscf.dt
+
+    _p_prim_2,   _p_ao_2,\
+    _f_prim_2,   _f_ao_2  = prop_step(
+        tdscf, _temp_ts[2], _temp_dm_prims[2], _temp_fock_prims[2], dt = dt/2
+        )
+    
+    _p_prim_3,   _p_ao_3,\
+    _f_prim_3,   _f_ao_3  = prop_step(
+        tdscf, _temp_ts[2], _temp_dm_prims[2], _f_prim_2, dt = dt/2
+        )
+
+    _p_prim_4,   _p_ao_4,\
+    _f_prim_4,   _f_ao_4  = prop_step(
+        tdscf, _temp_ts[2], _temp_dm_prims[2], _f_prim_3, dt = dt/2
+        )
+
+    _temp_dm_prims[4],   _temp_dm_aos[4],\
+    _temp_fock_prims[4], _temp_fock_aos[4]  = prop_step(
+        tdscf, _temp_ts[2], _temp_dm_prims[2], _f_prim_4, dt = dt
+        )
+
+    _temp_dm_prims[2]   = _temp_dm_prims[4]
+    _temp_dm_aos[2]     = _temp_dm_aos[4]
+    _temp_fock_prims[2] = _temp_fock_prims[4]
+    _temp_fock_aos[2]   = _temp_fock_aos[4]
+
+    # _temp_dm_prims[1]   = _temp_dm_prims[3]
+    # _temp_dm_aos[1]     = _temp_dm_aos[3]
+    # _temp_fock_prims[1] = _temp_fock_prims[3]
+    # _temp_fock_aos[1]   = _temp_fock_aos[3]
+
+def aeut_prop(tdscf,                  
+               _temp_ts,         _temp_dm_prims,   _temp_dm_aos,
+               _temp_fock_prims, _temp_fock_aos,        dt=None):
+    if dt == None:
+        dt = tdscf.dt
+
+    _p_prim_2,   _p_ao_2,\
+    _f_prim_2,   _f_ao_2  = prop_step(
+        tdscf, _temp_ts[2], _temp_dm_prims[2], _temp_fock_prims[2], dt = dt
+        )
+
+    _temp_dm_prims[4],   _temp_dm_aos[4],\
+    _temp_fock_prims[4], _temp_fock_aos[4]  = prop_step(
+        tdscf, _temp_ts[2], _temp_dm_prims[2], _f_prim_2, dt = dt
+        )
+
+    _temp_dm_prims[2]   = _temp_dm_prims[4]
+    _temp_dm_aos[2]     = _temp_dm_aos[4]
+    _temp_fock_prims[2] = _temp_fock_prims[4]
+    _temp_fock_aos[2]   = _temp_fock_aos[4]
+
+    # _temp_dm_prims[1]   = _temp_dm_prims[3]
+    # _temp_dm_aos[1]     = _temp_dm_aos[3]
+    # _temp_fock_prims[1] = _temp_fock_prims[3]
+    # _temp_fock_aos[1]   = _temp_fock_aos[3]
+
+def mmut_prop(tdscf,                  
+               _temp_ts,         _temp_dm_prims,   _temp_dm_aos,
+               _temp_fock_prims, _temp_fock_aos,        dt=None):
+#     # HF not numerically stable, for some reason
+    if dt == None:
+        dt = tdscf.dt
+
+    _temp_dm_prims[3], _temp_dm_aos[3] = prop_step(
+        tdscf, _temp_ts[1], _temp_dm_prims[1], _temp_fock_prims[2], dt = dt,
+        build_fock=False
+        )
+    
+    _temp_dm_prims[4],   _temp_dm_aos[4],\
+    _temp_fock_prims[4], _temp_fock_aos[4] = prop_step(
+        tdscf, _temp_ts[3], _temp_dm_prims[3], _temp_fock_prims[2], dt = dt/2
+        )
+
+    _temp_dm_prims[2]   = _temp_dm_prims[4]
+    _temp_dm_aos[2]     = _temp_dm_aos[4]
+    _temp_fock_prims[2] = _temp_fock_prims[4]
+    _temp_fock_aos[2]   = _temp_fock_aos[4]
+
+    _temp_dm_prims[1]   = _temp_dm_prims[3]
+    _temp_dm_aos[1]     = _temp_dm_aos[3]
+    # _temp_fock_prims[1] = _temp_fock_prims[3]
+    # _temp_fock_aos[1]   = _temp_fock_aos[3]
+
+def lflp_pc_prop(tdscf, _temp_ts, _temp_dm_prims, _temp_fock_prims
+                 , dt=None, tol = 1e-6):
+    pass
+#     if dt == None:
+#         dt = tdscf.dt
+#     temp5_t_ = dt + _temp_ts
+
+#     step_converged = False
+#     inner_iter = 0
+
+#     _fock_prim_next_half_p = 2*_temp_fock_prims[2] - _temp_fock_prims[1]
+#     if tdscf.verbose >= logger.DEBUG:
+#         print_cx_matrix("_temp_fock_prims[2]", _temp_fock_prims[2])
+#         print_cx_matrix("_temp_fock_prims[1]", _temp_fock_prims[1])
+#     while (not step_converged) and inner_iter <= 200:
+#         inner_iter += 1
+#         _temp_dm_prims[4] = prop_step(tdscf, _temp_dm_prims[2], _fock_prim_next_half_p, dt)
+#         _temp_dm_prims_next_half_c = (_temp_dm_prims[4] + _temp_dm_prims[2])/2
+#         _fock_prim_next_half_c = tdscf.get_fock_prim(_temp_ts[3], _temp_dm_prims_next_half_c)
+#         err = merr(_fock_prim_next_half_p, _fock_prim_next_half_c)
+#         logger.debug(tdscf, "inner_iter = %d, err = %f", inner_iter, err)
+#         # print(tdscf, "inner_iter = %d, err = %f"%(inner_iter, err))
+#         _fock_prim_next_half_p = (_fock_prim_next_half_p + _fock_prim_next_half_c)/2
+#         step_converged = (err<tol)
+#         if tdscf.verbose >= logger.DEBUG:
+#             print_cx_matrix("_fock_prim_next_half_p", _fock_prim_next_half_p)
+#             print_cx_matrix("_fock_prim_next_half_c", _fock_prim_next_half_c )
+
+#     if not step_converged:
+#         logger.warn(tdscf, 'Inner loop not converged inner_iter = %d, err = %g', inner_iter, err)
+#         raise RuntimeError("Inner loop not converged")
+#     else:
+#         _temp_dm_prims[3]   = _temp_dm_prims_next_half_c
+#         _temp_fock_prims[4] = tdscf.get_fock_prim(_temp_ts[4], _temp_dm_prims[4])
+
+#     temp_fock_prim_ = np.zeros(_temp_dm_prims.shape, dtype=np.complex128)
+#     temp_temp_dm_prims_   = np.zeros(_temp_dm_prims.shape, dtype=np.complex128)
+    
+#     temp_temp_dm_prims_[0] = _temp_dm_prims[2]
+#     temp_temp_dm_prims_[1] = _temp_dm_prims[3]
+#     temp_temp_dm_prims_[2] = _temp_dm_prims[4]
+
+#     temp_fock_prim_[0] = _temp_fock_prims[2]
+#     temp_fock_prim_[1] = (_fock_prim_next_half_c + _fock_prim_next_half_p)/2
+#     temp_fock_prim_[2] = _temp_fock_prims[4]
+
+#     return temp5_t_, temp_temp_dm_prims_, temp_fock_prim_
+
+def ep_pc_prop(tdscf, _temp_ts, _temp_dm_prims, _temp_fock_prims
+                 , dt=None, tol = 1e-6):
+    pass
+
+
+def orth_ao(tdscf, key="canonical"):
+    s1e = tdscf.mf.get_ovlp().astype(np.complex128)
+    if key.lower() == "canonical":
+        logger.info(tdscf, "the AOs are orthogonalized with canonical MO coefficients")
+        if not tdscf.mf.converged:
+            raise RuntimeError("the RT TDSCF object must be initialzed with a converged SCF object")
+
+        x = tdscf.mf.mo_coeff.astype(np.complex128)
+        x_t = x.T
+        x_inv = np.einsum('li,ls->is', x, s1e)
+        x_t_inv = x_inv.T
+        tdscf.orth_xtuple = (x, x_t, x_inv, x_t_inv)
+        return tdscf.orth_xtuple
+    else:
+        x = lo.orth_ao(tdscf.mol, method=key).astype(np.complex128)
+        x_t = x.T
+        x_inv = np.einsum('li,ls->is', x, s1e)
+        x_t_inv = x_inv.T
+        tdscf.orth_xtuple = (x, x_t, x_inv, x_t_inv)
+        return tdscf.orth_xtuple
+
+def ao2orth_dm(dm_ao, orth_xtuple):
+    x, x_t, x_inv, x_t_inv = orth_xtuple
+    dm_prim = reduce(np.dot, (x_inv, dm_ao, x_t_inv))
+    return dm_prim
+
+def orth2ao_dm(dm_prim, orth_xtuple):
+    x, x_t, x_inv, x_t_inv = orth_xtuple
+    dm_ao = reduce(np.dot, (x, dm_prim, x_t))
+    return dm_ao# (dm_ao + dm_ao.conj().T)/2
+
+def ao2orth_fock(fock_ao, orth_xtuple):
+    x, x_t, x_inv, x_t_inv = orth_xtuple
+    fock_prim = reduce(np.dot, (x_t, fock_ao, x))
+    return fock_prim
+
+def orth2ao_fock(fock_prim, orth_xtuple):
+    x, x_t, x_inv, x_t_inv = orth_xtuple
+    fock_ao = reduce(np.dot, (x_t_inv, fock_prim, x_inv))
+    return fock_ao # (fock_ao + fock_ao.conj().T)/2
+
+def kernel(tdscf,                                #input
+           dt        = None, maxstep     = None, #input
+           dm_ao_init= None, prop_func   = None, #input
+           ndm_prim  = None, nfock_prim  = None, #output
+           ndm_ao    = None, nfock_ao    = None, #output
+           netot     = None, dump_chk=True
+           ):
+    cput0 = (time.clock(), time.time())
+
+    if dt == None:          dt = tdscf.dt
+    if maxstep == None:     maxstep = tdscf.maxstep
+    if dm_ao_init is None:  dm_ao_init = tdscf.dm_ao_init
+    if prop_func == None:   prop_func = tdscf.prop_func
+
+    if ndm_prim is None:
+        ndm_prim = tdscf.ndm_prim
+    if nfock_prim is None:
+        nfock_prim = tdscf.nfock_prim
+    
+    h1e_ao = tdscf.mf.get_hcore()
+    tdscf.mf.get_hcore = lambda *args, t=0.0: h1e_ao + tdscf.get_efield(t)
+
+    if tdscf.verbose >= logger.DEBUG1:
+            print_matrix("The field-free hcore matrix  is, ", h1e_ao, ncols=PRINT_MAT_NCOL)
+    if tdscf.verbose >= logger.DEBUG1:
+            print_matrix("The t=1.0 a.u. efield matrix is, ", tdscf.mf.get_hcore(t=1.0), ncols=PRINT_MAT_NCOL)
+
+    dm_ao_init   = dm_ao_init.astype(np.complex128)
+    dm_prim_init = ao2orth_dm(dm_ao_init, tdscf.orth_xtuple)
+
+    fock_ao_init = (tdscf.mf.get_fock(dm=dm_ao_init, h1e=tdscf.mf.get_hcore(t=0.0)))
+    fock_prim_init = ao2orth_fock(fock_ao_init, tdscf.orth_xtuple)
+
+    etot_init      = tdscf.mf.energy_tot(dm=dm_ao_init, h1e=tdscf.mf.get_hcore(t=0.0))
+
+    if tdscf.verbose >= logger.DEBUG1:
+        print_matrix("the initial dm prim is", dm_prim_init, ncols=PRINT_MAT_NCOL)
+        print_matrix("the initial fock prim without electric field is", 
+                     ao2orth_fock(
+                         tdscf.mf.get_fock(dm=dm_ao_init).real, tdscf.orth_xtuple
+                         ), ncols=PRINT_MAT_NCOL
+                     )
+        print_matrix("the initial fock prim with electric field is"
+                     , fock_prim_init, ncols=PRINT_MAT_NCOL)
+
+    shape = list(dm_ao_init.shape)
+
+    ndm_prim[0]    = dm_prim_init
+    nfock_prim[0]  = fock_prim_init
+    ndm_ao[0]      = dm_ao_init
+    nfock_ao[0]  = fock_ao_init
+    netot[0]       = etot_init
+
+    _temp_ts         = dt*np.array([0.0, 0.5, 1.0, 1.5, 2.0])
+    _temp_dm_prims   = np.zeros([5] + shape, dtype=np.complex128)
+    _temp_fock_prims = np.zeros([5] + shape, dtype=np.complex128)
+    _temp_dm_aos     = np.zeros([5] + shape, dtype=np.complex128)
+    _temp_fock_aos   = np.zeros([5] + shape, dtype=np.complex128)
+
+    cput1 = logger.timer(tdscf, 'initialize td-scf', *cput0)
+
+# propagation start here
+    _temp_dm_prims[0]   = ndm_prim[0]
+    _temp_fock_prims[0] = nfock_prim[0]
+    _temp_dm_aos[0]     = ndm_ao[0]
+    _temp_fock_aos[0]   = nfock_ao[0]
+
+    _temp_dm_prims[1],   _temp_dm_aos[1],\
+    _temp_fock_prims[1], _temp_fock_aos[1] = prop_step(
+        tdscf, _temp_ts[0], _temp_dm_prims[0], _temp_fock_prims[0], dt = dt/2
+        )
+    _temp_dm_prims[2],   _temp_dm_aos[2],\
+    _temp_fock_prims[2], _temp_fock_aos[2] = prop_step(
+        tdscf, _temp_ts[1], _temp_dm_prims[1], _temp_fock_prims[1], dt = dt/2
+        )
+
+    istep = 1
+    while istep <= maxstep:
+        if istep%100==1:
+            logger.note(tdscf, 'istep=%d, time=%f, delta e=%e', istep-1, tdscf.ntime[istep-1], tdscf.netot[istep-1]-tdscf.netot[0])
+        # propagation step
+        prop_func(tdscf, _temp_ts, _temp_dm_prims, _temp_dm_aos, 
+                                           _temp_fock_prims, _temp_fock_aos, dt=dt)
+        ndm_prim[istep]   =   _temp_dm_prims[2]
+        ndm_ao[istep]     =     _temp_dm_aos[2]
+        nfock_prim[istep] = _temp_fock_prims[2]
+        nfock_ao[istep]   =   _temp_fock_aos[2]
+        netot[istep]      =   tdscf.mf.energy_tot(
+            dm=_temp_dm_aos[2], h1e=tdscf.mf.get_hcore(t=_temp_ts[2])
+        )
+        _temp_ts = _temp_ts + dt
+        istep += 1
+    cput2 = logger.timer(tdscf, 'propagation %d time steps'%(istep-1), *cput0)
+    if dump_chk and tdscf.chkfile:
+        ntime = tdscf.ntime
+        nstep = tdscf.nstep
+        tdscf.dump_chk(locals())
+        cput3 = logger.timer(tdscf, 'dump chk finished', *cput0)
+   
+
+class TDSCF(lib.StreamObject):
+    def __init__(self, mf):
+# the class that defines the system, mol and mf
+        if not mf.converged:
+            logger.warn(self, "SCF not converged, RT-TDSCF method should be initialized with a converged SCF")
+        self.mf             = mf
+        self.mol            = mf.mol
+        self.verbose        = mf.verbose
+        self.mf.verbose     = 0
+        self.max_memory     = mf.max_memory
+        self.stdout         = mf.stdout
+        self.orth_xtuple    = None
+# the interaction between the system and electric field
+        self.ele_dip_ao   = self.mf.mol.intor_symmetric('int1e_r', comp=3)
+
+# If chkfile is muted, SCF intermediates will not be dumped anywhere.
+        if MUTE_CHKFILE:
+            self.chkfile = None
+        else:
+# the chkfile will be removed automatically, to save the chkfile, assign a
+# filename to self.chkfile
+            self._chkfile = tempfile.NamedTemporaryFile(dir=lib.param.TMPDIR)
+            self.chkfile = self._chkfile.name
+
+# input parameters for propagation
+# initial condtion
+        self.dm_ao_init = None
+
+# time step and maxstep
+        self.dt         = None
+        self.maxstep    = None
+
+# propagation method
+        self.prop_method  = None # a string
+        self.orth_method  = None # a string
+        self.prop_func    = None # may not define directly here
+
+# electric field during propagation, a function that returns a
+# 3-component vector.
+        self.efield_vec   = lambda t: [0.0, 0.0, 0.0]
+
+# don't modify the following attributes, they are not input options
+        self.nstep       = None
+        self.ntime       = None
+        self.ndm_prim    = None
+        self.nfock_prim  = None
+        self.ndm_ao      = None
+        self.nfock_ao    = None
+        self.netot       = None
+
+    def set_prop_func(self, key='amut1'):
+        '''
+        In virtually all cases AMUT is superior in terms of stability. 
+        Others are perhaps only useful for debugging or simplicity.
+        '''
+        if key.lower() == 'amut1' or key.lower() == 'amut':
+            self.prop_func = amut1_prop
+        elif key.lower() == 'amut2':
+            self.prop_func = amut2_prop
+        elif key.lower() == 'amut3':
+            self.prop_func = amut3_prop
+        elif key.lower() == 'aeut':
+            self.prop_func = aeut_prop
+        elif key.lower() == 'euler':
+            self.prop_func = euler_prop
+        elif key.lower() == 'lflp_pc':
+            self.prop_func = lflp_pc_prop
+        elif key.lower() == 'mmut':
+            self.prop_func = mmut_prop
+        else:
+            raise RuntimeError("unknown prop method!")
+
+    def dump_flags(self, verbose=None):
+        log = logger.new_logger(self, verbose)
+        if log.verbose < logger.INFO:
+            return self
+        log.info('\n')
+        log.info('******** %s ********', self.__class__)
+        log.info(
+        'This is a real time TDSCF calculation initialized with a %s SCF',
+            (
+            "converged" if self.mf.converged else "not converged"
+            )
+        )
+        if self.mf.converged:
+            log.info(
+                'The SCF converged tolerence is conv_tol = %g, conv_tol should be less that 1e-8'%self.mf.conv_tol
+                )
+        if hasattr(self.mf, 'xc'):
+            log.info(
+            'The initial condition is a RKS instance, the xc functional is %s'%self.mf.xc
+            )
+        else:
+            log.info(
+            'The initial condition is a HF instance'
+            )
+        if self.chkfile:
+            log.info('chkfile to save RT TDSCF result = %s', self.chkfile)
+        log.info( 'dt = %f, maxstep = %d', self.dt, self.maxstep )
+        log.info( 'prop_method = %s', self.prop_func.__name__)
+        log.info('max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
+        return self
+
+    def _initialize(self):
+        if self.prop_func is None:
+            if self.prop_method is not None:
+                self.set_prop_func(key=self.prop_method)
             else:
-                return  transmat(self.h + veff,self.x), jmat, kmat
-        elif self.params["Model"] == "TDDFT":
-            Pt = 2 * transmat(dm_lao,self.x,-1)
-            jmat = self.J = self.get_j(Pt)
-            Veff = self.J.astype(complex)
-            Vxc, excsum, kmat = self.get_vxc(Pt)
-            Veff += Vxc
-            if self.adiis and it > 0:
-                return transmat(self.adiis.update(self.s,Pt,self.h + Veff),\
-                self.x), jmat, kmat
-            else:
-                return transmat(self.h + Veff,self.x), jmat, kmat
+                self.set_prop_func()
+        self.dump_flags()
 
-
-    def get_vxc(self,dm):
-        """
-        Update exchange matrices and energy
-        Args:
-            dm: float or complex
-                AO density matrix.
-
-        Returns:
-            vxc: float or complex
-                exchange-correlation matrix in AO basis
-            excsum: float
-                exchange-correlation energy
-            kmat: float or complex
-                Exact Exchange in AO basis
-        """
-
-        nelec, excsum, vxc = self.ks._numint.nr_vxc(self.ks.mol, \
-        self.ks.grids, self.ks.xc, dm)
-        self.exc = excsum
-        vxc  = vxc.astype(complex)
-        if(self.hyb > 0.01):
-            kmat = self.get_k(dm)
-            vxc += -0.5 * self.hyb * kmat
+        if self.orth_method is None:
+            self.orth_xtuple = orth_ao(self)
         else:
-            kmat = None
-        return vxc, excsum, kmat
+            logger.info(self, 'orth method is %s.', self.orth_method)
+            self.orth_xtuple = orth_ao(self, key=self.orth_method)
+        
+        if self.verbose >= logger.DEBUG1:
+            print_matrix(
+                "XT S X", reduce(np.dot, (self.orth_xtuple[1], self.mf.get_ovlp(), self.orth_xtuple[0]))
+                , ncols=PRINT_MAT_NCOL)
 
-    def get_jk(self, dm):
-        """
-        Update Coulomb and Exact Exchange Matrix
+        self.get_efield = lambda t: np.einsum('xij,x->ij', self.ele_dip_ao, self.efield_vec(t) )
 
-        Args:
-            dm: float or complex
-                AO density matrix.
-        Returns:
-            jmat: float or complex
-                Coulomb matrix in AO basis
-            kmat: float or complex
-                Exact Exchange in AO basis
-        """
-        jmat = self.get_j(dm)
-        kmat = self.get_k(dm)
-        return jmat, kmat
+        logger.debug(self, "efield_vec(1.0) x direction = %e", self.efield_vec(1.0)[0])
+        logger.debug(self, "efield_vec(1.0) y direction = %e", self.efield_vec(1.0)[1])
+        logger.debug(self, "efield_vec(1.0) z direction = %e", self.efield_vec(1.0)[2])
 
-    def get_j(self,dm):
-        """
-        Update Coulomb Matrix
+        if self.verbose >= logger.DEBUG1:
+                print_matrix("The field-free hcore matrix  is, ", self.mf.get_hcore(), ncols=PRINT_MAT_NCOL)
+        if self.verbose >= logger.DEBUG1:
+                print_matrix("The t=1.0 a.u. efield matrix is, ", self.get_efield(1.0), ncols=PRINT_MAT_NCOL)
 
-        Args:
-            dm: float or complex
-                AO density matrix.
-        Returns:
-            jmat: float or complex
-                Coulomb matrix in AO basis
-        """
-        rho = np.einsum("ijp,ij->p", self.eri3c, dm)
-        rho = np.linalg.solve(self.eri2c, rho)
-        jmat = np.einsum("p,ijp->ij", rho, self.eri3c)
-        return jmat
+    def _finalize(self):
+        self.ndipole = np.zeros([self.maxstep+1,             3])
+        self.npop    = np.zeros([self.maxstep+1, self.mol.natm])
+        logger.info(self, "Finalization begins here")
+        s1e = self.mf.get_ovlp()
+        for i,idm in enumerate(self.ndm_ao):
+            self.ndipole[i] = self.mf.dip_moment(dm = idm.real, unit='au', verbose=0)
+            self.npop[i]    = self.mf.mulliken_pop(dm = idm.real, s=s1e, verbose=0)[1]
+        logger.info(self, "Finalization finished")
 
-    def get_k(self,dm):
-        """
-        Update Exact Exchange Matrix
+    def kernel(self, dm_ao_init=None):
+        self._initialize()
+        if dm_ao_init is None:
+            if self.dm_ao_init is not None:
+                dm_ao_init = self.dm_ao_init
+            elif self.dm_ao_init == None:
+                dm_ao_init = self.mf.make_rdm1()
+        logger.info(self, "Propagation begins here")
+        if self.verbose >= logger.DEBUG1:
+                print_matrix("The initial density matrix is, ", dm_ao_init, ncols=PRINT_MAT_NCOL)
 
-        Args:
-            dm: float or complex
-                AO density matrix.
-        Returns:
-            kmat: float or complex
-                Exact Exchange in AO basis
-        """
-        naux = self.auxmol.nao_nr()
-        nao = self.ks.mol.nao_nr()
-        kpj = np.einsum("ijp,jk->ikp", self.eri3c, dm)
-        pik = np.linalg.solve(self.eri2c, kpj.reshape(-1,naux).T.conj())
-        kmat = np.einsum("pik,kjp->ij", pik.reshape(naux,nao,nao), self.eri3c)
-        return kmat
+        logger.info(self, 'before building matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
+        self.nstep      = np.linspace(0, self.maxstep, self.maxstep+1, dtype=int) # output
+        self.ntime      = self.dt*self.nstep                                      # output
+        self.ndm_prim   = np.zeros([self.maxstep+1] + list(dm_ao_init.shape), dtype=np.complex128) # output
+        self.ndm_ao     = np.zeros([self.maxstep+1] + list(dm_ao_init.shape), dtype=np.complex128) # output
+        self.nfock_prim = np.zeros([self.maxstep+1] + list(dm_ao_init.shape), dtype=np.complex128) # output
+        self.nfock_ao   = np.zeros([self.maxstep+1] + list(dm_ao_init.shape), dtype=np.complex128) # output
+        self.netot      = np.zeros([self.maxstep+1])                                # output
+        logger.info(self, 'after building matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
+        kernel(
+           self,                                                        #input
+           dt        = self.dt         , maxstep     = self.maxstep,    #input
+           dm_ao_init= dm_ao_init      , prop_func   = self.prop_func,  #input
+           ndm_prim  = self.ndm_prim   , nfock_prim  = self.nfock_prim, #output
+           ndm_ao    = self.ndm_ao     , nfock_ao    = self.nfock_ao,   #output
+           netot     = self.netot
+            )
+        logger.info(self, 'after propogation matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
+        logger.info(self, "Propagation finished")
+        self._finalize()
 
-    def initialcondition(self,prm):
-        """
-        Prepare the variables/Matrices needed for propagation
-        The SCF is done here to make matrices that are not accessable from pyscf.scf
-        Args:
-            prm: str
-                string object with |variable    value| on each line
-        Returns:
-            fmat: float or complex
-                Fock matrix in Lowdin AO basis
-            c_am: float
-                Transformation Matrix |AO><MO|
-            v_lm: float
-                Transformation Matrix |LAO><MO|
-            rho: float or complex
-                Initial MO density matrix.
+    def dump_chk(self, envs):
+        if self.chkfile:
+            logger.info(self, 'chkfile to save RT TDSCF result is %s', self.chkfile)
+            chkfile.dump_rt(self.mol, self.chkfile,
+                             envs['nstep'], envs['ntime'],
+                             envs['ndm_prim'], envs['ndm_ao'],
+                             envs['nfock_prim'], envs['nfock_ao'],
+                             envs['netot'],
+                             overwrite_mol=False)
 
-        """
-        from pyscf.rt import tdfields
-        self.auxmol_set(self.ks.mol, auxbas = self.auxbas)
-        self.params = dict()
-
-        logger.log(self,"""
-            ===================================
-            |  Realtime TDSCF module          |
-            ===================================
-            | J. Parkhill, T. Nguyen          |
-            | J. Koh, J. Herr,  K. Yao        |
-            ===================================
-            | Refs: 10.1021/acs.jctc.5b00262  |
-            |       10.1063/1.4916822         |
-            ===================================
-            """)
-        n_ao = self.ks.mol.nao_nr()
-        n_occ = int(sum(self.ks.mo_occ)/2)
-        logger.log(self,"n_ao: %d        n_occ: %d", n_ao,\
-        n_occ)
-        self.readparams(prm)
-        fmat, c_am, v_lm = self.initfockbuild() # updates self.C
-        rho = 0.5*np.diag(self.ks.mo_occ).astype(complex)
-        self.field = tdfields.FIELDS(self, self.params)
-        self.field.initializeexpectation(rho, c_am)
-        return fmat, c_am, v_lm, rho
-
-    def readparams(self,prm):
-        """
-        Set Defaults, Read the file and fill the params dictionary
-
-        Args:
-            prm: str
-                string object with |variable    value| on each line
-        """
-        self.params["Model"] = "TDDFT"
-        self.params["Method"] = "MMUT"
-        self.params["BBGKY"]=0
-        self.params["TDCIS"]=1
-
-        self.params["dt"] =  0.02
-        self.params["MaxIter"] = 15000
-
-        self.params["ExDir"] = 1.0
-        self.params["EyDir"] = 1.0
-        self.params["EzDir"] = 1.0
-        self.params["FieldAmplitude"] = 0.01
-        self.params["FieldFreq"] = 0.9202
-        self.params["Tau"] = 0.07
-        self.params["tOn"] = 7.0*self.params["Tau"]
-        self.params["ApplyImpulse"] = 1
-        self.params["ApplyCw"] = 0
-
-        self.params["StatusEvery"] = 5000
-        self.params["Print"]=0
-        # Here they should be read from disk.
-        if(prm != None):
-            for line in prm.splitlines():
-                s = line.split()
-                if len(s) > 1:
-                    if s[0] == "MaxIter" or s[0] == str("ApplyImpulse") or \
-                    s[0] == str("ApplyCw") or s[0] == str("StatusEvery"):
-                        self.params[s[0]] = int(s[1])
-                    elif s[0] == "Model" or s[0] == "Method":
-                        self.params[s[0]] = s[1].upper()
-                    else:
-                        self.params[s[0]] = float(s[1])
-
-        logger.log(self,"=============================")
-        logger.log(self,"         Parameters")
-        logger.log(self,"=============================")
-        logger.log(self,"Model: " + self.params["Model"].upper())
-        logger.log(self,"Method: "+ self.params["Method"].upper())
-        logger.log(self,"dt: %.2f", self.params["dt"])
-        logger.log(self,"MaxIter: %d", self.params["MaxIter"])
-        logger.log(self,"ExDir: %.2f", self.params["ExDir"])
-        logger.log(self,"EyDir: %.2f", self.params["EyDir"])
-        logger.log(self,"EzDir: %.2f", self.params["EzDir"])
-        logger.log(self,"FieldAmplitude: %.4f", self.params["FieldAmplitude"])
-        logger.log(self,"FieldFreq: %.4f", self.params["FieldFreq"])
-        logger.log(self,"Tau: %.2f", self.params["Tau"])
-        logger.log(self,"tOn: %.2f", self.params["tOn"])
-        logger.log(self,"ApplyImpulse: %d", self.params["ApplyImpulse"])
-        logger.log(self,"ApplyCw: %d", self.params["ApplyCw"])
-        logger.log(self,"StatusEvery: %d", self.params["StatusEvery"])
-        logger.log(self,"=============================\n\n")
-
-        return
-
-    def initfockbuild(self):
-        """
-        Using Roothan's equation to build a Initial Fock matrix and
-        Transformation Matrices
-
-        Returns:
-            fmat: float or complex
-                Fock matrix in Lowdin AO basis
-            c_am: float
-                Transformation Matrix |AO><MO|
-            v_lm: float
-                Transformation Matrix |LAO><MO|
-        """
-        start = time.time()
-        n_occ = int(sum(self.ks.mo_occ)/2)
-        err = 100
-        it = 0
-        self.h = self.ks.get_hcore()
-        s = self.s.copy()
-        x = self.x.copy()
-        sx = np.dot(s,x)
-        dm_lao = 0.5*transmat(self.ks.get_init_guess(self.ks.mol, \
-        self.ks.init_guess), sx).astype(complex)
-
-        if isinstance(self.ks.diis, lib.diis.DIIS):
-            self.adiis = self.ks.diis
-        elif self.ks.diis:
-            self.adiis = diis.SCF_DIIS(self.ks, self.ks.diis_file)
-            self.adiis.space = self.ks.diis_space
-            self.adiis.rollback = self.ks.diis_space_rollback
-        else:
-            self.adiis = None
-
-        fmat, jmat, kmat = self.fockbuild(dm_lao)
-        dm_lao_old = dm_lao
-        etot = self.energy(dm_lao,fmat, jmat, kmat)+ self.enuc
-
-        while (err > self.conv_tol):
-            # Diagonalize F in the lowdin basis
-            eigs, v_lm = np.linalg.eig(fmat)
-            idx = eigs.argsort()
-            eigs.sort()
-            v_lm = v_lm[:,idx].copy()
-            # Fill up the density in the MO basis and then Transform back
-            rho = 0.5*np.diag(self.ks.mo_occ).astype(complex)
-            dm_lao = transmat(rho,v_lm,-1)
-            etot_old = etot
-            etot = self.energy(dm_lao,fmat, jmat, kmat)
-            fmat, jmat, kmat = self.fockbuild(dm_lao,it)
-            err = abs(etot-etot_old)
-            logger.debug(self, "Ne: %f", np.trace(rho))
-            logger.debug(self, "Iteration: %d         Energy: %.11f      \
-            Error = %.11f", it, etot, err)
-            it += 1
-            if it > self.ks.max_cycle:
-                logger.log(self, "Max cycle of SCF reached: %d\n Exiting TDSCF. Please raise ks.max_cycle", it)
-                quit()
-        rho = 0.5*np.diag(self.ks.mo_occ).astype(complex)
-        dm_lao = transmat(rho,v_lm,-1)
-        c_am = np.dot(self.x,v_lm)
-        logger.log(self, "Ne: %f", np.trace(rho))
-        logger.log(self, "Converged Energy: %f", etot)
-        # logger.log(self, "Eigenvalues: %f", eigs.real)
-        # print "Eigenvalues: ", eigs.real
-        end = time.time()
-        logger.info(self, "Initial Fock Built time: %f", end-start)
-        return fmat, c_am, v_lm
-
-    def split_rk4_step_mmut(self, w, v , oldrho , tnow, dt ,IsOn):
-        Ud = np.exp(w*(-0.5j)*dt);
-        U = transmat(np.diag(Ud),v,-1)
-        RhoHalfStepped = transmat(oldrho,U,-1)
-        # If any TCL propagation occurs...
-        # DontDo=
-        # SplitLiouvillian( RhoHalfStepped, k1,tnow,IsOn);
-        # v2 = (dt/2.0) * k1;
-        # v2 += RhoHalfStepped;
-        # SplitLiouvillian(  v2, k2,tnow+(dt/2.0),IsOn);
-        # v3 = (dt/2.0) * k2;
-        # v3 += RhoHalfStepped;
-        # SplitLiouvillian(  v3, k3,tnow+(dt/2.0),IsOn);
-        # v4 = (dt) * k3;
-        # v4 += RhoHalfStepped;
-        # SplitLiouvillian(  v4, k4,tnow+dt,IsOn);
-        # newrho = RhoHalfStepped;
-        # newrho += dt*(1.0/6.0)*k1;
-        # newrho += dt*(2.0/6.0)*k2;
-        # newrho += dt*(2.0/6.0)*k3;
-        # newrho += dt*(1.0/6.0)*k4;
-        # newrho = U*newrho*U.t();
-        #
-        newrho = transmat(RhoHalfStepped,U,-1)
-
-        return newrho
-
-    def tddftstep(self,fmat, c_am, v_lm, rho, rhom12, tnow):
-        """
-        Take dt step in propagation
-        updates matrices and rho to next timestep
-        Args:
-            fmat: float or complex
-                Fock matrix in Lowdin AO basis
-            c_am: float or complex
-                Transformation Matrix |AO><MO|
-            v_lm: float or complex
-                Transformation Matrix |LAO><MO|
-            rho: complex
-                MO density matrix.
-            rhom12: complex
-            tnow: float
-                current time in A.U.
-        Returns:
-            n_rho: complex
-                MO density matrix.
-            n_rhom12: complex
-            n_c_am: complex
-                Transformation Matrix |AO><MO|
-            n_v_lm: complex
-                Transformation Matrix |LAO><MO|
-            n_fmat: complex
-                Fock matrix in Lowdin AO basis
-            n_jmat: complex
-                Coulomb matrix in AO basis
-            n_kmat: complex
-                Exact Exchange in AO basis
-        """
-        if (self.params["Method"] == "MMUT"):
-            fmat, n_jmat, n_kmat = self.fockbuild(transmat(rho,v_lm,-1))
-            n_fmat = fmat.copy()
-            fmat_c = np.conj(fmat)
-            fmat_prev = transmat(fmat_c, v_lm)
-            eigs, rot = np.linalg.eig(fmat_prev)
-            idx = eigs.argsort()
-            eigs.sort()
-            rot = rot[:,idx].copy()
-            rho = transmat(rho, rot)
-            rhoM12 = transmat(rhom12, rot)
-            v_lm = np.dot(v_lm , rot)
-            c_am = np.dot(self.x , v_lm)
-            n_v_lm = v_lm.copy()
-            n_c_am = c_am.copy()
-            fmat_mo = np.diag(eigs).astype(complex)
-            fmatfield, IsOn = self.field.applyfield(fmat_mo,c_am,tnow)
-            w,v = scipy.linalg.eig(fmatfield)
-            NewRhoM12 = self.split_rk4_step_mmut(w, v, rhom12, tnow, \
-            self.params["dt"], IsOn)
-            NewRho = self.split_rk4_step_mmut(w, v, NewRhoM12, tnow,\
-            self.params["dt"]/2.0, IsOn)
-            n_rho = 0.5*(NewRho+(NewRho.T.conj()));
-            n_rhom12 = 0.5*(NewRhoM12+(NewRhoM12.T.conj()))
-            return n_rho, n_rhom12, n_c_am, n_v_lm, n_fmat, n_jmat, n_kmat
-        else:
-            raise Exception("Unknown Method...")
-        return
-
-
-    def dipole(self, rho, c_am):
-        """
-        Args:
-            c_am: float or complex
-                Transformation Matrix |AO><MO|
-            rho: complex
-                MO density matrix.
-        Returns:
-            dipole: float
-                xyz component of dipole of a molecule. [x y z]
-        """
-        return self.field.expectation(rho, c_am)
-
-    def energy(self,dm_lao,fmat,jmat,kmat):
-        """
-        Args:
-            dm_lao: complex
-                Density in LAO basis.
-            fmat: complex
-                Fock matrix in Lowdin AO basis
-            jmat: complex
-                Coulomb matrix in AO basis
-            kmat: complex
-                Exact Exchange in AO basis
-        Returns:
-            e_tot: float
-                Total Energy of a system
-        """
-        if (self.params["Model"] == "TDHF"):
-            hlao = transmat(self.h,self.x)
-            e_tot = (self.enuc+np.trace(np.dot(dm_lao,hlao+fmat))).real
-            return e_tot
-        elif self.params["Model"] == "TDDFT":
-            dm = transmat(dm_lao,self.x,-1)
-            exc = self.exc
-            if(self.hyb > 0.01):
-                exc -= 0.5 * self.hyb * trdot(dm,kmat)
-            # if not using auxmol
-            eh = trdot(dm,2*self.h)
-            ej = trdot(dm,jmat)
-            e_tot = (eh + ej + exc + self.enuc).real
-            return e_tot
-
-    def loginstant(self, rho, c_am, v_lm, fmat, jmat, kmat, tnow, it):
-        """
-        time is logged in atomic units.
-        Args:
-            rho: complex
-                MO density matrix.
-            c_am: complex
-                Transformation Matrix |AO><MO|
-            v_lm: complex
-                Transformation Matrix |LAO><MO|
-            fmat: complex
-                Fock matrix in Lowdin AO basis
-            jmat: complex
-                Coulomb matrix in AO basis
-            kmat: complex
-                Exact Exchange in AO basis
-            tnow: float
-                Current time in propagation in A.U.
-            it: int
-                Number of iteration of propagation
-        Returns:
-            tore: str
-                |t, dipole(x,y,z), energy|
-
-        """
-        np.set_printoptions(precision = 7)
-        tore = str(tnow)+" "+str(self.dipole(rho, c_am).real).rstrip("]").lstrip("[")+\
-         " " +str(self.energy(transmat(rho,v_lm,-1),fmat, jmat, kmat))
-
-        if it%self.params["StatusEvery"] ==0 or it == self.params["MaxIter"]-1:
-            logger.log(self, "t: %f fs    Energy: %f a.u.   Total Density: %f",\
-            tnow*FSPERAU,self.energy(transmat(rho,v_lm,-1),fmat, jmat, kmat), \
-            2*np.trace(rho))
-            logger.log(self, "Dipole moment(X, Y, Z, au): %8.5f, %8.5f, %8.5f",\
-             self.dipole(rho, c_am).real[0],self.dipole(rho, c_am).real[1],\
-             self.dipole(rho, c_am).real[2])
-        return tore
-
-    def prop(self, fmat, c_am, v_lm, rho, output):
-        """
-        The main tdscf propagation loop.
-        Args:
-            fmat: complex
-                Fock matrix in Lowdin AO basis
-            c_am: complex
-                Transformation Matrix |AO><MO|
-            v_lm: complex
-                Transformation Matrix |LAO><MO|
-            rho: complex
-                MO density matrix.
-            output: str
-                name of the file with result of propagation
-        Saved results:
-            f: file
-                output file with |t, dipole(x,y,z), energy|
-        """
-        it = 0
-        tnow = 0
-        rhom12 = rho.copy()
-        n_occ = int(sum(self.ks.mo_occ)/2)
-        f = open(output,"a")
-        logger.log(self,"\n\nPropagation Begins")
-        start = time.time()
-        while (it<self.params["MaxIter"]):
-            rho, rhom12, c_am, v_lm, fmat, jmat, kmat = self.tddftstep(fmat, c_am, v_lm, rho, rhom12, tnow)
-            # rho = newrho.copy()
-            # rhom12 = newrhom12.copy()
-            #self.log.append(self.loginstant(it))
-            f.write(self.loginstant(rho, c_am, v_lm, fmat, jmat, kmat, tnow, it)+"\n")
-            # Do logging.
-            tnow = tnow + self.params["dt"]
-            if it%self.params["StatusEvery"] ==0 or \
-            it == self.params["MaxIter"]-1:
-                end = time.time()
-                logger.log(self, "%f hr/ps", \
-                (end - start)/(60*60*tnow * FSPERAU * 0.001))
-            it = it + 1
-
-        f.close()
