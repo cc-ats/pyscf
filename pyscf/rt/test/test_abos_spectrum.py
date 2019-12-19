@@ -28,13 +28,6 @@ h2o_rks.conv_tol = 1e-20
 h2o_rks.verbose = 5
 h2o_rks.kernel()
 
-rttd = rt.TDSCF(h2o_rks)
-rttd.dt = 0.2
-rttd.maxstep = 10000
-rttd.verbose = 5
-prop_method = "amut1"
-rttd.set_prop_func(key="amut1")
-
 def delta_efield(tt):
     return 0.0001*np.exp(-10*tt**2/0.2**2)
 
@@ -93,3 +86,7 @@ ax.set_ylabel('Absorption')
 ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%0.0e'))
 ax.grid(True)
 fig.savefig("./testlog/abos_fig_%s.pdf"%prop_method)
+
+
+rttd = rt.TDSCF(ag4_n2_rks1)
+rttd.__dict__.update(scf.chkfile.load('./chk/rttd.chk', 'rt'))

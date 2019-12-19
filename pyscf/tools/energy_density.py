@@ -62,7 +62,7 @@ def calc_rhok(mf, coords, dm):
 def calc_rhok_lr(mf, coords, dm):
     ks = mf
     ni = ks._numint
-    omega, alpha, hyb = ni.rsh_and_hybrid_coeff(ks.xc, spin=mol.spin)
+    omega, alpha, hyb = ni.rsh_and_hybrid_coeff(ks.xc, spin=ks.mol.spin)
     nbas = ks.mol.nbas
     ngrids = coords.shape[0]
     rhok_lr = numpy.zeros(ngrids)

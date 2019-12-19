@@ -6,7 +6,7 @@ import os, sys
 #
 DEBUG = False
 
-MAX_MEMORY = int(os.environ.get('PYSCF_MAX_MEMORY', 4000)) # MB
+MAX_MEMORY = int(os.environ.get('PYSCF_MAX_MEMORY', 40000)) # MB
 TMPDIR = os.environ.get('TMPDIR', '.')
 TMPDIR = os.environ.get('PYSCF_TMPDIR', TMPDIR)
 

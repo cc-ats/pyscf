@@ -7,10 +7,8 @@ from  pyscf import dft
 from  pyscf import gto
 from pyscf  import rt
 
-from pyscf.rt import print_matrix
-
-from matplotlib import pyplot as plt
-import matplotlib.ticker as ticker
+def delta_efield(t):
+    return 0.001*np.exp(-10*t**2/0.2**2)
 
 h2o =   gto.Mole( atom='''
   H   -0.0000000    0.4981795    0.7677845
@@ -27,19 +25,27 @@ h2o_rks.conv_tol  = 1e-10
 
 h2o_rks.verbose = 5
 h2o_rks.kernel()
+dm = h2o_rks.make_rdm1()
 
 rttd = rt.TDSCF(h2o_rks)
-rttd.chkfile = 'h2o_rt.chk'
+rttd.set_prop_func(key="amut3")
+rttd.efield_vec = lambda t: [delta_efield(t), 0.0, 0.0]
+rttd.chkfile = 'h2o_rt_x.chk'
 rttd.dt = 0.2
-rttd.maxstep = 10
-rttd.verbose = 5
-rttd.chkfile = './h2o_pbe_rttd.chk'
-# rttd.efield_vec = lambda t: [0.1*np.exp(-t**2), 0.0, 0.0]
-for prop_method in ['amut1', 'amut2', 'amut3', 'aeut', 'euler', 'mmut']:
-    print("prop method is %s"%prop_method)
-    rttd.set_prop_func(key=prop_method)
-    rttd.kernel(dm_ao_init=h2o_rks.make_rdm1())
+rttd.maxstep = 5000
+rttd.verbose = 4
+rttd.kernel(dm_ao_init=dm)
 
-    print("ndipole = \n", rttd.ndipole)
-    print("npop    = \n", rttd.npop)
-    print("netot    = \n", rttd.netot - rttd.netot[0])
+rttd.efield_vec = lambda t: [0.0, delta_efield(t), 0.0]
+rttd.chkfile = 'h2o_rt_y.chk'
+rttd.dt = 0.2
+rttd.maxstep = 5000
+rttd.verbose = 4
+rttd.kernel(dm_ao_init=dm)
+
+rttd.efield_vec = lambda t: [0.0, 0.0, delta_efield(t)]
+rttd.chkfile = 'h2o_rt_z.chk'
+rttd.dt = 0.2
+rttd.maxstep = 5000
+rttd.verbose = 4
+rttd.kernel(dm_ao_init=dm)

@@ -17,7 +17,8 @@ mol.build(
 )
 
 mf = dft.RKS(mol)
-mf.xc = 'b3lyp'
+#mf.xc = 'b3lyp'
+mf.xc = 'wb97xd'
 mf.kernel()
 
 mytd = tddft.TDDFT(mf)

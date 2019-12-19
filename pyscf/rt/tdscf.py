@@ -152,11 +152,6 @@ def amut1_prop(tdscf,
     _temp_fock_prims[2] = _temp_fock_prims[4]
     _temp_fock_aos[2]   = _temp_fock_aos[4]
 
-    # _temp_dm_prims[1]   = _temp_dm_prims[3]
-    # _temp_dm_aos[1]     = _temp_dm_aos[3]
-    # _temp_fock_prims[1] = _temp_fock_prims[3]
-    # _temp_fock_aos[1]   = _temp_fock_aos[3]
-
 def amut2_prop(tdscf,                  
                _temp_ts,         _temp_dm_prims,   _temp_dm_aos,
                _temp_fock_prims, _temp_fock_aos,        dt=None):
@@ -182,11 +177,6 @@ def amut2_prop(tdscf,
     _temp_dm_aos[2]     = _temp_dm_aos[4]
     _temp_fock_prims[2] = _temp_fock_prims[4]
     _temp_fock_aos[2]   = _temp_fock_aos[4]
-
-    # _temp_dm_prims[1]   = _temp_dm_prims[3]
-    # _temp_dm_aos[1]     = _temp_dm_aos[3]
-    # _temp_fock_prims[1] = _temp_fock_prims[3]
-    # _temp_fock_aos[1]   = _temp_fock_aos[3]
 
 def amut3_prop(tdscf,                  
                _temp_ts,         _temp_dm_prims,   _temp_dm_aos,
@@ -219,11 +209,6 @@ def amut3_prop(tdscf,
     _temp_fock_prims[2] = _temp_fock_prims[4]
     _temp_fock_aos[2]   = _temp_fock_aos[4]
 
-    # _temp_dm_prims[1]   = _temp_dm_prims[3]
-    # _temp_dm_aos[1]     = _temp_dm_aos[3]
-    # _temp_fock_prims[1] = _temp_fock_prims[3]
-    # _temp_fock_aos[1]   = _temp_fock_aos[3]
-
 def aeut_prop(tdscf,                  
                _temp_ts,         _temp_dm_prims,   _temp_dm_aos,
                _temp_fock_prims, _temp_fock_aos,        dt=None):
@@ -244,11 +229,6 @@ def aeut_prop(tdscf,
     _temp_dm_aos[2]     = _temp_dm_aos[4]
     _temp_fock_prims[2] = _temp_fock_prims[4]
     _temp_fock_aos[2]   = _temp_fock_aos[4]
-
-    # _temp_dm_prims[1]   = _temp_dm_prims[3]
-    # _temp_dm_aos[1]     = _temp_dm_aos[3]
-    # _temp_fock_prims[1] = _temp_fock_prims[3]
-    # _temp_fock_aos[1]   = _temp_fock_aos[3]
 
 def mmut_prop(tdscf,                  
                _temp_ts,         _temp_dm_prims,   _temp_dm_aos,
@@ -274,8 +254,6 @@ def mmut_prop(tdscf,
 
     _temp_dm_prims[1]   = _temp_dm_prims[3]
     _temp_dm_aos[1]     = _temp_dm_aos[3]
-    # _temp_fock_prims[1] = _temp_fock_prims[3]
-    # _temp_fock_aos[1]   = _temp_fock_aos[3]
 
 def lflp_pc_prop(tdscf, _temp_ts, _temp_dm_prims, _temp_fock_prims
                  , dt=None, tol = 1e-6):
@@ -376,7 +354,7 @@ def kernel(tdscf,                                #input
            dm_ao_init= None, prop_func   = None, #input
            ndm_prim  = None, nfock_prim  = None, #output
            ndm_ao    = None, nfock_ao    = None, #output
-           netot     = None, dump_chk=True
+           netot     = None, do_dump_chk = True
            ):
     cput0 = (time.clock(), time.time())
 
@@ -391,7 +369,12 @@ def kernel(tdscf,                                #input
         nfock_prim = tdscf.nfock_prim
     
     h1e_ao = tdscf.mf.get_hcore()
-    tdscf.mf.get_hcore = lambda *args, t=0.0: h1e_ao + tdscf.get_efield(t)
+    if tdscf.efield_vec is None:
+        tdscf.mf.get_hcore = lambda *args, t=0.0: h1e_ao
+    else:
+        tdscf.mf.get_hcore = lambda *args, t=0.0: (
+            h1e_ao + np.einsum('xij,x->ij', tdscf.ele_dip_ao, tdscf.efield_vec(t) )
+            )
 
     if tdscf.verbose >= logger.DEBUG1:
             print_matrix("The field-free hcore matrix  is, ", h1e_ao, ncols=PRINT_MAT_NCOL)
@@ -421,7 +404,7 @@ def kernel(tdscf,                                #input
     ndm_prim[0]    = dm_prim_init
     nfock_prim[0]  = fock_prim_init
     ndm_ao[0]      = dm_ao_init
-    nfock_ao[0]  = fock_ao_init
+    nfock_ao[0]    = fock_ao_init
     netot[0]       = etot_init
 
     _temp_ts         = dt*np.array([0.0, 0.5, 1.0, 1.5, 2.0])
@@ -464,7 +447,8 @@ def kernel(tdscf,                                #input
         _temp_ts = _temp_ts + dt
         istep += 1
     cput2 = logger.timer(tdscf, 'propagation %d time steps'%(istep-1), *cput0)
-    if dump_chk and tdscf.chkfile:
+
+    if do_dump_chk and tdscf.chkfile:
         ntime = tdscf.ntime
         nstep = tdscf.nstep
         tdscf.dump_chk(locals())
@@ -510,7 +494,7 @@ class TDSCF(lib.StreamObject):
 
 # electric field during propagation, a function that returns a
 # 3-component vector.
-        self.efield_vec   = lambda t: [0.0, 0.0, 0.0]
+        self.efield_vec  = None
 
 # don't modify the following attributes, they are not input options
         self.nstep       = None
@@ -521,7 +505,7 @@ class TDSCF(lib.StreamObject):
         self.nfock_ao    = None
         self.netot       = None
 
-    def set_prop_func(self, key='amut1'):
+    def set_prop_func(self, key='mmut'):
         '''
         In virtually all cases AMUT is superior in terms of stability. 
         Others are perhaps only useful for debugging or simplicity.
@@ -592,12 +576,6 @@ class TDSCF(lib.StreamObject):
             print_matrix(
                 "XT S X", reduce(np.dot, (self.orth_xtuple[1], self.mf.get_ovlp(), self.orth_xtuple[0]))
                 , ncols=PRINT_MAT_NCOL)
-
-        self.get_efield = lambda t: np.einsum('xij,x->ij', self.ele_dip_ao, self.efield_vec(t) )
-
-        logger.debug(self, "efield_vec(1.0) x direction = %e", self.efield_vec(1.0)[0])
-        logger.debug(self, "efield_vec(1.0) y direction = %e", self.efield_vec(1.0)[1])
-        logger.debug(self, "efield_vec(1.0) z direction = %e", self.efield_vec(1.0)[2])
 
         if self.verbose >= logger.DEBUG1:
                 print_matrix("The field-free hcore matrix  is, ", self.mf.get_hcore(), ncols=PRINT_MAT_NCOL)

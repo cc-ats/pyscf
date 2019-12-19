@@ -8,7 +8,7 @@ from pyscf import gto
 from pyscf import scf
 from pyscf import dft
 from pyscf.dft import numint
-from pyscf.tools import cubegen
+from pyscf.tools import cubegen, energy_density
 
 import copy
 from copy import deepcopy
@@ -123,35 +123,16 @@ class FragmentMethod(lib.StreamObject):
         else:
             return self.becke_weight
 
-    def elec_density_partition(self, dm=None, method='FBH'):
-        if dm is None:
-            dm = self.mf.make_rdm1()
+    def real_space_func_partition(self, rho, method='FBH'):
         if method.lower() == 'fbh':
             fbh_weight = self.build_fbh_weight()
-            ao_value = numint.eval_ao(self.mol, self.grid.coords, deriv=0)
-            rho = numint.eval_rho(self.mol, ao_value, dm, xctype='lda')
-            frag_elec = numpy.einsum("i,i,ji->j", self.grid.weights, rho, fbh_weight)
-            return frag_elec
+            frag_partition = numpy.einsum("i,i,ji->j", self.grid.weights, rho, fbh_weight)
+            return frag_partition
         elif method.lower() == 'becke':
             becke_weight = self.build_becke_weight()
-            ao_value = numint.eval_ao(self.mol, self.grid.coords, deriv=0)
-            rho = numint.eval_rho(self.mol, ao_value, dm, xctype='lda')
-            frag_elec = numpy.einsum("i,i,ji->j", self.grid.weights, rho, becke_weight)
-            return frag_elec
+            frag_partition = numpy.einsum("i,i,ji->j", self.grid.weights, rho, becke_weight)
+            return frag_partition
 
-    def energy_density_partition(self, dm=None, method='FBH'):
-        if dm is None:
-            dm = self.mf.make_rdm1()
-        if method.lower() == 'fbh':
-            fbh_weight = self.build_fbh_weight()
-            rho_ene = cubegen.calc_rho_ene(self.mf, self.grid.coords, dm)
-            frag_ene = numpy.einsum("i,i,ji->j", self.grid.weights, rho_ene, fbh_weight)
-            return frag_ene
-        elif method.lower() == 'becke':
-            becke_weight = self.build_becke_weight()
-            rho_ene = cubegen.calc_rho_ene(self.mf, self.grid.coords, dm)
-            frag_ene = numpy.einsum("i,i,ji->j", self.grid.weights, rho_ene, becke_weight)
-            return frag_ene
 
 
 
@@ -164,7 +145,7 @@ H        -0.5641810316   -0.0319363903    0.0000000000'''
     frag1.basis = '6-31g(d)'
     frag1.build()
     mf1 = dft.RKS(frag1)
-    mf1.xc = "PBE"
+    mf1.xc = 'pbe0'
     mf1.kernel()
 
     frag2 = gto.Mole()
@@ -175,18 +156,24 @@ H         1.7527099026    0.3464799298    0.7644430086'''
     frag2.basis = '6-31g(d)'
     frag2.build()
     mf2 = dft.RKS(frag2)
-    mf2.xc = "PBE"
+    mf2.xc = 'pbe0'
     mf2.kernel()
 
     frag_list = [frag1, frag2]
     mf_list   = [mf1,   mf2  ]
     fm = FragmentMethod(mf_list, verbose=5)
     fm.build()
+
+    ao_value = numint.eval_ao(fm.mol, fm.grid.coords, deriv=2)
+    rho      = numint.eval_rho(fm.mol, ao_value, fm.mf.make_rdm1(), xctype='mGGA')
+
+    elec_den = rho[0]
+    ener_den = energy_density.calc_rho_ene(fm.mf, fm.grid.coords, fm.mf.make_rdm1(), ao_value=ao_value)
     print(fm.mol.nelec)
-    print("FBH density partition",   fm.elec_density_partition(method='fbh'))
-    print("Becke density partition", fm.elec_density_partition(method='becke'))
-    print("FBH energy partition",    fm.energy_density_partition(method='fbh'))
-    print("Becke energy partition",  fm.energy_density_partition(method='becke'))
+    print("FBH density partition",   fm.real_space_func_partition(elec_den, method='fbh'))
+    print("Becke density partition", fm.real_space_func_partition(elec_den, method='becke'))
+    print("FBH energy partition",    fm.real_space_func_partition(ener_den, method='fbh'))
+    print("Becke energy partition",  fm.real_space_func_partition(ener_den, method='becke'))
 
 
 
