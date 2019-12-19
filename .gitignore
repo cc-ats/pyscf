@@ -28,6 +28,7 @@ var/
 # Calculation examples
 *.molden
 *.cube
+tmp*
 
 # Installer logs
 pip-log.txt
