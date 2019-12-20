@@ -32,11 +32,11 @@ class FragmentMethod(lib.StreamObject):
         if hasattr(self.frag_list[0], "xc"):
             self.mf.xc = self.frag_list[0].xc
         self.mf.conv_tol = self.frag_list[0].conv_tol
-        self.mf.verbose = 4
+        self.mf.verbose = self.verbose
 
 
-    def build(self):
-        self.mf.kernel()
+    def build(self, dm0=None):
+        self.mf.kernel(dm0=dm0)
         self.grid = dft.gen_grid.Grids(self.mol)
         self.grid.build()
         self.grid.coords, self.grid.weights, self.grid.non0tab = self._prune_small_rho_grids(
@@ -57,10 +57,12 @@ class FragmentMethod(lib.StreamObject):
         for imf, frag_mf in enumerate(self.frag_list):
             logger.info(self, 'the fragment %d energy is %f', imf, frag_mf.e_tot)
         logger.info(self, 'the total energy      is %f', self.mf.e_tot)
+        diff_e = self.mf.e_tot - numpy.sum([frag_mf.e_tot for frag_mf in self.frag_list])
         logger.info(self, 'the energy difference is %e (without BSSE)', # TODO: BSSE method
-        self.mf.e_tot - numpy.sum([frag_mf.e_tot for frag_mf in self.frag_list])
+        diff_e
         )
         logger.info(self, '')
+        return diff_e
 
     def _prune_small_rho_grids(self, dm=None, coords=None, weights=None, non0tab=None):
         if dm is None:
@@ -161,8 +163,8 @@ H         1.7527099026    0.3464799298    0.7644430086'''
 
     frag_list = [frag1, frag2]
     mf_list   = [mf1,   mf2  ]
-    fm = FragmentMethod(mf_list, verbose=5)
-    fm.build()
+    fm = FragmentMethod(mf_list, verbose=0)
+    print("diff_e = ", fm.build())
 
     ao_value = numint.eval_ao(fm.mol, fm.grid.coords, deriv=2)
     rho      = numint.eval_rho(fm.mol, ao_value, fm.mf.make_rdm1(), xctype='mGGA')
