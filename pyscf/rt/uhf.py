@@ -193,6 +193,9 @@ def kernel(tdscf,                                #input
     nfock_ao[0]    = fock_ao_init
     netot[0]       = etot_init
 
+    print_matrix("dm_prim_init alpha", dm_prim_init[0])
+    print_matrix("dm_prim_init beta", dm_prim_init[1])
+
     _temp_ts         = dt*numpy.array([0.0, 0.5, 1.0, 1.5, 2.0])
     _temp_dm_prims   = numpy.zeros([5] + shape, dtype=numpy.complex128)
     _temp_fock_prims = numpy.zeros([5] + shape, dtype=numpy.complex128)
