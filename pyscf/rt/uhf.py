@@ -116,6 +116,7 @@ def orth2ao_fock(fock_prim, orth_xtuple):
 # propagate step
 def prop_step(tdscf, t_start, t_end, fock_prim, dm_prim, 
               build_fock=True, h1e=None):
+    print("prop step start")
     dt = t_end - t_start
     assert dt > 0 # may be removed
     print("fock_prim.shape = ", fock_prim.shape)
