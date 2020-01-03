@@ -360,4 +360,6 @@ if __name__ == "__main__":
     mf.verbose = 5
     mf.kernel()
 
-    print(orth_ao(mf))
+    dm = mf.make_rdm1()
+    print("dm = ", dm)
+    
