@@ -361,9 +361,8 @@ if __name__ == "__main__":
 
     mf = scf.UHF(mol)
     mf.verbose = 5
-    mf.kernel(dm0=
-    numpy.array([[[1,0],[0,0]],[[0,0],[0,1]]])
-    )
+    dm_init = numpy.array([[[1.0,0.0],[0.0,0.0]],[[0.0,0.0],[0.0,1.0]]])
+    mf.kernel(dm0=dm_init)
 
     dm = mf.make_rdm1()
     fock = mf.get_fock()
