@@ -11,7 +11,7 @@ from pyscf import lib, lo
 from pyscf.lib import logger
 from pyscf.rt  import chkfile
 
-import pyscf.rt.rhf as rhf_tdscf
+import pyscf.rt.rhf    as rhf_tdscf
 from pyscf.rt.util import build_absorption_spectrum
 from pyscf.rt.util import print_matrix, print_cx_matrix, errm, expm
 
@@ -238,7 +238,6 @@ def kernel(tdscf,                                #input
         tdscf.dump_chk(locals())
         cput3 = logger.timer(tdscf, 'dump chk finished', *cput0)
    
-
 class TDSCF(rhf_tdscf.TDSCF):
 
     def set_prop_func(self, key=None):
