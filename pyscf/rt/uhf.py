@@ -349,3 +349,14 @@ class TDSCF(rhf_tdscf.TDSCF):
                              envs['netot'],
                              overwrite_mol=False)
 
+if __name__ == "__main__":
+    mol =   gto.Mole( atom='''
+    H   -0.0000000    0.0000000    2.0000000
+    H    0.0000000    0.0000000   -2.0000000
+    '''
+    , basis='sto-3g', symmetry=False).build()
+
+    mf = scf.UHF(mol)
+    mf.kernel()
+
+    print(orth_ao(mf))
