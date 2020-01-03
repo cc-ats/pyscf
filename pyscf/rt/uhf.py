@@ -241,9 +241,9 @@ def kernel(tdscf,                                #input
             dm=_temp_dm_aos[THIS], h1e=tdscf.get_hcore(_temp_ts[THIS])
         ).real
         _temp_ts = _temp_ts + dt
-        istep += 1
         print_matrix("dm_prim_init alpha", ndm_prim[istep][0])
         print_matrix("dm_prim_init beta", ndm_prim[istep][1])
+        istep += 1
 
     cput2 = logger.timer(tdscf, 'propagation %d time steps'%(istep-1), *cput0)
 
