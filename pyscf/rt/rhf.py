@@ -423,3 +423,4 @@ if __name__ == "__main__":
     dm = mf.make_rdm1()
     fock = mf.get_fock()
     rttd = TDSCF(mf)
+    rttd.verbose = 5
