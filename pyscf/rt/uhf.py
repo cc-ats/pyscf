@@ -118,6 +118,7 @@ def prop_step(tdscf, t_start, t_end, fock_prim, dm_prim,
               build_fock=True, h1e=None):
     dt = t_end - t_start
     assert dt > 0 # may be removed
+    print("fock_prim.shape = ", fock_prim.shape)
     propogator_a = expm(-1j*dt*fock_prim[0])
     propogator_b = expm(-1j*dt*fock_prim[1])
 
@@ -192,9 +193,6 @@ def kernel(tdscf,                                #input
     ndm_ao[0]      = dm_ao_init
     nfock_ao[0]    = fock_ao_init
     netot[0]       = etot_init
-
-    print("fock_prim_init[0] = \n", fock_prim_init[0])
-    print("fock_prim_init[1] = \n", fock_prim_init[1])
 
     _temp_ts         = dt*numpy.array([0.0, 0.5, 1.0, 1.5, 2.0])
     _temp_dm_prims   = numpy.zeros([5, 2] + shape, dtype=numpy.complex128)
