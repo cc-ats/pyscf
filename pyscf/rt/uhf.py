@@ -357,11 +357,11 @@ if __name__ == "__main__":
     H   -0.0000000    0.0000000    2.0000000
     H    0.0000000    0.0000000   -2.0000000
     '''
-    , basis='ccpvdz', symmetry=False).build()
+    , basis='sto-3g', symmetry=False).build()
 
     mf = scf.UHF(mol)
     mf.verbose = 5
-    mf.kernel()
+    mf.kernel(dm0=[[[1,0],[0,0]],[[0,0],[0,1]]])
 
     dm = mf.make_rdm1()
     fock = mf.get_fock()
