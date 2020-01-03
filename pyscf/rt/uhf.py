@@ -328,10 +328,10 @@ class TDSCF(rhf_tdscf.TDSCF):
         logger.info(self, 'before building matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
         self.nstep      = numpy.linspace(0, self.maxstep, self.maxstep+1, dtype=int) # output
         self.ntime      = self.dt*self.nstep                                      # output
-        self.ndm_prim   = numpy.zeros([self.maxstep+1, 2] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
-        self.ndm_ao     = numpy.zeros([self.maxstep+1, 2] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
-        self.nfock_prim = numpy.zeros([self.maxstep+1, 2] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
-        self.nfock_ao   = numpy.zeros([self.maxstep+1, 2] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
+        self.ndm_prim   = numpy.zeros([self.maxstep+1] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
+        self.ndm_ao     = numpy.zeros([self.maxstep+1] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
+        self.nfock_prim = numpy.zeros([self.maxstep+1] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
+        self.nfock_ao   = numpy.zeros([self.maxstep+1] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
         self.netot      = numpy.zeros([self.maxstep+1])                                # output
         logger.info(self, 'after building matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
         kernel(
