@@ -33,7 +33,7 @@ def orth_ao(mf_or_mol, method=ORTH_METHOD, pre_orth_ao=None, scf_method=None,
             | canonical MO
             | NAO
     '''
-    from pyscf.lo import nao
+
     mf = scf_method
     if isinstance(mf_or_mol, gto.Mole):
         mol = mf_or_mol
@@ -412,3 +412,15 @@ class TDSCF(lib.StreamObject):
                              envs['netot'],
                              overwrite_mol=False)
 
+if __name__ == "__main__":
+    mol =   gto.Mole( atom='''
+    H   -0.0000000    0.0000000    2.0000000
+    H    0.0000000    0.0000000   -2.0000000
+    '''
+    , basis='sto-3g', symmetry=False).build()
+
+    mf = scf.RHF(mol)
+    mf.verbose = 5
+    mf.kernel()
+
+    print(orth_ao(mf))
