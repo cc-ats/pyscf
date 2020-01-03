@@ -376,5 +376,8 @@ if __name__ == "__main__":
     fock = mf.get_fock()
 
     rttd = TDSCF(mf)
+    rttd.maxstep = 10
+    rttd.dt      = 0.1
+    rttd.kernel(dm_ao_init=dm)
 
     
