@@ -2,7 +2,7 @@ from pyscf.rt  import uhf as uhf_tdscf
 from pyscf     import lib
 from pyscf.lib import logger
 
-class TDSCF(uhf_tdscf.TDSCF):
+class TDDFT(uhf_tdscf.TDHF):
     def dump_flags(self, verbose=None):
         log = logger.new_logger(self, verbose)
         log.info('\n')

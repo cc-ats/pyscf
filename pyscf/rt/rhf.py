@@ -232,7 +232,7 @@ def kernel(tdscf,                                #input
         cput3 = logger.timer(tdscf, 'dump chk finished', *cput0)
    
 
-class TDSCF(lib.StreamObject):
+class TDHF(lib.StreamObject):
     def __init__(self, mf):
 # the class that defines the system, mol and mf
         if not mf.converged:

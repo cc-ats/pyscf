@@ -253,7 +253,7 @@ def kernel(tdscf,                                #input
         tdscf.dump_chk(locals())
         cput3 = logger.timer(tdscf, 'dump chk finished', *cput0)
    
-class TDSCF(rhf_tdscf.TDSCF):
+class TDHF(rhf_tdscf.TDHF):
     def set_prop_func(self, key='euler'):
         '''
         In virtually all cases AMUT is superior in terms of stability. 
