@@ -19,12 +19,4 @@
 # We should get the lib import working for now let's just do a quick TDSCF.
 #from pyscf.tdscf import bo
 
-from pyscf.rt import rhf
-from pyscf.rt import uhf
-
-try:
-    from . import rks
-    from . import uks
-except ImportError:
-    pass
 
