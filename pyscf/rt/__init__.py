@@ -17,5 +17,5 @@
 #
 
 from pyscf import rt
-from pyscf.rt import rhf
-from pyscf.rt import uhf
+from . import rhf
+from . import uhf
