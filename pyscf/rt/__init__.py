@@ -1,5 +1,5 @@
-# TODO: refactor the code before adding to FEATURES list by PySCF-1.5 release
-# Copyright 2014-2018 The PySCF Developers. All Rights Reserved.
+#!/usr/bin/env python
+# Copyright 2014-2019 The PySCF Developers. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,11 +12,9 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-# 1. code style
-#   * Remove the unused modules: numpy, scipy, gto, dft, ...
+#
+# Author: Junjie Yang
 #
 
-# We should get the lib import working for now let's just do a quick TDSCF.
-#from pyscf.tdscf import bo
-
-
+from pyscf.rt import rhf
+from pyscf.rt import uhf
