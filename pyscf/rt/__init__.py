@@ -16,5 +16,4 @@
 # Author: Junjie Yang
 #
 
-from . import rhf
-from . import uhf
+from pyscf import gto, dft, scf, ao2mo
