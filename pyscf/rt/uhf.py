@@ -87,27 +87,31 @@ def orth_ao(mf_or_mol, method=ORTH_METHOD, pre_orth_ao=None, scf_method=None,
             c_orth_a[:,i] *= -1
         if c_orth_b[i,i] < 0:
             c_orth_b[:,i] *= -1
-    return c_orth_a.astype(numpy.complex128), c_orth_b.astype(numpy.complex128)
+    return numpy.array((c_orth_a, c_orth_b)).astype(numpy.complex128)
 
 def ao2orth_dm(dm_ao, orth_xtuple):
     x, x_t, x_inv, x_t_inv = orth_xtuple
-    dm_prim = reduce(numpy.dot, (x_inv, dm_ao, x_t_inv))
-    return dm_prim
+    dm_prim_a = reduce(numpy.dot, (x_inv[0], dm_ao[0], x_t_inv[0]))
+    dm_prim_b = reduce(numpy.dot, (x_inv[1], dm_ao[1], x_t_inv[1]))
+    return numpy.array((dm_prim_a, dm_prim_b))
 
 def orth2ao_dm(dm_prim, orth_xtuple):
     x, x_t, x_inv, x_t_inv = orth_xtuple
-    dm_ao = reduce(numpy.dot, (x, dm_prim, x_t))
-    return dm_ao# (dm_ao + dm_ao.conj().T)/2
+    dm_ao_a = reduce(numpy.dot, (x[0], dm_prim[0], x_t[0]))
+    dm_ao_b = reduce(numpy.dot, (x[1], dm_prim[1], x_t[1]))
+    return numpy.array((dm_ao_a, dm_ao_b))# (dm_ao + dm_ao.conj().T)/2
 
 def ao2orth_fock(fock_ao, orth_xtuple):
     x, x_t, x_inv, x_t_inv = orth_xtuple
-    fock_prim = reduce(numpy.dot, (x_t, fock_ao, x))
-    return fock_prim
+    fock_prim_a = reduce(numpy.dot, (x_t[0], fock_ao[0], x[0]))
+    fock_prim_b = reduce(numpy.dot, (x_t[1], fock_ao[1], x[1]))
+    return numpy.array((fock_prim_a, fock_prim_b))
 
 def orth2ao_fock(fock_prim, orth_xtuple):
     x, x_t, x_inv, x_t_inv = orth_xtuple
-    fock_ao = reduce(numpy.dot, (x_t_inv, fock_prim, x_inv))
-    return fock_ao # (fock_ao + fock_ao.conj().T)/2
+    fock_ao_a = reduce(numpy.dot, (x_t_inv[0], fock_prim[0], x_inv[0]))
+    fock_ao_b = reduce(numpy.dot, (x_t_inv[1], fock_prim[1], x_inv[1]))
+    return numpy.array((fock_ao_a, fock_ao_b)) # (fock_ao + fock_ao.conj().T)/2
 
 # propagate step
 def prop_step(tdscf, t_start, t_end, fock_prim, dm_prim, 
@@ -286,10 +290,9 @@ class TDSCF(rhf_tdscf.TDSCF):
         else:
             logger.info(self, 'orth method is %s.', self.orth_method)
             x = orth_ao(self.mf, method=self.orth_method)
-            x_t = x.T
-            x_inv = numpy.einsum('li,ls->is', x, self.mf.get_ovlp() )
-            x_t_inv = x_inv.T
-
+            x_t = numpy.einsum('aij->aji', x)
+            x_inv = numpy.einsum('ali,ls->ais', x, self.mf.get_ovlp())
+            x_t_inv = numpy.einsum('aij->aji', x_inv)
             self.orth_xtuple = (x, x_t, x_inv, x_t_inv)
         
         if self.verbose >= logger.DEBUG1:
@@ -361,5 +364,15 @@ if __name__ == "__main__":
     mf.kernel()
 
     dm = mf.make_rdm1()
-    print("dm = ", dm)
+    fock = mf.get_fock()
+
+    x = orth_ao(mf)
+    x_t = numpy.einsum('aij->aji', x)
+    x_inv = numpy.einsum('ali,ls->ais', x, mf.get_ovlp())
+    x_t_inv = numpy.einsum('aij->aji', x_inv)
+
+    orth_xtuple = (x, x_t, x_inv, x_t_inv)
+
+    print("canonical DM is \n", ao2orth_dm(dm, orth_xtuple))
+    print("canonical FOCK is \n", ao2orth_fock(fock, orth_xtuple))
     
