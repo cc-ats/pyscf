@@ -251,6 +251,18 @@ def kernel(tdscf,                                #input
         cput3 = logger.timer(tdscf, 'dump chk finished', *cput0)
    
 class TDSCF(rhf_tdscf.TDSCF):
+    def set_prop_func(self, key='euler'):
+        '''
+        In virtually all cases AMUT is superior in terms of stability. 
+        Others are perhaps only useful for debugging or simplicity.
+        '''
+        if (key is not None):
+            if (key.lower() == 'euler'):
+                self.prop_func = euler_prop
+            else:
+                raise RuntimeError("unknown prop method!")
+        else:
+            self.prop_func = euler_prop
 
     def dump_flags(self, verbose=None):
         log = logger.new_logger(self, verbose)
