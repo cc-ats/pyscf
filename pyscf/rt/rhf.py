@@ -342,7 +342,7 @@ class TDSCF(lib.StreamObject):
         self.dump_flags()
 
         if self.orth_method is None:
-            self.orth_xtuple = orth_ao(self)
+            self.orth_xtuple = orth_ao(self.mf)
         else:
             logger.info(self, 'orth method is %s.', self.orth_method)
             x = orth_ao(self.mf, method=self.orth_method)
