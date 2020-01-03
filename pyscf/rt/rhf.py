@@ -41,6 +41,9 @@ def orth_ao(mf_or_mol, method=ORTH_METHOD, pre_orth_ao=None, scf_method=None,
         mol = mf_or_mol.mol
         if mf is None:
             mf = mf_or_mol
+    
+    if method is None:
+        method = ORTH_METHOD
 
     if s is None:
         if hasattr(mol, 'pbc_intor'):  # whether mol object is a cell
@@ -128,7 +131,7 @@ def euler_prop(tdscf,  _temp_ts,
         )
 
     h1e_next_ao            = tdscf.get_hcore(t=_temp_ts[NEXT])
-    vhf_next_ao            = tdscf.mf.get_veff(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao)
+    vhf_next_ao            = tdscf.mf.get_veff(dm=_temp_dm_aos[NEXT])
     _temp_fock_aos[NEXT]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao, vhf=vhf_next_ao)
     ene_next_tot           = tdscf.mf.energy_tot(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao, vhf=vhf_next_ao)
 
@@ -165,7 +168,7 @@ def kernel(tdscf,              dm_ao_init= None,
     dm_prim_init   = ao2orth_dm(dm_ao_init, tdscf.orth_xtuple)
 
     h1e_ao_init    = tdscf.get_hcore(t=0.0)
-    vhf_ao_init    = tdscf.mf.get_veff(h1e=h1e_ao_init, dm=dm_ao_init)
+    vhf_ao_init    = tdscf.mf.get_veff(dm=dm_ao_init)
 
     fock_ao_init   = tdscf.mf.get_fock(dm=dm_ao_init, h1e=h1e_ao_init, vhf=vhf_ao_init)
     fock_prim_init = ao2orth_fock(fock_ao_init, tdscf.orth_xtuple)
@@ -200,7 +203,7 @@ def kernel(tdscf,              dm_ao_init= None,
         )
 
     h1e_ao_last_half            = tdscf.get_hcore(t=_temp_ts[LAST_HALF])
-    vhf_ao_last_half            = tdscf.mf.get_veff(  dm=_temp_dm_aos[LAST_HALF], h1e=h1e_ao_last_half)
+    vhf_ao_last_half            = tdscf.mf.get_veff(  dm=_temp_dm_aos[LAST_HALF])
     _temp_fock_aos[LAST_HALF]   = tdscf.mf.get_fock(  dm=_temp_dm_aos[LAST_HALF], h1e=h1e_ao_last_half, vhf=vhf_ao_last_half)
     ene_last_half_tot           = tdscf.mf.energy_tot(dm=_temp_dm_aos[LAST_HALF], h1e=h1e_ao_last_half, vhf=vhf_ao_last_half)
 
@@ -210,7 +213,7 @@ def kernel(tdscf,              dm_ao_init= None,
         )
 
     h1e_ao_this            = tdscf.get_hcore(t=_temp_ts[THIS])
-    vhf_ao_this            = tdscf.mf.get_veff(  dm=_temp_dm_aos[THIS], h1e=h1e_ao_last_half)
+    vhf_ao_this            = tdscf.mf.get_veff(  dm=_temp_dm_aos[THIS])
     _temp_fock_aos[THIS]   = tdscf.mf.get_fock(  dm=_temp_dm_aos[THIS], h1e=h1e_ao_last_half, vhf=vhf_ao_last_half)
     ene_this_tot           = tdscf.mf.energy_tot(dm=_temp_dm_aos[THIS], h1e=h1e_ao_last_half, vhf=vhf_ao_last_half)
 
@@ -220,7 +223,7 @@ def kernel(tdscf,              dm_ao_init= None,
             logger.note(tdscf, 'istep=%d, time=%f, delta e=%e',
             istep-1, tdscf.ntime[istep-1], tdscf.netot[istep-1]-tdscf.netot[0])
         # propagation step
-        netot[istep] = tdscf.euler_prop(tdscf,  _temp_ts,
+        netot[istep] = tdscf.prop_func(tdscf,  _temp_ts,
                _temp_dm_prims,   _temp_dm_aos,
                _temp_fock_prims, _temp_fock_aos)
         ndm_prim[istep]   =   _temp_dm_prims[THIS]
@@ -292,6 +295,9 @@ class TDHF(lib.StreamObject):
         self.nfock_ao    = None
         self.netot       = None
 
+    def prop_step(self, dt, fock_prim, dm_prim):
+        return prop_step(self, dt, fock_prim, dm_prim)
+    
     def get_hcore(self, t=None):
         if (self.efield_vec is None) or (t is None):
             return self.hcore_ao
@@ -344,7 +350,7 @@ class TDHF(lib.StreamObject):
     def _initialize(self):
         if self.prop_func is None:
             if self.prop_method is not None:
-                self.set_prop_func(key=self.prop_method)
+                self.set_prop_func(key=ORTH_METHOD)
             else:
                 self.set_prop_func()
         self.dump_flags()
@@ -383,7 +389,7 @@ class TDHF(lib.StreamObject):
         if dm_ao_init is None:
             if self.dm_ao_init is not None:
                 dm_ao_init = self.dm_ao_init
-            elif self.dm_ao_init == None:
+            else:
                 dm_ao_init = self.mf.make_rdm1()
         logger.info(self, "Propagation begins here")
         if self.verbose >= logger.DEBUG1:
@@ -399,7 +405,7 @@ class TDHF(lib.StreamObject):
         self.netot      = numpy.zeros([self.maxstep+1])                                # output
         logger.info(self, 'after building matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
         kernel(
-           self,                      dm_ao_init  = self.dm_ao_init,
+           self,                      dm_ao_init  = dm_ao_init,
            ndm_prim  = self.ndm_prim, nfock_prim  = self.nfock_prim, #output
            ndm_ao    = self.ndm_ao,   nfock_ao    = self.nfock_ao,   #output
            netot     = self.netot,    do_dump_chk = do_dump_chk
@@ -434,4 +440,5 @@ if __name__ == "__main__":
     rttd = TDHF(mf)
     rttd.verbose = 5
     rttd.maxstep = 10
+    rttd.dt      = 0.2
     rttd.kernel(dm_ao_init=dm)
