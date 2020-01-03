@@ -28,7 +28,7 @@ class TDSCF(uhf_tdscf.TDSCF):
         log.info('max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
 
 if __name__ == "__main__":
-    from pyscf import dft
+    from pyscf import dft, gto
     mol =   gto.Mole( atom='''
     O    0.0000000    0.0000000    0.5754646
     O    0.0000000    0.0000000   -0.5754646
