@@ -297,12 +297,6 @@ class TDSCF(lib.StreamObject):
                 ).astype(numpy.complex128)
             return h
 
-    def get_fock(self, h1e=None, vhf=None, dm=None):
-        if h1e is None: h1e = self.get_hcore()
-        if vhf is None: vhf = self.mf.get_veff(self.mf.mol, dm)
-        f = h1e + vhf
-        return f
-
     def set_prop_func(self, key='euler'):
         '''
         In virtually all cases AMUT is superior in terms of stability. 
@@ -414,8 +408,8 @@ class TDSCF(lib.StreamObject):
 
 if __name__ == "__main__":
     mol =   gto.Mole( atom='''
-    H   -0.0000000    0.0000000    2.0000000
-    H    0.0000000    0.0000000   -2.0000000
+  H    0.0000000    0.0000000    0.3540000
+  H    0.0000000    0.0000000   -0.3540000
     '''
     , basis='sto-3g', symmetry=False).build()
 
@@ -423,4 +417,6 @@ if __name__ == "__main__":
     mf.verbose = 5
     mf.kernel()
 
-    print(orth_ao(mf))
+    dm = mf.make_rdm1()
+    fock = mf.get_fock()
+    rttd = TDSCF(mf)

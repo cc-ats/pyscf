@@ -118,10 +118,16 @@ def prop_step(tdscf, t_start, t_end, fock_prim, dm_prim,
               build_fock=True, h1e=None):
     dt = t_end - t_start
     assert dt > 0 # may be removed 
-    propogator = expm(-1j*dt*fock_prim)
-    dm_prim_   = reduce(numpy.dot, [propogator, dm_prim, propogator.conj().T])
-    dm_prim_   = (dm_prim_ + dm_prim_.conj().T)/2
-    dm_ao_     = orth2ao_dm(dm_prim_, tdscf.orth_xtuple)
+    propogator_a = expm(-1j*dt*fock_prim[0])
+    propogator_b = expm(-1j*dt*fock_prim[1])
+
+    dm_prim_a_   = reduce(numpy.dot, [propogator_a, dm_prim[0], propogator_a.conj().T])
+    dm_prim_a_   = (dm_prim_a_ + dm_prim_a_.conj().T)/2
+    dm_prim_b_   = reduce(numpy.dot, [propogator_b, dm_prim[1], propogator_b.conj().T])
+    dm_prim_b_   = (dm_prim_b_ + dm_prim_b_.conj().T)/2
+
+    dm_prim_     = numpy.array((dm_prim_a_, dm_prim_b_))
+    dm_ao_       = orth2ao_dm(  dm_prim_,   tdscf.orth_xtuple)
     
     if build_fock and (h1e is not None):
         fock_ao_   = tdscf.mf.get_fock(
@@ -188,10 +194,10 @@ def kernel(tdscf,                                #input
     netot[0]       = etot_init
 
     _temp_ts         = dt*numpy.array([0.0, 0.5, 1.0, 1.5, 2.0])
-    _temp_dm_prims   = numpy.zeros([5] + shape, dtype=numpy.complex128)
-    _temp_fock_prims = numpy.zeros([5] + shape, dtype=numpy.complex128)
-    _temp_dm_aos     = numpy.zeros([5] + shape, dtype=numpy.complex128)
-    _temp_fock_aos   = numpy.zeros([5] + shape, dtype=numpy.complex128)
+    _temp_dm_prims   = numpy.zeros([5, 2] + shape, dtype=numpy.complex128)
+    _temp_fock_prims = numpy.zeros([5, 2] + shape, dtype=numpy.complex128)
+    _temp_dm_aos     = numpy.zeros([5, 2] + shape, dtype=numpy.complex128)
+    _temp_fock_aos   = numpy.zeros([5, 2] + shape, dtype=numpy.complex128)
 
     cput1 = logger.timer(tdscf, 'initialize td-scf', *cput0)
 
@@ -297,7 +303,10 @@ class TDSCF(rhf_tdscf.TDSCF):
         
         if self.verbose >= logger.DEBUG1:
             print_matrix(
-                "XT S X", reduce(numpy.dot, (self.orth_xtuple[1], self.mf.get_ovlp(), self.orth_xtuple[0]))
+                "alpha XT S X", reduce(numpy.dot, (self.orth_xtuple[1][0], self.mf.get_ovlp(), self.orth_xtuple[0][0]))
+                , ncols=PRINT_MAT_NCOL)
+            print_matrix(
+                "beta  XT S X", reduce(numpy.dot, (self.orth_xtuple[1][1], self.mf.get_ovlp(), self.orth_xtuple[0][1]))
                 , ncols=PRINT_MAT_NCOL)
 
     def _finalize(self):
@@ -324,11 +333,11 @@ class TDSCF(rhf_tdscf.TDSCF):
         logger.info(self, 'before building matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
         self.nstep      = numpy.linspace(0, self.maxstep, self.maxstep+1, dtype=int) # output
         self.ntime      = self.dt*self.nstep                                      # output
-        self.ndm_prim   = numpy.zeros([self.maxstep+1] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
-        self.ndm_ao     = numpy.zeros([self.maxstep+1] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
-        self.nfock_prim = numpy.zeros([self.maxstep+1] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
-        self.nfock_ao   = numpy.zeros([self.maxstep+1] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
-        self.netot      = numpy.zeros([self.maxstep+1])                                # output
+        self.ndm_prim   = numpy.zeros([self.maxstep+1, 2] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
+        self.ndm_ao     = numpy.zeros([self.maxstep+1, 2] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
+        self.nfock_prim = numpy.zeros([self.maxstep+1, 2] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
+        self.nfock_ao   = numpy.zeros([self.maxstep+1, 2] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
+        self.netot      = numpy.zeros([self.maxstep+1, 2])                                # output
         logger.info(self, 'after building matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
         kernel(
            self,                                                        #input
@@ -354,26 +363,18 @@ class TDSCF(rhf_tdscf.TDSCF):
 
 if __name__ == "__main__":
     mol =   gto.Mole( atom='''
-    H   -0.0000000    0.0000000    2.0000000
-    H    0.0000000    0.0000000   -2.0000000
+    O    0.0000000    0.0000000    0.5754646
+    O    0.0000000    0.0000000   -0.5754646
     '''
-    , basis='sto-3g', symmetry=False).build()
+    , basis='sto-3g', spin=2, symmetry=False).build()
 
     mf = scf.UHF(mol)
     mf.verbose = 5
-    dm_init = numpy.array([[[1.0,0.0],[0.0,0.0]],[[0.0,0.0],[0.0,1.0]]])
-    mf.kernel(dm0=dm_init)
+    mf.kernel()
 
     dm = mf.make_rdm1()
     fock = mf.get_fock()
 
-    x = orth_ao(mf)
-    x_t = numpy.einsum('aij->aji', x)
-    x_inv = numpy.einsum('ali,ls->ais', x, mf.get_ovlp())
-    x_t_inv = numpy.einsum('aij->aji', x_inv)
+    rttd = TDSCF(mf)
 
-    orth_xtuple = (x, x_t, x_inv, x_t_inv)
-
-    print("canonical DM is \n", ao2orth_dm(dm, orth_xtuple))
-    print("canonical FOCK is \n", ao2orth_fock(fock, orth_xtuple))
     
