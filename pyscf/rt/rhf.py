@@ -342,14 +342,17 @@ class TDSCF(lib.StreamObject):
         self.dump_flags()
 
         if self.orth_method is None:
-            self.orth_xtuple = orth_ao(self.mf)
+            x = orth_ao(self.mf, method=self.orth_method)
+            x_t = x.T
+            x_inv = numpy.einsum('li,ls->is', x, self.mf.get_ovlp() )
+            x_t_inv = x_inv.T
+            self.orth_xtuple = (x, x_t, x_inv, x_t_inv)
         else:
             logger.info(self, 'orth method is %s.', self.orth_method)
             x = orth_ao(self.mf, method=self.orth_method)
             x_t = x.T
             x_inv = numpy.einsum('li,ls->is', x, self.mf.get_ovlp() )
             x_t_inv = x_inv.T
-
             self.orth_xtuple = (x, x_t, x_inv, x_t_inv)
         
         if self.verbose >= logger.DEBUG1:
