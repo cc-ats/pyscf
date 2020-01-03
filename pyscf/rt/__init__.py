@@ -16,5 +16,6 @@
 # Author: Junjie Yang
 #
 
-# from pyscf.rt import rhf
-# from pyscf.rt import uhf
+from pyscf import rt
+from pyscf.rt import rhf
+from pyscf.rt import uhf
