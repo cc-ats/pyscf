@@ -1,4 +1,5 @@
-from pyscf.rt import uhf as uhf_tdscf
+from pyscf.rt  import uhf as uhf_tdscf
+from pyscf     import lib
 from pyscf.lib import logger
 
 class TDSCF(uhf_tdscf.TDSCF):
