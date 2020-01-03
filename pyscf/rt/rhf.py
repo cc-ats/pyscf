@@ -12,264 +12,75 @@ from pyscf.lib import logger
 from pyscf.rt  import chkfile
 
 from pyscf.rt.util import build_absorption_spectrum
-from pyscf.rt.util import print_matrix, print_cx_matrix
+from pyscf.rt.util import print_matrix, print_cx_matrix, errm, expm
 
 from pyscf import __config__
 
-# TODO: chk file 
+REF_BASIS         = getattr(__config__, 'lo_orth_pre_orth_ao_method', 'ANO'      )
+MUTE_CHKFILE      = getattr(__config__, 'rt_tdscf_mute_chkfile',      False      )
+PRINT_MAT_NCOL    = getattr(__config__, 'rt_tdscf_print_mat_ncol',    7          )
+ORTH_METHOD       = getattr(__config__, 'rt_tdscf_orth_ao_method',    'canonical')
 
-MUTE_CHKFILE      = getattr(__config__, 'rt_tdscf_mute_chkfile', False)
-PRINT_MAT_NCOL    = getattr(__config__, 'rt_tdscf_print_mat_ncol',   7)
-
-def merr(m1,m2):
-    ''' check consistency '''
-    n   = numpy.linalg.norm(m1-m2)
-    r   = m1.shape[0]
-    v   = numpy.linalg.eigvals(m1)
-    vm  = v.max()
-    e   = n/r/vm
-    return numpy.abs(e)
-
-def expm(m, do_bch=False):
-    if not do_bch:
-        return scipy.linalg.expm(m)
+# re-define Orthogonalize AOs
+def orth_ao(mf_or_mol, method=ORTH_METHOD, pre_orth_ao=None, scf_method=None,
+            s=None):
+    '''Orthogonalize AOs
+    Kwargs:
+        method : str
+            One of
+            | lowdin : Symmetric orthogonalization
+            | meta-lowdin : Lowdin orth within core, valence, virtual space separately (JCTC, 10, 3784)
+            | canonical MO
+            | NAO
+    '''
+    from pyscf.lo import nao
+    mf = scf_method
+    if isinstance(mf_or_mol, gto.Mole):
+        mol = mf_or_mol
     else:
-        raise NotImplementedError("BCH not implemented here")
+        mol = mf_or_mol.mol
+        if mf is None:
+            mf = mf_or_mol
 
-def prop_step(tdscf, t_start, dm_prim, fock_prim, dt = None, build_fock = True):
-    if dt == None:
-        dt = tdscf.dt
-    
-    propogator = expm(-1j*dt*fock_prim)
-    dm_prim_ = reduce(numpy.dot, [propogator, dm_prim, propogator.conj().T])
+    if s is None:
+        if hasattr(mol, 'pbc_intor'):  # whether mol object is a cell
+            s = mol.pbc_intor('int1e_ovlp', hermi=1)
+        else:
+            s = mol.intor_symmetric('int1e_ovlp')
 
-    dm_prim_   = (dm_prim_ + dm_prim_.conj().T)/2
+    if pre_orth_ao is None:
+#        pre_orth_ao = numpy.eye(mol.nao_nr())
+        from pyscf.lo.orth import project_to_atomic_orbitals
+        pre_orth_ao = project_to_atomic_orbitals(mol, REF_BASIS)
 
-    if tdscf.verbose >= logger.DEBUG1:
-        print_cx_matrix("fock_prim"
-        , fock_prim, ncols=PRINT_MAT_NCOL)
-        print_cx_matrix("dm_prim"
-        , dm_prim, ncols=PRINT_MAT_NCOL)
-    dm_ao_     = orth2ao_dm(dm_prim_, tdscf.orth_xtuple)
-    
-    if build_fock:
-        fock_ao_   = tdscf.mf.get_fock(dm=dm_ao_, h1e=tdscf.mf.get_hcore(t=(dt+t_start)))
-        fock_prim_ = ao2orth_fock(fock_ao_, tdscf.orth_xtuple)
-        return dm_prim_, dm_ao_, fock_prim_, fock_ao_
-    else:
-        return dm_prim_, dm_ao_
+    if method.lower() == 'lowdin':
+        from pyscf.lo import lowdin
+        logger.info(mf, "the AOs are orthogonalized with Lowdin")
+        s1 = reduce(numpy.dot, (pre_orth_ao.conj().T, s, pre_orth_ao))
+        c_orth = numpy.dot(pre_orth_ao, lowdin(s1))
 
-def euler_prop(tdscf,                  
-               _temp_ts,         _temp_dm_prims,   _temp_dm_aos,
-               _temp_fock_prims, _temp_fock_aos,        dt=None):
-    if dt == None:
-        dt = tdscf.dt
-    _temp_dm_prims[4],   _temp_dm_aos[4],\
-    _temp_fock_prims[4], _temp_fock_aos[4] = prop_step(
-        tdscf, _temp_ts[2], _temp_dm_prims[2], _temp_fock_prims[2], dt = dt
-        )
-    _temp_dm_prims[2]   = _temp_dm_prims[4]
-    _temp_dm_aos[2]     = _temp_dm_aos[4]
-    _temp_fock_prims[2] = _temp_fock_prims[4]
-    _temp_fock_aos[2]   = _temp_fock_aos[4]
+    elif method.lower() == 'nao':
+        from pyscf.lo import nao
+        assert(mf is not None)
+        logger.info(mf, "the AOs are orthogonalized with NAO")
+        c_orth = nao.nao(mol, mf, s)
 
-def amut1_prop(tdscf,                  
-               _temp_ts,         _temp_dm_prims,   _temp_dm_aos,
-               _temp_fock_prims, _temp_fock_aos,        dt=None):
-    if dt == None:
-        dt = tdscf.dt
+    elif method.lower() == 'canonical':
+        assert(mf is not None)
+        logger.info(mf, "the AOs are orthogonalized with canonical MO coefficients")
+        if not mf.converged:
+            raise RuntimeError("the MF must be converged")
+        c_orth = mf.mo_coeff
 
-    _temp_dm_prims[3],   _temp_dm_aos[3],\
-    _temp_fock_prims[3], _temp_fock_aos[3] = prop_step(
-        tdscf, _temp_ts[2], _temp_dm_prims[2], _temp_fock_prims[2], dt = dt/2
-        )
-    
-    _temp_dm_prims[4],   _temp_dm_aos[4],\
-    _temp_fock_prims[4], _temp_fock_aos[4] = prop_step(
-        tdscf, _temp_ts[2], _temp_dm_prims[2], _temp_fock_prims[3], dt = dt
-        )
-
-    _temp_dm_prims[2]   = _temp_dm_prims[4]
-    _temp_dm_aos[2]     = _temp_dm_aos[4]
-    _temp_fock_prims[2] = _temp_fock_prims[4]
-    _temp_fock_aos[2]   = _temp_fock_aos[4]
-
-def amut2_prop(tdscf,                  
-               _temp_ts,         _temp_dm_prims,   _temp_dm_aos,
-               _temp_fock_prims, _temp_fock_aos,        dt=None):
-    if dt == None:
-        dt = tdscf.dt
-
-    _p_prim_2,   _p_ao_2,\
-    _f_prim_2,   _f_ao_2  = prop_step(
-        tdscf, _temp_ts[2], _temp_dm_prims[2], _temp_fock_prims[2], dt = dt/2
-        )
-    
-    _p_prim_3,   _p_ao_3,\
-    _f_prim_3,   _f_ao_3  = prop_step(
-        tdscf, _temp_ts[2], _temp_dm_prims[2], _f_prim_2, dt = dt/2
-        )
-
-    _temp_dm_prims[4],   _temp_dm_aos[4],\
-    _temp_fock_prims[4], _temp_fock_aos[4]  = prop_step(
-        tdscf, _temp_ts[2], _temp_dm_prims[2], _f_prim_3, dt = dt
-        )
-
-    _temp_dm_prims[2]   = _temp_dm_prims[4]
-    _temp_dm_aos[2]     = _temp_dm_aos[4]
-    _temp_fock_prims[2] = _temp_fock_prims[4]
-    _temp_fock_aos[2]   = _temp_fock_aos[4]
-
-def amut3_prop(tdscf,                  
-               _temp_ts,         _temp_dm_prims,   _temp_dm_aos,
-               _temp_fock_prims, _temp_fock_aos,        dt=None):
-    if dt == None:
-        dt = tdscf.dt
-
-    _p_prim_2,   _p_ao_2,\
-    _f_prim_2,   _f_ao_2  = prop_step(
-        tdscf, _temp_ts[2], _temp_dm_prims[2], _temp_fock_prims[2], dt = dt/2
-        )
-    
-    _p_prim_3,   _p_ao_3,\
-    _f_prim_3,   _f_ao_3  = prop_step(
-        tdscf, _temp_ts[2], _temp_dm_prims[2], _f_prim_2, dt = dt/2
-        )
-
-    _p_prim_4,   _p_ao_4,\
-    _f_prim_4,   _f_ao_4  = prop_step(
-        tdscf, _temp_ts[2], _temp_dm_prims[2], _f_prim_3, dt = dt/2
-        )
-
-    _temp_dm_prims[4],   _temp_dm_aos[4],\
-    _temp_fock_prims[4], _temp_fock_aos[4]  = prop_step(
-        tdscf, _temp_ts[2], _temp_dm_prims[2], _f_prim_4, dt = dt
-        )
-
-    _temp_dm_prims[2]   = _temp_dm_prims[4]
-    _temp_dm_aos[2]     = _temp_dm_aos[4]
-    _temp_fock_prims[2] = _temp_fock_prims[4]
-    _temp_fock_aos[2]   = _temp_fock_aos[4]
-
-def aeut_prop(tdscf,                  
-               _temp_ts,         _temp_dm_prims,   _temp_dm_aos,
-               _temp_fock_prims, _temp_fock_aos,        dt=None):
-    if dt == None:
-        dt = tdscf.dt
-
-    _p_prim_2,   _p_ao_2,\
-    _f_prim_2,   _f_ao_2  = prop_step(
-        tdscf, _temp_ts[2], _temp_dm_prims[2], _temp_fock_prims[2], dt = dt
-        )
-
-    _temp_dm_prims[4],   _temp_dm_aos[4],\
-    _temp_fock_prims[4], _temp_fock_aos[4]  = prop_step(
-        tdscf, _temp_ts[2], _temp_dm_prims[2], _f_prim_2, dt = dt
-        )
-
-    _temp_dm_prims[2]   = _temp_dm_prims[4]
-    _temp_dm_aos[2]     = _temp_dm_aos[4]
-    _temp_fock_prims[2] = _temp_fock_prims[4]
-    _temp_fock_aos[2]   = _temp_fock_aos[4]
-
-def mmut_prop(tdscf,                  
-               _temp_ts,         _temp_dm_prims,   _temp_dm_aos,
-               _temp_fock_prims, _temp_fock_aos,        dt=None):
-#     # HF not numerically stable, for some reason
-    if dt == None:
-        dt = tdscf.dt
-
-    _temp_dm_prims[3], _temp_dm_aos[3] = prop_step(
-        tdscf, _temp_ts[1], _temp_dm_prims[1], _temp_fock_prims[2], dt = dt,
-        build_fock=False
-        )
-    
-    _temp_dm_prims[4],   _temp_dm_aos[4],\
-    _temp_fock_prims[4], _temp_fock_aos[4] = prop_step(
-        tdscf, _temp_ts[3], _temp_dm_prims[3], _temp_fock_prims[2], dt = dt/2
-        )
-
-    _temp_dm_prims[2]   = _temp_dm_prims[4]
-    _temp_dm_aos[2]     = _temp_dm_aos[4]
-    _temp_fock_prims[2] = _temp_fock_prims[4]
-    _temp_fock_aos[2]   = _temp_fock_aos[4]
-
-    _temp_dm_prims[1]   = _temp_dm_prims[3]
-    _temp_dm_aos[1]     = _temp_dm_aos[3]
-
-def lflp_pc_prop(tdscf, _temp_ts, _temp_dm_prims, _temp_fock_prims
-                 , dt=None, tol = 1e-6):
-    pass
-#     if dt == None:
-#         dt = tdscf.dt
-#     temp5_t_ = dt + _temp_ts
-
-#     step_converged = False
-#     inner_iter = 0
-
-#     _fock_prim_next_half_p = 2*_temp_fock_prims[2] - _temp_fock_prims[1]
-#     if tdscf.verbose >= logger.DEBUG:
-#         print_cx_matrix("_temp_fock_prims[2]", _temp_fock_prims[2])
-#         print_cx_matrix("_temp_fock_prims[1]", _temp_fock_prims[1])
-#     while (not step_converged) and inner_iter <= 200:
-#         inner_iter += 1
-#         _temp_dm_prims[4] = prop_step(tdscf, _temp_dm_prims[2], _fock_prim_next_half_p, dt)
-#         _temp_dm_prims_next_half_c = (_temp_dm_prims[4] + _temp_dm_prims[2])/2
-#         _fock_prim_next_half_c = tdscf.get_fock_prim(_temp_ts[3], _temp_dm_prims_next_half_c)
-#         err = merr(_fock_prim_next_half_p, _fock_prim_next_half_c)
-#         logger.debug(tdscf, "inner_iter = %d, err = %f", inner_iter, err)
-#         # print(tdscf, "inner_iter = %d, err = %f"%(inner_iter, err))
-#         _fock_prim_next_half_p = (_fock_prim_next_half_p + _fock_prim_next_half_c)/2
-#         step_converged = (err<tol)
-#         if tdscf.verbose >= logger.DEBUG:
-#             print_cx_matrix("_fock_prim_next_half_p", _fock_prim_next_half_p)
-#             print_cx_matrix("_fock_prim_next_half_c", _fock_prim_next_half_c )
-
-#     if not step_converged:
-#         logger.warn(tdscf, 'Inner loop not converged inner_iter = %d, err = %g', inner_iter, err)
-#         raise RuntimeError("Inner loop not converged")
-#     else:
-#         _temp_dm_prims[3]   = _temp_dm_prims_next_half_c
-#         _temp_fock_prims[4] = tdscf.get_fock_prim(_temp_ts[4], _temp_dm_prims[4])
-
-#     temp_fock_prim_ = numpy.zeros(_temp_dm_prims.shape, dtype=numpy.complex128)
-#     temp_temp_dm_prims_   = numpy.zeros(_temp_dm_prims.shape, dtype=numpy.complex128)
-    
-#     temp_temp_dm_prims_[0] = _temp_dm_prims[2]
-#     temp_temp_dm_prims_[1] = _temp_dm_prims[3]
-#     temp_temp_dm_prims_[2] = _temp_dm_prims[4]
-
-#     temp_fock_prim_[0] = _temp_fock_prims[2]
-#     temp_fock_prim_[1] = (_fock_prim_next_half_c + _fock_prim_next_half_p)/2
-#     temp_fock_prim_[2] = _temp_fock_prims[4]
-
-#     return temp5_t_, temp_temp_dm_prims_, temp_fock_prim_
-
-def ep_pc_prop(tdscf, _temp_ts, _temp_dm_prims, _temp_fock_prims
-                 , dt=None, tol = 1e-6):
-    pass
-
-
-def orth_ao(tdscf, key="canonical"):
-    s1e = tdscf.mf.get_ovlp().astype(numpy.complex128)
-    if key.lower() == "canonical":
-        logger.info(tdscf, "the AOs are orthogonalized with canonical MO coefficients")
-        if not tdscf.mf.converged:
-            raise RuntimeError("the RT TDSCF object must be initialzed with a converged SCF object")
-
-        x = tdscf.mf.mo_coeff.astype(numpy.complex128)
-        x_t = x.T
-        x_inv = numpy.einsum('li,ls->is', x, s1e)
-        x_t_inv = x_inv.T
-        tdscf.orth_xtuple = (x, x_t, x_inv, x_t_inv)
-        return tdscf.orth_xtuple
-    else:
-        x = lo.orth_ao(tdscf.mol, method=key).astype(numpy.complex128)
-        x_t = x.T
-        x_inv = numpy.einsum('li,ls->is', x, s1e)
-        x_t_inv = x_inv.T
-        tdscf.orth_xtuple = (x, x_t, x_inv, x_t_inv)
-        return tdscf.orth_xtuple
+    else: # meta_lowdin: divide ao into core, valence and Rydberg sets,
+          # orthogonalizing within each set
+        weight = numpy.ones(pre_orth_ao.shape[0])
+        c_orth = nao._nao_sub(mol, weight, pre_orth_ao, s)
+    # adjust phase
+    for i in range(c_orth.shape[1]):
+        if c_orth[i,i] < 0:
+            c_orth[:,i] *= -1
+    return c_orth.astype(numpy.complex128)
 
 def ao2orth_dm(dm_ao, orth_xtuple):
     x, x_t, x_inv, x_t_inv = orth_xtuple
@@ -291,6 +102,45 @@ def orth2ao_fock(fock_prim, orth_xtuple):
     fock_ao = reduce(numpy.dot, (x_t_inv, fock_prim, x_inv))
     return fock_ao # (fock_ao + fock_ao.conj().T)/2
 
+# propagate step
+def prop_step(tdscf, t_start, t_end, fock_prim, dm_prim, 
+              build_fock=True, h1e=None):
+    dt = t_end - t_start
+    assert dt > 0 # may be removed 
+    propogator = expm(-1j*dt*fock_prim)
+    dm_prim_   = reduce(numpy.dot, [propogator, dm_prim, propogator.conj().T])
+    dm_prim_   = (dm_prim_ + dm_prim_.conj().T)/2
+    dm_ao_     = orth2ao_dm(dm_prim_, tdscf.orth_xtuple)
+    
+    if build_fock and (h1e is not None):
+        fock_ao_   = tdscf.mf.get_fock(
+            dm=dm_ao_, h1e=h1e
+        )
+        fock_prim_ = ao2orth_fock(fock_ao_, tdscf.orth_xtuple)
+        return dm_prim_, dm_ao_, fock_prim_, fock_ao_
+    else:
+        return dm_prim_, dm_ao_
+
+LAST      = 0 
+LAST_HALF = 1
+THIS      = 2
+NEXT_HALF = 3
+NEXT      = 4
+
+def euler_prop(tdscf,  _temp_ts,
+               _temp_dm_prims,   _temp_dm_aos,
+               _temp_fock_prims, _temp_fock_aos):
+    _temp_dm_prims[NEXT],   _temp_dm_aos[NEXT],\
+    _temp_fock_prims[NEXT], _temp_fock_aos[NEXT] = prop_step(
+        tdscf, _temp_ts[THIS],  _temp_ts[NEXT],
+        _temp_fock_prims[THIS], _temp_dm_prims[THIS],
+        build_fock = True,      h1e = tdscf.get_hcore(_temp_ts[NEXT])
+        )
+    _temp_dm_prims[THIS]   = _temp_dm_prims[NEXT]
+    _temp_dm_aos[THIS]     = _temp_dm_aos[NEXT]
+    _temp_fock_prims[THIS] = _temp_fock_prims[NEXT]
+    _temp_fock_aos[THIS]   = _temp_fock_aos[NEXT]
+
 def kernel(tdscf,                                #input
            dt        = None, maxstep     = None, #input
            dm_ao_init= None, prop_func   = None, #input
@@ -300,7 +150,7 @@ def kernel(tdscf,                                #input
            ):
     cput0 = (time.clock(), time.time())
 
-    if dt == None:          dt = tdscf.dt
+    if dt is None:          dt = tdscf.dt
     if maxstep == None:     maxstep = tdscf.maxstep
     if dm_ao_init is None:  dm_ao_init = tdscf.dm_ao_init
     if prop_func == None:   prop_func = tdscf.prop_func
@@ -309,39 +159,14 @@ def kernel(tdscf,                                #input
         ndm_prim = tdscf.ndm_prim
     if nfock_prim is None:
         nfock_prim = tdscf.nfock_prim
-    
-    h1e_ao = tdscf.mf.get_hcore()
-    if tdscf.efield_vec is None:
-        tdscf.mf.get_hcore = lambda *args, t=0.0: h1e_ao
-    else:
-        tdscf.mf.get_hcore = lambda *args, t=0.0: (
-            h1e_ao + numpy.einsum('xij,x->ij', tdscf.ele_dip_ao, tdscf.efield_vec(t) )
-            )
-
-    if tdscf.verbose >= logger.DEBUG1:
-            print_matrix("The field-free hcore matrix  is, ",
-            h1e_ao, ncols=PRINT_MAT_NCOL)
-    if tdscf.verbose >= logger.DEBUG1:
-            print_matrix("The t=1.0 a.u. efield matrix is, ",
-            tdscf.mf.get_hcore(t=1.0), ncols=PRINT_MAT_NCOL)
 
     dm_ao_init   = dm_ao_init.astype(numpy.complex128)
     dm_prim_init = ao2orth_dm(dm_ao_init, tdscf.orth_xtuple)
 
-    fock_ao_init = (tdscf.mf.get_fock(dm=dm_ao_init, h1e=tdscf.mf.get_hcore(t=0.0)))
+    fock_ao_init   = (tdscf.mf.get_fock(dm=dm_ao_init, h1e=tdscf.get_hcore(t=0.0)))
     fock_prim_init = ao2orth_fock(fock_ao_init, tdscf.orth_xtuple)
 
-    etot_init      = tdscf.mf.energy_tot(dm=dm_ao_init, h1e=tdscf.mf.get_hcore(t=0.0))
-
-    if tdscf.verbose >= logger.DEBUG1:
-        print_matrix("the initial dm prim is", dm_prim_init, ncols=PRINT_MAT_NCOL)
-        print_matrix("the initial fock prim without electric field is", 
-                     ao2orth_fock(
-                         tdscf.mf.get_fock(dm=dm_ao_init).real, tdscf.orth_xtuple
-                         ), ncols=PRINT_MAT_NCOL
-                     )
-        print_matrix("the initial fock prim with electric field is"
-                     , fock_prim_init, ncols=PRINT_MAT_NCOL)
+    etot_init      = tdscf.mf.energy_tot(dm=dm_ao_init, h1e=tdscf.get_hcore(t=0.0)).real
 
     shape = list(dm_ao_init.shape)
 
@@ -360,18 +185,22 @@ def kernel(tdscf,                                #input
     cput1 = logger.timer(tdscf, 'initialize td-scf', *cput0)
 
 # propagation start here
-    _temp_dm_prims[0]   = ndm_prim[0]
-    _temp_fock_prims[0] = nfock_prim[0]
-    _temp_dm_aos[0]     = ndm_ao[0]
-    _temp_fock_aos[0]   = nfock_ao[0]
+    _temp_dm_prims[LAST]   = ndm_prim[0]
+    _temp_fock_prims[LAST] = nfock_prim[0]
+    _temp_dm_aos[LAST]     = ndm_ao[0]
+    _temp_fock_aos[LAST]   = nfock_ao[0]
 
-    _temp_dm_prims[1],   _temp_dm_aos[1],\
-    _temp_fock_prims[1], _temp_fock_aos[1] = prop_step(
-        tdscf, _temp_ts[0], _temp_dm_prims[0], _temp_fock_prims[0], dt = dt/2
+    _temp_dm_prims[LAST_HALF],   _temp_dm_aos[LAST_HALF],\
+    _temp_fock_prims[LAST_HALF], _temp_fock_aos[LAST_HALF] = prop_step(
+        tdscf, _temp_ts[LAST],  _temp_ts[LAST_HALF],
+        _temp_fock_prims[LAST], _temp_dm_prims[LAST],
+        build_fock = True,      h1e = tdscf.get_hcore(_temp_ts[LAST_HALF])
         )
-    _temp_dm_prims[2],   _temp_dm_aos[2],\
-    _temp_fock_prims[2], _temp_fock_aos[2] = prop_step(
-        tdscf, _temp_ts[1], _temp_dm_prims[1], _temp_fock_prims[1], dt = dt/2
+    _temp_dm_prims[THIS],   _temp_dm_aos[THIS],\
+    _temp_fock_prims[THIS], _temp_fock_aos[THIS] = prop_step(
+        tdscf, _temp_ts[LAST_HALF],  _temp_ts[THIS],
+        _temp_fock_prims[LAST_HALF], _temp_dm_prims[LAST_HALF],
+        build_fock = True,      h1e = tdscf.get_hcore(_temp_ts[THIS])
         )
 
     istep = 1
@@ -380,17 +209,20 @@ def kernel(tdscf,                                #input
             logger.note(tdscf, 'istep=%d, time=%f, delta e=%e',
             istep-1, tdscf.ntime[istep-1], tdscf.netot[istep-1]-tdscf.netot[0])
         # propagation step
-        prop_func(tdscf, _temp_ts, _temp_dm_prims, _temp_dm_aos, 
-                                           _temp_fock_prims, _temp_fock_aos, dt=dt)
-        ndm_prim[istep]   =   _temp_dm_prims[2]
-        ndm_ao[istep]     =     _temp_dm_aos[2]
-        nfock_prim[istep] = _temp_fock_prims[2]
-        nfock_ao[istep]   =   _temp_fock_aos[2]
+        prop_func(tdscf,              _temp_ts,
+               _temp_dm_prims,    _temp_dm_aos,
+               _temp_fock_prims, _temp_fock_aos
+               )
+        ndm_prim[istep]   =   _temp_dm_prims[THIS]
+        ndm_ao[istep]     =     _temp_dm_aos[THIS]
+        nfock_prim[istep] = _temp_fock_prims[THIS]
+        nfock_ao[istep]   =   _temp_fock_aos[THIS]
         netot[istep]      =   tdscf.mf.energy_tot(
-            dm=_temp_dm_aos[2], h1e=tdscf.mf.get_hcore(t=_temp_ts[2])
-        )
+            dm=_temp_dm_aos[THIS], h1e=tdscf.get_hcore(_temp_ts[THIS])
+        ).real
         _temp_ts = _temp_ts + dt
         istep += 1
+
     cput2 = logger.timer(tdscf, 'propagation %d time steps'%(istep-1), *cput0)
 
     if do_dump_chk and tdscf.chkfile:
@@ -412,9 +244,6 @@ class TDSCF(lib.StreamObject):
         self.max_memory     = mf.max_memory
         self.stdout         = mf.stdout
         self.orth_xtuple    = None
-# the interaction between the system and electric field
-        self.ele_dip_ao   = self.mf.mol.intor_symmetric('int1e_r', comp=3)
-
 # If chkfile is muted, SCF intermediates will not be dumped anywhere.
         if MUTE_CHKFILE:
             self.chkfile = None
@@ -432,14 +261,20 @@ class TDSCF(lib.StreamObject):
         self.dt         = None
         self.maxstep    = None
 
+# electric field during propagation, a function that returns a
+# 3-component vector.
+        self.efield_vec  = None
+# the interaction between the system and electric field
+        self.ele_dip_ao  = None
+
+# mf information
+        self.ovlp_ao         = self.mf.get_ovlp().astype(numpy.complex128)
+        self.hcore_ao        = self.mf.get_hcore().astype(numpy.complex128)
+
 # propagation method
         self.prop_method  = None # a string
         self.orth_method  = None # a string
         self.prop_func    = None # may not define directly here
-
-# electric field during propagation, a function that returns a
-# 3-component vector.
-        self.efield_vec  = None
 
 # don't modify the following attributes, they are not input options
         self.nstep       = None
@@ -450,32 +285,36 @@ class TDSCF(lib.StreamObject):
         self.nfock_ao    = None
         self.netot       = None
 
-    def set_prop_func(self, key='mmut'):
+    def get_hcore(self, t=None):
+        if (self.efield_vec is None) or (t is None):
+            return self.hcore_ao
+        else:
+            if self.ele_dip_ao is None:
+                # the interaction between the system and electric field
+                self.ele_dip_ao      = self.mf.mol.intor_symmetric('int1e_r', comp=3)
+            h = self.hcore_ao + numpy.einsum(
+                'xij,x->ij', self.ele_dip_ao, self.efield_vec(t)
+                ).astype(numpy.complex128)
+            return h
+
+    def get_fock(self, h1e=None, vhf=None, dm=None):
+        if h1e is None: h1e = self.get_hcore()
+        if vhf is None: vhf = self.mf.get_veff(self.mf.mol, dm)
+        f = h1e + vhf
+        return f
+
+    def set_prop_func(self, key='euler'):
         '''
         In virtually all cases AMUT is superior in terms of stability. 
         Others are perhaps only useful for debugging or simplicity.
         '''
-        if key.lower() == 'amut1' or key.lower() == 'amut':
-            self.prop_func = amut1_prop
-        elif key.lower() == 'amut2':
-            self.prop_func = amut2_prop
-        elif key.lower() == 'amut3':
-            self.prop_func = amut3_prop
-        elif key.lower() == 'aeut':
-            self.prop_func = aeut_prop
-        elif key.lower() == 'euler':
+        if (key.lower() == 'euler') or (key is None):
             self.prop_func = euler_prop
-        elif key.lower() == 'lflp_pc':
-            self.prop_func = lflp_pc_prop
-        elif key.lower() == 'mmut':
-            self.prop_func = mmut_prop
         else:
             raise RuntimeError("unknown prop method!")
 
     def dump_flags(self, verbose=None):
         log = logger.new_logger(self, verbose)
-        if log.verbose < logger.INFO:
-            return self
         log.info('\n')
         log.info('******** %s ********', self.__class__)
         log.info(
@@ -488,20 +327,14 @@ class TDSCF(lib.StreamObject):
             log.info(
                 'The SCF converged tolerence is conv_tol = %g, conv_tol should be less that 1e-8'%self.mf.conv_tol
                 )
-        if hasattr(self.mf, 'xc'):
-            log.info(
-            'The initial condition is a RKS instance, the xc functional is %s'%self.mf.xc
-            )
-        else:
-            log.info(
-            'The initial condition is a HF instance'
+        log.info(
+            'The initial condition is a RHF instance'
             )
         if self.chkfile:
             log.info('chkfile to save RT TDSCF result = %s', self.chkfile)
         log.info( 'dt = %f, maxstep = %d', self.dt, self.maxstep )
         log.info( 'prop_method = %s', self.prop_func.__name__)
         log.info('max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
-        return self
 
     def _initialize(self):
         if self.prop_func is None:
@@ -515,17 +348,17 @@ class TDSCF(lib.StreamObject):
             self.orth_xtuple = orth_ao(self)
         else:
             logger.info(self, 'orth method is %s.', self.orth_method)
-            self.orth_xtuple = orth_ao(self, key=self.orth_method)
+            x = orth_ao(self.mf, method=self.orth_method)
+            x_t = x.T
+            x_inv = numpy.einsum('li,ls->is', x, self.mf.get_ovlp() )
+            x_t_inv = x_inv.T
+
+            self.orth_xtuple = (x, x_t, x_inv, x_t_inv)
         
         if self.verbose >= logger.DEBUG1:
             print_matrix(
                 "XT S X", reduce(numpy.dot, (self.orth_xtuple[1], self.mf.get_ovlp(), self.orth_xtuple[0]))
                 , ncols=PRINT_MAT_NCOL)
-
-        if self.verbose >= logger.DEBUG1:
-                print_matrix("The field-free hcore matrix  is, ", self.mf.get_hcore(), ncols=PRINT_MAT_NCOL)
-        if self.verbose >= logger.DEBUG1:
-                print_matrix("The t=1.0 a.u. efield matrix is, ", self.get_efield(1.0), ncols=PRINT_MAT_NCOL)
 
     def _finalize(self):
         self.ndipole = numpy.zeros([self.maxstep+1,             3])

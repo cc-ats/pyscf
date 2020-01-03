@@ -1,6 +1,6 @@
 import sys
 
-import numpy as np
+import numpy
 import scipy
 from scipy.fftpack import fft
 from pyscf import __config__
@@ -23,13 +23,13 @@ def build_absorption_spectrum(tdscf, ndipole=None, damp_expo=DAMP_EXPO):
     ndipole_y = ndipole_y-ndipole_y[0]
     ndipole_z = ndipole_z-ndipole_z[0]
     
-    mw = 2.0 * np.pi * np.fft.fftfreq(
+    mw = 2.0 * numpy.pi * numpy.fft.fftfreq(
         tdscf.ntime.size, tdscf.dt
     )
-    damp = np.exp(-tdscf.ntime/damp_expo)
-    fwx = np.fft.fft(ndipole_x*damp)
-    fwy = np.fft.fft(ndipole_y*damp)
-    fwz = np.fft.fft(ndipole_z*damp)
+    damp = numpy.exp(-tdscf.ntime/damp_expo)
+    fwx = numpy.fft.fft(ndipole_x*damp)
+    fwy = numpy.fft.fft(ndipole_y*damp)
+    fwz = numpy.fft.fft(ndipole_z*damp)
     fw = (fwx.imag + fwy.imag + fwz.imag) / 3.0 
     sigma = - mw * fw
     mm = mw.size
@@ -37,7 +37,7 @@ def build_absorption_spectrum(tdscf, ndipole=None, damp_expo=DAMP_EXPO):
 
     mw = mw[:m]
     sigma = sigma[:m]
-    scale = np.abs(sigma.max())
+    scale = numpy.abs(sigma.max())
     return mw, sigma/scale
 
 def print_matrix(title, array_, ncols=7, fmt=' % 11.6e'):
@@ -67,3 +67,19 @@ def print_cx_matrix(title, cx_array_, ncols=7, fmt=' % 11.6e'):
     ''' printing a complex rectangular matrix, ncols columns per batch '''
     print_matrix(title+" Real Part ", cx_array_.real, ncols=ncols, fmt=fmt)
     print_matrix(title+" Imag Part ", cx_array_.imag, ncols=ncols, fmt=fmt)
+
+def errm(m1,m2):
+    ''' check consistency '''
+    n   = numpy.linalg.norm(m1-m2)
+    r   = m1.shape[0]
+    v   = numpy.linalg.eigvals(m1)
+    vm  = v.max()
+    e   = n/r/vm
+    return numpy.abs(e)
+
+def expm(m, do_bch=False):
+    if not do_bch:
+        return scipy.linalg.expm(m)
+    else:
+        raise NotImplementedError("BCH not implemented here")
+
