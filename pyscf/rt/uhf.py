@@ -195,10 +195,10 @@ def kernel(tdscf,                                #input
     netot[0]       = etot_init
 
     _temp_ts         = dt*numpy.array([0.0, 0.5, 1.0, 1.5, 2.0])
-    _temp_dm_prims   = numpy.zeros([5, 2] + shape, dtype=numpy.complex128)
-    _temp_fock_prims = numpy.zeros([5, 2] + shape, dtype=numpy.complex128)
-    _temp_dm_aos     = numpy.zeros([5, 2] + shape, dtype=numpy.complex128)
-    _temp_fock_aos   = numpy.zeros([5, 2] + shape, dtype=numpy.complex128)
+    _temp_dm_prims   = numpy.zeros([5] + shape, dtype=numpy.complex128)
+    _temp_fock_prims = numpy.zeros([5] + shape, dtype=numpy.complex128)
+    _temp_dm_aos     = numpy.zeros([5] + shape, dtype=numpy.complex128)
+    _temp_fock_aos   = numpy.zeros([5] + shape, dtype=numpy.complex128)
 
     cput1 = logger.timer(tdscf, 'initialize td-scf', *cput0)
 
