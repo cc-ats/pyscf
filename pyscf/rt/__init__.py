@@ -23,5 +23,6 @@ import scipy
 import scipy.linalg
 
 from pyscf import gto, dft, scf, ao2mo
-from pyscf.rt.tdscf import *
+
+import rhf
 

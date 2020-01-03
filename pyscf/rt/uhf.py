@@ -6,7 +6,7 @@ from functools import reduce
 import numpy
 import scipy
 
-from pyscf import gto, dft, df
+from pyscf import gto, scf
 from pyscf import lib, lo
 from pyscf.lib import logger
 from pyscf.rt  import chkfile
