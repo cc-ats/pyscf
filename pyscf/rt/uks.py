@@ -1,4 +1,5 @@
 from pyscf.rt import uhf as uhf_tdscf
+from pyscf.lib import logger
 
 class TDSCF(uhf_tdscf.TDSCF):
     def dump_flags(self, verbose=None):
