@@ -442,3 +442,4 @@ if __name__ == "__main__":
     rttd.maxstep = 10
     rttd.dt      = 0.2
     rttd.kernel(dm_ao_init=dm)
+    print(rttd.netot)
