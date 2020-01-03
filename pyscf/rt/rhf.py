@@ -148,8 +148,8 @@ def kernel(tdscf,              dm_ao_init= None,
 
     if dm_ao_init is None:  dm_ao_init = tdscf.dm_ao_init
 
-    dt = tdscf.dt
-    maxstep = tdscf.maxstep
+    dt        = tdscf.dt
+    maxstep   = tdscf.maxstep
     prop_func = tdscf.prop_func
 
     if ndm_prim is None:
@@ -378,7 +378,7 @@ class TDHF(lib.StreamObject):
             self.npop[i]    = self.mf.mulliken_pop(dm = idm.real, s=s1e, verbose=0)[1]
         logger.info(self, "Finalization finished")
 
-    def kernel(self, dm_ao_init=None):
+    def kernel(self, dm_ao_init=None, do_dump_chk=True):
         self._initialize()
         if dm_ao_init is None:
             if self.dm_ao_init is not None:
@@ -399,12 +399,10 @@ class TDHF(lib.StreamObject):
         self.netot      = numpy.zeros([self.maxstep+1])                                # output
         logger.info(self, 'after building matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
         kernel(
-           self,                                                        #input
-           dt        = self.dt         , maxstep     = self.maxstep,    #input
-           dm_ao_init= dm_ao_init      , prop_func   = self.prop_func,  #input
-           ndm_prim  = self.ndm_prim   , nfock_prim  = self.nfock_prim, #output
-           ndm_ao    = self.ndm_ao     , nfock_ao    = self.nfock_ao,   #output
-           netot     = self.netot
+           self,                      dm_ao_init  = self.dm_ao_init,
+           ndm_prim  = self.ndm_prim, nfock_prim  = self.nfock_prim, #output
+           ndm_ao    = self.ndm_ao,   nfock_ao    = self.nfock_ao,   #output
+           netot     = self.netot,    do_dump_chk = do_dump_chk
             )
         logger.info(self, 'after propogation matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
         logger.info(self, "Propagation finished")
@@ -433,5 +431,7 @@ if __name__ == "__main__":
 
     dm = mf.make_rdm1()
     fock = mf.get_fock()
-    rttd = TDSCF(mf)
+    rttd = TDHF(mf)
     rttd.verbose = 5
+    rttd.maxstep = 10
+    rttd.kernel(dm_ao_init=dm)
