@@ -31,6 +31,8 @@ class TDSCF(uhf_tdscf.TDSCF):
 
 if __name__ == "__main__":
     from pyscf import dft, gto
+    import numpy
+    
     mol =   gto.Mole( atom='''
     O    0.0000000    0.0000000    0.5754646
     O    0.0000000    0.0000000   -0.5754646
