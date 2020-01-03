@@ -250,16 +250,6 @@ def kernel(tdscf,                                #input
    
 class TDSCF(rhf_tdscf.TDSCF):
 
-    def set_prop_func(self, key=None):
-        '''
-        In virtually all cases AMUT is superior in terms of stability. 
-        Others are perhaps only useful for debugging or simplicity.
-        '''
-        if (key.lower() == 'euler') or (key is None):
-            self.prop_func = euler_prop
-        else:
-            raise RuntimeError("unknown prop method!")
-
     def dump_flags(self, verbose=None):
         log = logger.new_logger(self, verbose)
         log.info('\n')
