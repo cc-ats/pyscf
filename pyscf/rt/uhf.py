@@ -242,6 +242,8 @@ def kernel(tdscf,                                #input
         ).real
         _temp_ts = _temp_ts + dt
         istep += 1
+        print_matrix("dm_prim_init alpha", ndm_prim[istep][0])
+        print_matrix("dm_prim_init beta", ndm_prim[istep][1])
 
     cput2 = logger.timer(tdscf, 'propagation %d time steps'%(istep-1), *cput0)
 
@@ -388,6 +390,7 @@ if __name__ == "__main__":
     rttd.verbose = 5
     rttd.maxstep = 10
     rttd.dt      = 0.1
+    rttd.efield_vec = lambda t: [0.0, 0.0, 0.001*numpy.exp(-t**2/100)]
     rttd.kernel(dm_ao_init=dm)
     print(rttd.netot)
 
