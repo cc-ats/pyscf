@@ -10,8 +10,7 @@ from pyscf import gto, scf
 from pyscf import lib, lo
 from pyscf.lib import logger
 
-
-import pyscf.rt import rhf as rhf_tdscf
+from pyscf.rt import rhf as rhf_tdscf
 from pyscf.rt  import chkfile
 from pyscf.rt.util import build_absorption_spectrum
 from pyscf.rt.util import print_matrix, print_cx_matrix, errm, expm
