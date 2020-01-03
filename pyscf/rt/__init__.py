@@ -17,3 +17,8 @@
 #
 
 from pyscf import rt
+from pyscf.rt import util
+from pyscf.rt import chkfile
+
+from pyscf.rt import rhf
+from pyscf.rt import uhf
