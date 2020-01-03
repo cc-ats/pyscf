@@ -357,6 +357,7 @@ if __name__ == "__main__":
     , basis='sto-3g', symmetry=False).build()
 
     mf = scf.UHF(mol)
+    mf.verbose = 5
     mf.kernel()
 
     print(orth_ao(mf))
