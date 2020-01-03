@@ -302,10 +302,13 @@ class TDSCF(lib.StreamObject):
         In virtually all cases AMUT is superior in terms of stability. 
         Others are perhaps only useful for debugging or simplicity.
         '''
-        if (key.lower() == 'euler') or (key is None):
-            self.prop_func = euler_prop
+        if (key is not None):
+            if (key.lower() == 'euler'):
+                self.prop_func = euler_prop
+            else:
+                raise RuntimeError("unknown prop method!")
         else:
-            raise RuntimeError("unknown prop method!")
+            self.prop_func = euler_prop
 
     def dump_flags(self, verbose=None):
         log = logger.new_logger(self, verbose)
