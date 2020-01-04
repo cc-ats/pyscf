@@ -93,9 +93,6 @@ def ao2orth_dm(tdscf, dm_ao):
     x, x_t, x_inv, x_t_inv = tdscf.orth_xtuple
     dm_prim_a = reduce(numpy.dot, (x_inv[0], dm_ao[0], x_t_inv[0]))
     dm_prim_b = reduce(numpy.dot, (x_inv[1], dm_ao[1], x_t_inv[1]))
-    print("dm_prim_a.shape", dm_prim_a.shape)
-    print("dm_ao[0].shape", dm_ao[0].shape)
-    print("x_inv[0].shape", x_inv[0].shape)
     return numpy.array((dm_prim_a, dm_prim_b))
 
 def orth2ao_dm(tdscf, dm_prim):
@@ -236,7 +233,6 @@ if __name__ == "__main__":
     rttd.verbose = 5
     rttd.maxstep = 100
     rttd.dt      = 0.1
-    rttd.efield_vec = lambda t: [0.0, 0.0, 0.001*numpy.exp(-t**2/100)]
     rttd.kernel(dm_ao_init=dm)
     print(rttd.netot)
 
