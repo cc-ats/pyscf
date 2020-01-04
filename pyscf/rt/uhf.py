@@ -235,7 +235,7 @@ if __name__ == "__main__":
     dm = mf.make_rdm1()
     fock = mf.get_fock()
 
-    rttd = TDSCF(mf)
+    rttd = TDHF(mf)
     rttd.verbose = 5
     rttd.maxstep = 10
     rttd.dt      = 0.1
