@@ -127,7 +127,7 @@ def prop_step(tdscf, dt, fock_prim, dm_prim):
     dm_prim_b_   = (dm_prim_b_ + dm_prim_b_.conj().T)/2
 
     dm_prim_     = numpy.array((dm_prim_a_, dm_prim_b_))
-    dm_ao_       = orth2ao_dm(  dm_prim_,   tdscf.orth_xtuple)
+    dm_ao_       = tdscf.orth2ao_dm(  dm_prim_)
     
     return dm_prim_, dm_ao_
 
