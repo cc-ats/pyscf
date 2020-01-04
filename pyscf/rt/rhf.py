@@ -394,7 +394,7 @@ class TDHF(lib.StreamObject):
     def _initialize(self):
         if self.prop_func is None:
             if self.prop_method is not None:
-                self.set_prop_func(key=ORTH_METHOD)
+                self.set_prop_func(key=self.prop_method)
             else:
                 self.set_prop_func()
         self.dump_flags()
