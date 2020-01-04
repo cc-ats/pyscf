@@ -93,6 +93,9 @@ def ao2orth_dm(dm_ao, orth_xtuple):
     x, x_t, x_inv, x_t_inv = orth_xtuple
     dm_prim_a = reduce(numpy.dot, (x_inv[0], dm_ao[0], x_t_inv[0]))
     dm_prim_b = reduce(numpy.dot, (x_inv[1], dm_ao[1], x_t_inv[1]))
+    print("dm_prim_a.shape", dm_prim_a.shape)
+    print("dm_ao[0].shape", dm_ao[0].shape)
+    print("x_inv[0].shape", x_inv[0].shape)
     return numpy.array((dm_prim_a, dm_prim_b))
 
 def orth2ao_dm(dm_prim, orth_xtuple):
@@ -129,14 +132,7 @@ def prop_step(tdscf, t_start, t_end, fock_prim, dm_prim,
     dm_prim_     = numpy.array((dm_prim_a_, dm_prim_b_))
     dm_ao_       = orth2ao_dm(  dm_prim_,   tdscf.orth_xtuple)
     
-    if build_fock and (h1e is not None):
-        fock_ao_   = tdscf.mf.get_fock(
-            dm=dm_ao_, h1e=h1e
-        )
-        fock_prim_ = ao2orth_fock(fock_ao_, tdscf.orth_xtuple)
-        return dm_prim_, dm_ao_, fock_prim_, fock_ao_
-    else:
-        return dm_prim_, dm_ao_
+    return dm_prim_, dm_ao_
 
 LAST      = 0 
 LAST_HALF = 1
@@ -238,7 +234,7 @@ if __name__ == "__main__":
     rttd = TDHF(mf)
     rttd.verbose = 5
     rttd.maxstep = 100
-    rttd.dt      = 0.2
+    rttd.dt      = 0.1
     rttd.efield_vec = lambda t: [0.0, 0.0, 0.001*numpy.exp(-t**2/100)]
     rttd.kernel(dm_ao_init=dm)
     print(rttd.netot)

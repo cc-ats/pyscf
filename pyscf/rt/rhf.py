@@ -177,7 +177,9 @@ def kernel(tdscf,              dm_ao_init= None,
     etot_init      = tdscf.mf.energy_tot(dm=dm_ao_init, h1e=h1e_ao_init, vhf=vhf_ao_init).real
 
     shape = list(dm_ao_init.shape)
-
+    
+    print("ndm_prim[0].shape = ", ndm_prim[0].shape)
+    print("dm_prim_init.shape = ", dm_prim_init.shape)
     ndm_prim[0]    = dm_prim_init
     nfock_prim[0]  = fock_prim_init
     ndm_ao[0]      = dm_ao_init
