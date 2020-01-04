@@ -357,6 +357,7 @@ class TDHF(lib.StreamObject):
         In virtually all cases AMUT is superior in terms of stability. 
         Others are perhaps only useful for debugging or simplicity.
         '''
+        print("key = ", key)
         if (key is not None):
             if (key.lower() == 'euler'):
                 self.prop_func = euler_prop
