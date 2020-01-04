@@ -117,10 +117,7 @@ def orth2ao_fock(fock_prim, orth_xtuple):
     return numpy.array((fock_ao_a, fock_ao_b)) # (fock_ao + fock_ao.conj().T)/2
 
 # propagate step
-def prop_step(tdscf, t_start, t_end, fock_prim, dm_prim, 
-              build_fock=True, h1e=None):
-    dt = t_end - t_start
-    assert dt > 0 # may be removed
+def prop_step(tdscf, dt, fock_prim, dm_prim):
     propogator_a = expm(-1j*dt*fock_prim[0])
     propogator_b = expm(-1j*dt*fock_prim[1])
 
