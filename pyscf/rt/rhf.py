@@ -483,6 +483,7 @@ if __name__ == "__main__":
     rttd = TDHF(mf)
     rttd.verbose = 5
     rttd.maxstep = 100
+    rttd.prop_method = "mmut"
     rttd.dt      = 0.2
     rttd.kernel(dm_ao_init=dm)
     print(rttd.netot)
