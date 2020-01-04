@@ -127,13 +127,6 @@ def prop_step(tdscf, dt, fock_prim, dm_prim):
     dm_ao_       = tdscf.orth2ao_dm(  dm_prim_)
     
     return dm_prim_, dm_ao_
-
-LAST      = 0 
-LAST_HALF = 1
-THIS      = 2
-NEXT_HALF = 3
-NEXT      = 4
-
    
 class TDHF(rhf_tdscf.TDHF):
     prop_step = prop_step
@@ -235,8 +228,5 @@ if __name__ == "__main__":
     rttd.dt      = 0.1
     rttd.kernel(dm_ao_init=dm)
     print(rttd.netot)
-
-    print_matrix("canonical dm alpha", rttd.ao2orth_dm(dm)[0] )
-    print_matrix("canonical dm beta", rttd.ao2orth_dm(dm)[1] )
 
     
