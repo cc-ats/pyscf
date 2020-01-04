@@ -89,8 +89,8 @@ def orth_ao(mf_or_mol, method=ORTH_METHOD, pre_orth_ao=None, scf_method=None,
             c_orth_b[:,i] *= -1
     return numpy.array((c_orth_a, c_orth_b)).astype(numpy.complex128)
 
-def ao2orth_dm(dm_ao, orth_xtuple):
-    x, x_t, x_inv, x_t_inv = orth_xtuple
+def ao2orth_dm(tdscf, dm_ao):
+    x, x_t, x_inv, x_t_inv = tdscf.orth_xtuple
     dm_prim_a = reduce(numpy.dot, (x_inv[0], dm_ao[0], x_t_inv[0]))
     dm_prim_b = reduce(numpy.dot, (x_inv[1], dm_ao[1], x_t_inv[1]))
     print("dm_prim_a.shape", dm_prim_a.shape)
@@ -98,20 +98,20 @@ def ao2orth_dm(dm_ao, orth_xtuple):
     print("x_inv[0].shape", x_inv[0].shape)
     return numpy.array((dm_prim_a, dm_prim_b))
 
-def orth2ao_dm(dm_prim, orth_xtuple):
-    x, x_t, x_inv, x_t_inv = orth_xtuple
+def orth2ao_dm(tdscf, dm_prim):
+    x, x_t, x_inv, x_t_inv = tdscf.orth_xtuple
     dm_ao_a = reduce(numpy.dot, (x[0], dm_prim[0], x_t[0]))
     dm_ao_b = reduce(numpy.dot, (x[1], dm_prim[1], x_t[1]))
     return numpy.array((dm_ao_a, dm_ao_b))# (dm_ao + dm_ao.conj().T)/2
 
-def ao2orth_fock(fock_ao, orth_xtuple):
-    x, x_t, x_inv, x_t_inv = orth_xtuple
+def ao2orth_fock(tdscf, fock_ao):
+    x, x_t, x_inv, x_t_inv = tdscf.orth_xtuple
     fock_prim_a = reduce(numpy.dot, (x_t[0], fock_ao[0], x[0]))
     fock_prim_b = reduce(numpy.dot, (x_t[1], fock_ao[1], x[1]))
     return numpy.array((fock_prim_a, fock_prim_b))
 
-def orth2ao_fock(fock_prim, orth_xtuple):
-    x, x_t, x_inv, x_t_inv = orth_xtuple
+def orth2ao_fock(tdscf, fock_prim):
+    x, x_t, x_inv, x_t_inv = tdscf.orth_xtuple
     fock_ao_a = reduce(numpy.dot, (x_t_inv[0], fock_prim[0], x_inv[0]))
     fock_ao_b = reduce(numpy.dot, (x_t_inv[1], fock_prim[1], x_inv[1]))
     return numpy.array((fock_ao_a, fock_ao_b)) # (fock_ao + fock_ao.conj().T)/2
@@ -140,6 +140,10 @@ NEXT      = 4
    
 class TDHF(rhf_tdscf.TDHF):
     prop_step = prop_step
+    ao2orth_dm = ao2orth_dm
+    orth2ao_dm = orth2ao_dm
+    ao2orth_fock = ao2orth_fock
+    orth2ao_fock = orth2ao_fock
 
     def dump_flags(self, verbose=None):
         log = logger.new_logger(self, verbose)

@@ -85,23 +85,23 @@ def orth_ao(mf_or_mol, method=ORTH_METHOD, pre_orth_ao=None, scf_method=None,
             c_orth[:,i] *= -1
     return c_orth.astype(numpy.complex128)
 
-def ao2orth_dm(dm_ao, orth_xtuple):
-    x, x_t, x_inv, x_t_inv = orth_xtuple
+def ao2orth_dm(tdscf, dm_ao):
+    x, x_t, x_inv, x_t_inv = tdscf.orth_xtuple
     dm_prim = reduce(numpy.dot, (x_inv, dm_ao, x_t_inv))
     return dm_prim
 
-def orth2ao_dm(dm_prim, orth_xtuple):
-    x, x_t, x_inv, x_t_inv = orth_xtuple
+def orth2ao_dm(tdscf, dm_prim):
+    x, x_t, x_inv, x_t_inv = tdscf.orth_xtuple
     dm_ao = reduce(numpy.dot, (x, dm_prim, x_t))
     return dm_ao# (dm_ao + dm_ao.conj().T)/2
 
-def ao2orth_fock(fock_ao, orth_xtuple):
-    x, x_t, x_inv, x_t_inv = orth_xtuple
+def ao2orth_fock(tdscf, fock_ao):
+    x, x_t, x_inv, x_t_inv = tdscf.orth_xtuple
     fock_prim = reduce(numpy.dot, (x_t, fock_ao, x))
     return fock_prim
 
-def orth2ao_fock(fock_prim, orth_xtuple):
-    x, x_t, x_inv, x_t_inv = orth_xtuple
+def orth2ao_fock(tdscf, fock_prim):
+    x, x_t, x_inv, x_t_inv = tdscf.orth_xtuple
     fock_ao = reduce(numpy.dot, (x_t_inv, fock_prim, x_inv))
     return fock_ao # (fock_ao + fock_ao.conj().T)/2
 
@@ -110,7 +110,7 @@ def prop_step(tdscf, dt, fock_prim, dm_prim):
     propogator = expm(-1j*dt*fock_prim)
     dm_prim_   = reduce(numpy.dot, [propogator, dm_prim, propogator.conj().T])
     dm_prim_   = (dm_prim_ + dm_prim_.conj().T)/2
-    dm_ao_     = orth2ao_dm(dm_prim_, tdscf.orth_xtuple)
+    dm_ao_     = tdscf.orth2ao_dm(dm_prim_)
 
     return dm_prim_, dm_ao_
 
@@ -138,7 +138,7 @@ def euler_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
 
     _temp_dm_prims[THIS]   = _temp_dm_prims[NEXT]
     _temp_dm_aos[THIS]     = _temp_dm_aos[NEXT]
-    _temp_fock_prims[THIS] = ao2orth_fock(_temp_fock_aos[NEXT], tdscf.orth_xtuple)
+    _temp_fock_prims[THIS] = tdscf.ao2orth_fock(_temp_fock_aos[NEXT])
     _temp_fock_aos[THIS]   = _temp_fock_aos[NEXT]
 
     return ene_next_tot.real
@@ -166,13 +166,13 @@ def kernel(tdscf,              dm_ao_init= None,
         nfock_ao = tdscf.nfock_ao
 
     dm_ao_init     = dm_ao_init.astype(numpy.complex128)
-    dm_prim_init   = ao2orth_dm(dm_ao_init, tdscf.orth_xtuple)
+    dm_prim_init   = tdscf.ao2orth_dm(dm_ao_init)
 
     h1e_ao_init    = tdscf.get_hcore(t=0.0)
     vhf_ao_init    = tdscf.mf.get_veff(dm=dm_ao_init)
 
     fock_ao_init   = tdscf.mf.get_fock(dm=dm_ao_init, h1e=h1e_ao_init, vhf=vhf_ao_init)
-    fock_prim_init = ao2orth_fock(fock_ao_init, tdscf.orth_xtuple)
+    fock_prim_init = tdscf.ao2orth_fock(fock_ao_init)
 
     etot_init      = tdscf.mf.energy_tot(dm=dm_ao_init, h1e=h1e_ao_init, vhf=vhf_ao_init).real
 
@@ -300,6 +300,18 @@ class TDHF(lib.StreamObject):
 
     def prop_step(self, dt, fock_prim, dm_prim):
         return prop_step(self, dt, fock_prim, dm_prim)
+
+    def ao2orth_dm(self, dm_ao):
+        return ao2orth_dm(self, dm_ao)
+
+    def orth2ao_dm(self, dm_prim):
+        return orth2ao_dm(self, dm_prim)
+
+    def ao2orth_fock(self, fock_ao):
+        return ao2orth_fock(self, fock_ao)
+
+    def orth2ao_fock(self, fock_prim):
+        return orth2ao_fock(self, fock_prim) # (fock_ao + fock_ao.conj().T)/2
     
     def get_hcore(self, t=None):
         if (self.efield_vec is None) or (t is None):
