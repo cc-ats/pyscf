@@ -121,8 +121,9 @@ THIS      = 2
 NEXT_HALF = 3
 NEXT      = 4
 
-def euler_prop(tdscf,  _temp_ts,
-               _temp_dm_prims,   _temp_dm_aos,
+# integration schemes
+# euler propagation
+def euler_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
                _temp_fock_prims, _temp_fock_aos):
 
     _temp_dm_prims[NEXT],   _temp_dm_aos[NEXT] = tdscf.prop_step(
@@ -140,7 +141,7 @@ def euler_prop(tdscf,  _temp_ts,
     _temp_fock_prims[THIS] = ao2orth_fock(_temp_fock_aos[NEXT], tdscf.orth_xtuple)
     _temp_fock_aos[THIS]   = _temp_fock_aos[NEXT]
 
-    return ene_next_tot
+    return ene_next_tot.real
 
 def kernel(tdscf,              dm_ao_init= None,
            ndm_prim  = None, nfock_prim  = None, #output

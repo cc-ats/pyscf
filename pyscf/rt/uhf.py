@@ -144,128 +144,9 @@ THIS      = 2
 NEXT_HALF = 3
 NEXT      = 4
 
-def euler_prop(tdscf,  _temp_ts,
-               _temp_dm_prims,   _temp_dm_aos,
-               _temp_fock_prims, _temp_fock_aos):
-    _temp_dm_prims[NEXT],   _temp_dm_aos[NEXT],\
-    _temp_fock_prims[NEXT], _temp_fock_aos[NEXT] = prop_step(
-        tdscf, _temp_ts[THIS],  _temp_ts[NEXT],
-        _temp_fock_prims[THIS], _temp_dm_prims[THIS],
-        build_fock = True,      h1e = tdscf.get_hcore(_temp_ts[NEXT])
-        )
-    _temp_dm_prims[THIS]   = _temp_dm_prims[NEXT]
-    _temp_dm_aos[THIS]     = _temp_dm_aos[NEXT]
-    _temp_fock_prims[THIS] = _temp_fock_prims[NEXT]
-    _temp_fock_aos[THIS]   = _temp_fock_aos[NEXT]
-
-def kernel(tdscf,                                #input
-           dt        = None, maxstep     = None, #input
-           dm_ao_init= None, prop_func   = None, #input
-           ndm_prim  = None, nfock_prim  = None, #output
-           ndm_ao    = None, nfock_ao    = None, #output
-           netot     = None, do_dump_chk = True
-           ):
-    cput0 = (time.clock(), time.time())
-
-    if dt is None:          dt = tdscf.dt
-    if maxstep == None:     maxstep = tdscf.maxstep
-    if dm_ao_init is None:  dm_ao_init = tdscf.dm_ao_init
-    if prop_func == None:   prop_func = tdscf.prop_func
-
-    if ndm_prim is None:
-        ndm_prim = tdscf.ndm_prim
-    if nfock_prim is None:
-        nfock_prim = tdscf.nfock_prim
-
-    dm_ao_init   = dm_ao_init.astype(numpy.complex128)
-    dm_prim_init = ao2orth_dm(dm_ao_init, tdscf.orth_xtuple)
-
-    fock_ao_init   = (tdscf.mf.get_fock(dm=dm_ao_init, h1e=tdscf.get_hcore(t=0.0)))
-    fock_prim_init = ao2orth_fock(fock_ao_init, tdscf.orth_xtuple)
-
-    etot_init      = tdscf.mf.energy_tot(dm=dm_ao_init, h1e=tdscf.get_hcore(t=0.0)).real
-
-    shape = list(dm_ao_init.shape)
-
-    ndm_prim[0]    = dm_prim_init
-    nfock_prim[0]  = fock_prim_init
-    ndm_ao[0]      = dm_ao_init
-    nfock_ao[0]    = fock_ao_init
-    netot[0]       = etot_init
-
-    print_matrix("dm_prim_init alpha", dm_prim_init[0])
-    print_matrix("dm_prim_init beta", dm_prim_init[1])
-
-    _temp_ts         = dt*numpy.array([0.0, 0.5, 1.0, 1.5, 2.0])
-    _temp_dm_prims   = numpy.zeros([5] + shape, dtype=numpy.complex128)
-    _temp_fock_prims = numpy.zeros([5] + shape, dtype=numpy.complex128)
-    _temp_dm_aos     = numpy.zeros([5] + shape, dtype=numpy.complex128)
-    _temp_fock_aos   = numpy.zeros([5] + shape, dtype=numpy.complex128)
-
-    cput1 = logger.timer(tdscf, 'initialize td-scf', *cput0)
-
-# propagation start here
-    _temp_dm_prims[LAST]   = ndm_prim[0]
-    _temp_fock_prims[LAST] = nfock_prim[0]
-    _temp_dm_aos[LAST]     = ndm_ao[0]
-    _temp_fock_aos[LAST]   = nfock_ao[0]
-
-    _temp_dm_prims[LAST_HALF],   _temp_dm_aos[LAST_HALF],\
-    _temp_fock_prims[LAST_HALF], _temp_fock_aos[LAST_HALF] = prop_step(
-        tdscf, _temp_ts[LAST],  _temp_ts[LAST_HALF],
-        _temp_fock_prims[LAST], _temp_dm_prims[LAST],
-        build_fock = True,      h1e = tdscf.get_hcore(_temp_ts[LAST_HALF])
-        )
-    _temp_dm_prims[THIS],   _temp_dm_aos[THIS],\
-    _temp_fock_prims[THIS], _temp_fock_aos[THIS] = prop_step(
-        tdscf, _temp_ts[LAST_HALF],  _temp_ts[THIS],
-        _temp_fock_prims[LAST_HALF], _temp_dm_prims[LAST_HALF],
-        build_fock = True,      h1e = tdscf.get_hcore(_temp_ts[THIS])
-        )
-
-    istep = 1
-    while istep <= maxstep:
-        if istep%100==1:
-            logger.note(tdscf, 'istep=%d, time=%f, delta e=%e',
-            istep-1, tdscf.ntime[istep-1], tdscf.netot[istep-1]-tdscf.netot[0])
-        # propagation step
-        prop_func(tdscf,              _temp_ts,
-               _temp_dm_prims,    _temp_dm_aos,
-               _temp_fock_prims, _temp_fock_aos
-               )
-        ndm_prim[istep]   =   _temp_dm_prims[THIS]
-        ndm_ao[istep]     =     _temp_dm_aos[THIS]
-        nfock_prim[istep] = _temp_fock_prims[THIS]
-        nfock_ao[istep]   =   _temp_fock_aos[THIS]
-        netot[istep]      =   tdscf.mf.energy_tot(
-            dm=_temp_dm_aos[THIS], h1e=tdscf.get_hcore(_temp_ts[THIS])
-        ).real
-        _temp_ts = _temp_ts + dt
-        print_matrix("dm_prim_init alpha", ndm_prim[istep][0])
-        print_matrix("dm_prim_init beta", ndm_prim[istep][1])
-        istep += 1
-
-    cput2 = logger.timer(tdscf, 'propagation %d time steps'%(istep-1), *cput0)
-
-    if do_dump_chk and tdscf.chkfile:
-        ntime = tdscf.ntime
-        nstep = tdscf.nstep
-        tdscf.dump_chk(locals())
-        cput3 = logger.timer(tdscf, 'dump chk finished', *cput0)
    
 class TDHF(rhf_tdscf.TDHF):
-    def set_prop_func(self, key='euler'):
-        '''
-        In virtually all cases AMUT is superior in terms of stability. 
-        Others are perhaps only useful for debugging or simplicity.
-        '''
-        if (key is not None):
-            if (key.lower() == 'euler'):
-                self.prop_func = euler_prop
-            else:
-                raise RuntimeError("unknown prop method!")
-        else:
-            self.prop_func = euler_prop
+    prop_step = prop_step
 
     def dump_flags(self, verbose=None):
         log = logger.new_logger(self, verbose)
@@ -329,38 +210,6 @@ class TDHF(rhf_tdscf.TDHF):
             self.ndipole[i] = self.mf.dip_moment(dm = idm.real, unit='au', verbose=0)
             self.npop[i]    = self.mf.mulliken_pop(dm = idm.real, s=s1e, verbose=0)[1]
         logger.info(self, "Finalization finished")
-
-    def kernel(self, dm_ao_init=None):
-        self._initialize()
-        if dm_ao_init is None:
-            if self.dm_ao_init is not None:
-                dm_ao_init = self.dm_ao_init
-            elif self.dm_ao_init == None:
-                dm_ao_init = self.mf.make_rdm1()
-        logger.info(self, "Propagation begins here")
-        if self.verbose >= logger.DEBUG1:
-                print_matrix("The initial density matrix is, ", dm_ao_init, ncols=PRINT_MAT_NCOL)
-
-        logger.info(self, 'before building matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
-        self.nstep      = numpy.linspace(0, self.maxstep, self.maxstep+1, dtype=int) # output
-        self.ntime      = self.dt*self.nstep                                      # output
-        self.ndm_prim   = numpy.zeros([self.maxstep+1] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
-        self.ndm_ao     = numpy.zeros([self.maxstep+1] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
-        self.nfock_prim = numpy.zeros([self.maxstep+1] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
-        self.nfock_ao   = numpy.zeros([self.maxstep+1] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
-        self.netot      = numpy.zeros([self.maxstep+1])                                # output
-        logger.info(self, 'after building matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
-        kernel(
-           self,                                                        #input
-           dt        = self.dt         , maxstep     = self.maxstep,    #input
-           dm_ao_init= dm_ao_init      , prop_func   = self.prop_func,  #input
-           ndm_prim  = self.ndm_prim   , nfock_prim  = self.nfock_prim, #output
-           ndm_ao    = self.ndm_ao     , nfock_ao    = self.nfock_ao,   #output
-           netot     = self.netot
-            )
-        logger.info(self, 'after propogation matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
-        logger.info(self, "Propagation finished")
-        self._finalize()
 
     def dump_chk(self, envs):
         if self.chkfile:
