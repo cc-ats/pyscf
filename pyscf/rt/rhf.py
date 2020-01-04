@@ -139,7 +139,33 @@ def euler_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
     _temp_dm_prims[THIS]   = _temp_dm_prims[NEXT]
     _temp_dm_aos[THIS]     = _temp_dm_aos[NEXT]
     _temp_fock_prims[THIS] = tdscf.ao2orth_fock(_temp_fock_aos[NEXT])
-    _temp_fock_aos[THIS]   = _temp_fock_aos[NEXT]
+
+    return ene_next_tot.real
+
+def mmut_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
+               _temp_fock_prims, _temp_fock_aos):
+
+    _temp_dm_prims[NEXT_HALF],   _temp_dm_aos[NEXT_HALF] = tdscf.prop_step(
+        _temp_ts[NEXT_HALF] - _temp_ts[LAST_HALF],
+        _temp_fock_prims[LAST_HALF], _temp_dm_prims[LAST_HALF],
+        )
+    
+    _temp_dm_prims[NEXT],   _temp_dm_aos[NEXT] = tdscf.prop_step(
+        _temp_ts[NEXT] - _temp_ts[NEXT_HALF],
+        _temp_fock_prims[THIS], _temp_dm_prims[NEXT_HALF],
+        )
+
+    h1e_next_ao            = tdscf.get_hcore(t=_temp_ts[NEXT])
+    vhf_next_ao            = tdscf.mf.get_veff(dm=_temp_dm_aos[NEXT])
+    _temp_fock_aos[NEXT]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao, vhf=vhf_next_ao)
+    ene_next_tot           = tdscf.mf.energy_tot(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao, vhf=vhf_next_ao)
+
+    _temp_dm_prims[THIS]   = _temp_dm_prims[NEXT]
+    _temp_dm_aos[THIS]     = _temp_dm_aos[NEXT]
+    _temp_fock_prims[THIS] = tdscf.ao2orth_fock(_temp_fock_aos[NEXT])
+
+    _temp_dm_prims[LAST_HALF]   = _temp_dm_prims[NEXT_HALF]
+    _temp_dm_aos[LAST_HALF]     = _temp_dm_aos[NEXT_HALF]
 
     return ene_next_tot.real
 
@@ -334,6 +360,8 @@ class TDHF(lib.StreamObject):
         if (key is not None):
             if (key.lower() == 'euler'):
                 self.prop_func = euler_prop
+            elif (key.lower() == 'mmut'):
+                self.prop_func = mmut_prop
             else:
                 raise RuntimeError("unknown prop method!")
         else:
@@ -458,5 +486,3 @@ if __name__ == "__main__":
     rttd.dt      = 0.2
     rttd.kernel(dm_ao_init=dm)
     print(rttd.netot)
-
-    print_matrix("canonical dm", rttd.ao2orth_dm(dm) )
