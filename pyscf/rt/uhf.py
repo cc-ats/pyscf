@@ -236,6 +236,7 @@ if __name__ == "__main__":
     rttd.kernel(dm_ao_init=dm)
     print(rttd.netot)
 
-    print_matrix("canonical dm", rttd.ao2orth_dm(dm) )
+    print_matrix("canonical dm alpha", rttd.ao2orth_dm(dm)[0] )
+    print_matrix("canonical dm beta", rttd.ao2orth_dm(dm)[1] )
 
     
