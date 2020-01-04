@@ -167,7 +167,7 @@ class TDHF(rhf_tdscf.TDHF):
         self.dump_flags()
 
         if self.orth_method is None:
-            x = orth_ao(self.mf)
+            x = orth_ao(self.mf, method=ORTH_METHOD)
             x_t = numpy.einsum('aij->aji', x)
             x_inv = numpy.einsum('ali,ls->ais', x, self.mf.get_ovlp())
             x_t_inv = numpy.einsum('aij->aji', x_inv)

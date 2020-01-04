@@ -400,7 +400,7 @@ class TDHF(lib.StreamObject):
         self.dump_flags()
 
         if self.orth_method is None:
-            x = orth_ao(self.mf, method=self.orth_method)
+            x = orth_ao(self.mf, method=ORTH_METHOD)
             x_t = x.T
             x_inv = numpy.einsum('li,ls->is', x, self.mf.get_ovlp() )
             x_t_inv = x_inv.T
