@@ -226,7 +226,7 @@ if __name__ == "__main__":
     rttd.verbose = 5
     rttd.maxstep = 100
     rttd.dt      = 0.1
-    rttd.prop_method = "mmut"
+    rttd.prop_method = "amut3"
     rttd.kernel(dm_ao_init=dm)
     print(rttd.netot)
 
