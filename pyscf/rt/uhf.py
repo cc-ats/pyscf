@@ -237,8 +237,8 @@ if __name__ == "__main__":
 
     rttd = TDHF(mf)
     rttd.verbose = 5
-    rttd.maxstep = 10
-    rttd.dt      = 0.1
+    rttd.maxstep = 100
+    rttd.dt      = 0.2
     rttd.efield_vec = lambda t: [0.0, 0.0, 0.001*numpy.exp(-t**2/100)]
     rttd.kernel(dm_ao_init=dm)
     print(rttd.netot)

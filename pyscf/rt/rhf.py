@@ -440,7 +440,7 @@ if __name__ == "__main__":
     fock = mf.get_fock()
     rttd = TDHF(mf)
     rttd.verbose = 5
-    rttd.maxstep = 10
+    rttd.maxstep = 100
     rttd.dt      = 0.2
     rttd.kernel(dm_ao_init=dm)
     print(rttd.netot)
