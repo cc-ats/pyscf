@@ -220,7 +220,7 @@ if __name__ == "__main__":
     O    0.0000000    0.0000000    0.5754646
     O    0.0000000    0.0000000   -0.5754646
     '''
-    , basis='sto-3g', spin=2, symmetry=False).build()
+    , basis='cc-pvdz', spin=2, symmetry=False).build()
 
     mf = scf.UHF(mol)
     mf.verbose = 5
@@ -235,5 +235,7 @@ if __name__ == "__main__":
     rttd.dt      = 0.1
     rttd.kernel(dm_ao_init=dm)
     print(rttd.netot)
+
+    print_matrix("canonical dm", rttd.ao2orth_dm(dm) )
 
     

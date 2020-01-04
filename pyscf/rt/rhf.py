@@ -444,7 +444,7 @@ if __name__ == "__main__":
   H    0.0000000    0.0000000    0.3540000
   H    0.0000000    0.0000000   -0.3540000
     '''
-    , basis='sto-3g', symmetry=False).build()
+    , basis='cc-pvdz', symmetry=False).build()
 
     mf = scf.RHF(mol)
     mf.verbose = 5
@@ -458,3 +458,5 @@ if __name__ == "__main__":
     rttd.dt      = 0.2
     rttd.kernel(dm_ao_init=dm)
     print(rttd.netot)
+
+    print_matrix("canonical dm", rttd.ao2orth_dm(dm) )
