@@ -40,7 +40,7 @@ def build_absorption_spectrum(tdscf, ndipole=None, damp_expo=DAMP_EXPO):
     scale = numpy.abs(sigma.max())
     return mw, sigma/scale
 
-def print_matrix(title, array_, ncols=7, fmt='% 11.6e'):
+def print_matrix(title, array_, ncols=7, fmt='% 11.5e'):
     ''' printing a real rectangular matrix, or the real part of a complex matrix, ncols columns per batch '''
     array = array_.real
     write(title+'\n')
@@ -58,7 +58,7 @@ def print_matrix(title, array_, ncols=7, fmt='% 11.6e'):
             write('   %6d  ' % (j+1))
         write('\n')
         for i in range(0, m): 
-            write(' %2d -' % (i+1))
+            write(' %2d - ' % (i+1))
             for j in range(j1, j2):
                 write( fmt % array[j,i])
             write('\n')
