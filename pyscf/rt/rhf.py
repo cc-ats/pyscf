@@ -681,7 +681,7 @@ if __name__ == "__main__":
     fock = mf.get_fock()
     rttd = TDHF(mf)
     rttd.verbose = 5
-    rttd.maxstep = 200
+    rttd.maxstep = 5
     rttd.prop_method = "ep_pc"
     rttd.dt      = 0.2
     rttd.kernel(dm_ao_init=dm)
