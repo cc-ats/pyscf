@@ -63,7 +63,7 @@ def print_matrix(title, array_, ncols=7, fmt=' % 11.4e'):
                 write( fmt % array[j,i])
             write('\n')
 
-def print_cx_matrix(title, cx_array_, ncols=7, fmt=' % 11.6e'):
+def print_cx_matrix(title, cx_array_, ncols=7, fmt=' % 11.4e'):
     ''' printing a complex rectangular matrix, ncols columns per batch '''
     print_matrix(title+" Real Part ", cx_array_.real, ncols=ncols, fmt=fmt)
     print_matrix(title+" Imag Part ", cx_array_.imag, ncols=ncols, fmt=fmt)
