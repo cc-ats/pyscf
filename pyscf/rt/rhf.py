@@ -340,7 +340,7 @@ def ep_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
 
         _vhf_ao_next                = tdscf.mf.get_veff(dm=_dm_ao_next_p)
         _temp_fock_aos[NEXT]        = tdscf.mf.get_fock(dm=_dm_ao_next_p, h1e=h1e_next_ao, vhf=_vhf_ao_next)
-        print("ene = ",    tdscf.mf.get_fock(dm=_dm_ao_next_p, h1e=h1e_next_ao, vhf=_vhf_ao_next))
+        print("ene = ",    tdscf.mf.energy_tot(dm=_dm_ao_next_p, h1e=h1e_next_ao, vhf=_vhf_ao_next))
         _temp_fock_prims[NEXT]      = tdscf.ao2orth_fock(_temp_fock_aos[NEXT])
         _temp_fock_prim_next_half   = (_temp_fock_prims[NEXT]+ _temp_fock_prims[THIS])/2
 
