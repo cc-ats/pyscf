@@ -344,7 +344,7 @@ def ep_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
         _dm_prim_next_c, _dm_ao_next_c  = tdscf.prop_step(
             _temp_ts[NEXT] - _temp_ts[THIS], _temp_fock_prim_next_half, _temp_dm_prims[THIS]
         )
-        
+
         err = errm(_dm_prim_next_c, _dm_prim_next_p)
         logger.debug(tdscf, "inner_iter = %d, err = %e", inner_iter, err)
         step_converged = (err<tol)
@@ -677,6 +677,7 @@ if __name__ == "__main__":
     dm = mf.make_rdm1()
     fock = mf.get_fock()
     rttd = TDHF(mf)
+    
     rttd.verbose = 5
     rttd.maxstep = 5
     rttd.prop_method = "lflp_pc"

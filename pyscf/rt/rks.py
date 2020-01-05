@@ -47,10 +47,10 @@ if __name__ == "__main__":
     dm = mf.make_rdm1()
     fock = mf.get_fock()
 
-    rttd = TDSCF(mf)
+    rttd = TDDFT(mf)
     rttd.verbose = 5
-    rttd.maxstep = 10
-    rttd.dt      = 0.1
-    rttd.efield_vec = lambda t: [0.0, 0.0, 0.001*numpy.exp(-t**2/100)]
+    rttd.maxstep = 5
+    rttd.prop_method = "lflp_pc"
+    rttd.dt      = 0.2
     rttd.kernel(dm_ao_init=dm)
     print(rttd.netot)
