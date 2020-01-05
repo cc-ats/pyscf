@@ -311,11 +311,9 @@ def lflp_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
         _temp_fock_prim_next_half_c = (_temp_fock_prims[NEXT]+ _temp_fock_prims[THIS])/2
 
         err = errm(_fock_prim_next_half_p, _temp_fock_prim_next_half_c)
-        logger.debug(tdscf, "inner_iter = %d, err = %f", inner_iter, err)
+        logger.debug(tdscf, "inner_iter = %d, err = %e", inner_iter, err)
         step_converged = (err<tol)
         _fock_prim_next_half_p = _temp_fock_prim_next_half_c
-
-
     _temp_dm_prims[THIS]     = _temp_dm_prims[NEXT]
     _temp_dm_aos[THIS]       = _temp_dm_aos[NEXT]
     _temp_fock_aos[THIS]     = _temp_fock_aos[NEXT]
@@ -346,11 +344,9 @@ def ep_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
         _dm_prim_next_c, _dm_ao_next_c  = tdscf.prop_step(
             _temp_ts[NEXT] - _temp_ts[THIS], _temp_fock_prim_next_half, _temp_dm_prims[THIS]
         )
-        if tdscf.verbose >= logger.DEBUG1:
-            print_matrix("_dm_prim_next_p", _dm_prim_next_p.real)
-            print_matrix("_dm_prim_next_c", _dm_prim_next_c.real)
+        
         err = errm(_dm_prim_next_c, _dm_prim_next_p)
-        logger.debug(tdscf, "inner_iter = %d, err = %f", inner_iter, err)
+        logger.debug(tdscf, "inner_iter = %d, err = %e", inner_iter, err)
         step_converged = (err<tol)
         _dm_prim_next_p = _dm_prim_next_c
 
