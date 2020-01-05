@@ -55,10 +55,10 @@ def print_matrix(title, array_, ncols=7, fmt=' % 11.6e'):
         j2 = ncols*(k+1)
         if k == nbatches-1: j2 = n 
         for j in range(j1, j2):
-            write('   %7d  ' % (j+1))
+            write('   %6d  ' % (j+1))
         write('\n')
         for i in range(0, m): 
-            write(' %3d -' % (i+1))
+            write(' %2d -' % (i+1))
             for j in range(j1, j2):
                 write( fmt % array[j,i])
             write('\n')
@@ -81,3 +81,17 @@ def expm(m, do_bch=False):
     else:
         raise NotImplementedError("BCH not implemented here")
 
+if __name__ == "__main__":
+    from pyscf import gto, scf
+    mol =   gto.Mole( atom='''
+    O    0.0000000    0.0000000    0.5754646
+    O    0.0000000    0.0000000   -0.5754646
+    '''
+    , basis='cc-pvdz', spin=2, symmetry=False).build()
+
+    mf = scf.UHF(mol)
+    mf.verbose = 5
+    mf.kernel()
+
+    dm = mf.make_rdm1()
+    print_matrix("dm = ", dm)
