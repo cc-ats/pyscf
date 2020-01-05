@@ -55,7 +55,7 @@ def print_matrix(title, array_, ncols=7, fmt=' % 11.4e'):
         j2 = ncols*(k+1)
         if k == nbatches-1: j2 = n 
         for j in range(j1, j2):
-            write('   %6d  ' % (j+1))
+            write('   %8d  ' % (j+1))
         write('\n')
         for i in range(0, m): 
             write(' %2d - ' % (i+1))
