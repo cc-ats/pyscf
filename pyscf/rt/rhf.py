@@ -557,6 +557,10 @@ class TDHF(lib.StreamObject):
                 self.prop_func = amut2_prop
             elif (key.lower() == 'amut3'):
                 self.prop_func = amut3_prop
+            elif (key.lower() == 'ep_pc'):
+                self.prop_func = ep_pc_prop
+            elif (key.lower() == 'lflp_pc'):
+                self.prop_func = lflp_pc_prop
             else:
                 raise RuntimeError("unknown prop method!")
         else:
