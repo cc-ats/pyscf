@@ -353,9 +353,8 @@ def ep_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
         step_converged = (err<tol)
         _dm_prim_next_p = _dm_prim_next_c
 
-
-    _temp_dm_prims[THIS]     = _temp_dm_prims[NEXT]
-    _temp_dm_aos[THIS]       = _temp_dm_aos[NEXT]
+    _temp_dm_prims[THIS]     = _dm_prim_next_c
+    _temp_dm_aos[THIS]       = _dm_ao_next_c
     _temp_fock_aos[THIS]     = _temp_fock_aos[NEXT]
     _temp_fock_prims[THIS]   = _temp_fock_prims[NEXT]
     
