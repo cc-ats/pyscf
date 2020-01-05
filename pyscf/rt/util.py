@@ -71,10 +71,8 @@ def print_cx_matrix(title, cx_array_, ncols=7, fmt=' % 11.6e'):
 def errm(m1,m2):
     ''' check consistency '''
     n   = numpy.linalg.norm(m1-m2)
-    r   = m1.shape[0]
-    v   = numpy.linalg.eigvals(m1)
-    vm  = v.max()
-    e   = n/r/vm
+    r   = m1.size
+    e   = n/r
     return numpy.abs(e)
 
 def expm(m, do_bch=False):

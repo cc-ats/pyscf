@@ -20,6 +20,8 @@ REF_BASIS         = getattr(__config__, 'lo_orth_pre_orth_ao_method', 'ANO'     
 MUTE_CHKFILE      = getattr(__config__, 'rt_tdscf_mute_chkfile',      False      )
 PRINT_MAT_NCOL    = getattr(__config__, 'rt_tdscf_print_mat_ncol',    7          )
 ORTH_METHOD       = getattr(__config__, 'rt_tdscf_orth_ao_method',    'canonical')
+PC_TOL            = getattr(__config__, 'rt_tdscf_pc_tol',                   1e-6)
+PC_MAX_ITER       = getattr(__config__, 'rt_tdscf_pc_max_iter',                20)
 
 # re-define Orthogonalize AOs
 def orth_ao(mf_or_mol, method=ORTH_METHOD, pre_orth_ao=None, scf_method=None,
@@ -288,6 +290,75 @@ def amut3_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
     _temp_fock_prims[THIS] = tdscf.ao2orth_fock(_temp_fock_aos[NEXT])
     
     return ene_next_tot.real
+
+def lflp_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
+                 _temp_fock_prims, _temp_fock_aos, tol=PC_TOL, max_iter=PC_MAX_ITER):
+
+    step_converged      = False
+    inner_iter          = 0
+    h1e_next_ao         = tdscf.get_hcore(t=_temp_ts[NEXT])
+
+    _fock_prim_next_half_p = 2*_temp_fock_prims[THIS] - _temp_fock_prims[LAST_HALF]
+    while (not step_converged) and inner_iter <= max_iter:
+        inner_iter += 1
+        _temp_dm_prims[NEXT], _temp_dm_aos[NEXT]  = tdscf.prop_step(
+            _temp_ts[NEXT] - _temp_ts[THIS], _fock_prim_next_half_p, _temp_dm_prims[THIS]
+        )
+
+        _vhf_ao_next                = tdscf.mf.get_veff(dm=_temp_dm_aos[NEXT])
+        _temp_fock_aos[NEXT]        = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao, vhf=_vhf_ao_next)
+        _temp_fock_prims[NEXT]      = tdscf.ao2orth_fock(_temp_fock_aos[NEXT])
+        _temp_fock_prim_next_half_c = (_temp_fock_prims[NEXT]+ _temp_fock_prims[THIS])/2
+
+        err = errm(_fock_prim_next_half_p, _temp_fock_prim_next_half_c)
+        logger.debug(tdscf, "inner_iter = %d, err = %f", inner_iter, err)
+        step_converged = (err<tol)
+        _fock_prim_next_half_p = _temp_fock_prim_next_half_c
+
+
+    _temp_dm_prims[THIS]     = _temp_dm_prims[NEXT]
+    _temp_dm_aos[THIS]       = _temp_dm_aos[NEXT]
+    _temp_fock_aos[THIS]     = _temp_fock_aos[NEXT]
+    _temp_fock_prims[THIS]   = _temp_fock_prims[NEXT]
+
+    _temp_fock_prims[LAST_HALF] = _fock_prim_next_half_p
+    
+    return tdscf.mf.energy_tot(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao, vhf=_vhf_ao_next).real
+
+def ep_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
+                 _temp_fock_prims, _temp_fock_aos, tol=PC_TOL, max_iter=PC_MAX_ITER):
+
+    step_converged      = False
+    inner_iter          = 0
+    h1e_next_ao         = tdscf.get_hcore(t=_temp_ts[NEXT])
+
+    _dm_prim_next_p, _dm_ao_next_p  = tdscf.prop_step(
+            _temp_ts[NEXT] - _temp_ts[THIS], _temp_fock_prims[THIS], _temp_dm_prims[THIS]
+        )
+    while (not step_converged) and inner_iter <= max_iter:
+        inner_iter += 1
+
+        _vhf_ao_next                = tdscf.mf.get_veff(dm=_dm_prim_next_p)
+        _temp_fock_aos[NEXT]        = tdscf.mf.get_fock(dm=_dm_prim_next_p, h1e=h1e_next_ao, vhf=_vhf_ao_next)
+        _temp_fock_prims[NEXT]      = tdscf.ao2orth_fock(_temp_fock_aos[NEXT])
+        _temp_fock_prim_next_half   = (_temp_fock_prims[NEXT]+ _temp_fock_prims[THIS])/2
+
+        _dm_prim_next_c, _dm_ao_next_c  = tdscf.prop_step(
+            _temp_ts[NEXT] - _temp_ts[THIS], _temp_fock_prim_next_half, _temp_dm_prims[THIS]
+        )
+
+        err = errm(_dm_prim_next_c, _dm_prim_next_p)
+        logger.debug(tdscf, "inner_iter = %d, err = %f", inner_iter, err)
+        step_converged = (err<tol)
+        _dm_prim_next_p = _dm_prim_next_c
+
+
+    _temp_dm_prims[THIS]     = _temp_dm_prims[NEXT]
+    _temp_dm_aos[THIS]       = _temp_dm_aos[NEXT]
+    _temp_fock_aos[THIS]     = _temp_fock_aos[NEXT]
+    _temp_fock_prims[THIS]   = _temp_fock_prims[NEXT]
+    
+    return tdscf.mf.energy_tot(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao, vhf=_vhf_ao_next).real
 
 def kernel(tdscf,              dm_ao_init= None,
            ndm_prim  = None, nfock_prim  = None, #output
