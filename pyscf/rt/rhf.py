@@ -340,15 +340,15 @@ def ep_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
 
         _vhf_ao_next                = tdscf.mf.get_veff(dm=_dm_ao_next_p)
         _temp_fock_aos[NEXT]        = tdscf.mf.get_fock(dm=_dm_ao_next_p, h1e=h1e_next_ao, vhf=_vhf_ao_next)
-        print("ene = ",    tdscf.mf.energy_tot(dm=_dm_ao_next_p, h1e=h1e_next_ao, vhf=_vhf_ao_next))
         _temp_fock_prims[NEXT]      = tdscf.ao2orth_fock(_temp_fock_aos[NEXT])
         _temp_fock_prim_next_half   = (_temp_fock_prims[NEXT]+ _temp_fock_prims[THIS])/2
 
         _dm_prim_next_c, _dm_ao_next_c  = tdscf.prop_step(
             _temp_ts[NEXT] - _temp_ts[THIS], _temp_fock_prim_next_half, _temp_dm_prims[THIS]
         )
-        print_matrix("_dm_prim_next_p", _dm_prim_next_p.real)
-        print_matrix("_dm_prim_next_c", _dm_prim_next_c.real)
+        if tdscf.verbose >= logger.DEBUG1:
+            print_matrix("_dm_prim_next_p", _dm_prim_next_p.real)
+            print_matrix("_dm_prim_next_c", _dm_prim_next_c.real)
         err = errm(_dm_prim_next_c, _dm_prim_next_p)
         logger.debug(tdscf, "inner_iter = %d, err = %f", inner_iter, err)
         step_converged = (err<tol)
@@ -359,7 +359,7 @@ def ep_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
     _temp_fock_aos[THIS]     = _temp_fock_aos[NEXT]
     _temp_fock_prims[THIS]   = _temp_fock_prims[NEXT]
     
-    return tdscf.mf.energy_tot(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao, vhf=_vhf_ao_next).real
+    return tdscf.mf.energy_tot(dm=_dm_ao_next_c, h1e=h1e_next_ao, vhf=_vhf_ao_next).real
 
 def kernel(tdscf,              dm_ao_init= None,
            ndm_prim  = None, nfock_prim  = None, #output
@@ -636,7 +636,7 @@ class TDHF(lib.StreamObject):
                 dm_ao_init = self.mf.make_rdm1()
         logger.info(self, "Propagation begins here")
         if self.verbose >= logger.DEBUG1:
-                print_matrix("The initial density matrix is, ", dm_ao_init, ncols=PRINT_MAT_NCOL)
+            print_matrix("The initial density matrix is, ", dm_ao_init, ncols=PRINT_MAT_NCOL)
 
         logger.info(self, 'before building matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
         self.nstep      = numpy.linspace(0, self.maxstep, self.maxstep+1, dtype=int) # output
