@@ -173,13 +173,12 @@ def calc_rhoxc(mf, coords, dm, ao_value=None):
         return 0.5*calc_rhok(mf, coords, dm)
 
 
-def calc_rho_ene(mf, coords, dm, ao_value=None):
+def calc_rho_ene(mf, coords, dms, ao_value=None):
     mol = mf.mol
     if ao_value is None:
         ao_value = numint.eval_ao(mol, coords, deriv=2)
     if len(ao_value.shape) == 3 and ao_value.shape[0]==10:
-        rho = numint.eval_rho(mol, ao_value, dm, xctype='mGGA')
-        rhot = rho[5]
+        rhot = calc_rho_t(mf, coords, dms, ao_value=ao_value)
         rhoxc = calc_rhoxc(mf, coords, dm, ao_value=ao_value)
         rhov, rhoj = calc_rhov_rhoj(mf, coords, dm)
         return (rhoxc + rhot - (rhov + rhoj)*rho[0])
