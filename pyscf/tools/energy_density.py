@@ -72,7 +72,7 @@ def calc_rhov_rhoj(mf, coords, dms, ao_value=None):
         fakemol = gto.fakemol_for_charges(coords[p0:p1])
         ints = df.incore.aux_e2(mol, fakemol)
         rhoj[p0:p1] = lib.einsum('ijp,ij->p', ints, dm)
-    return rhov, - 0.5*rhoj
+    return -rhov, 0.5*rhoj
 
 def calc_rhok(mf, coords, dms, ao_value=None):
     if (dms.ndim == 3 and dms.shape[0] == 2):
@@ -193,7 +193,7 @@ def calc_rhoxc(mf, coords, dms, ao_value=None):
                 else:
                     return rhoxc*rho[0] + 0.5*hyb*rhok
         else:
-            return 0.5*calc_rhok(mf, coords, dms)
+            return calc_rhok(mf, coords, dms)
 
 
 def calc_rho_ene(mf, coords, dms, ao_value=None):
@@ -249,13 +249,13 @@ if __name__ == '__main__':
     rhov, rhoj = calc_rhov_rhoj(mf, coords, dm, ao_value=ao_value)
     print("E v = %f, E ref = %f"
     %(
-        lib.einsum("i,i,i->", weights, -rhov, rho),
+        lib.einsum("i,i,i->", weights, rhov, rho),
         lib.einsum('ij,ji->', mol.intor('cint1e_nuc_sph'), dm[0]+dm[1])
     ))
 
     print("E j = %f, E ref = %f"
     %(
-        lib.einsum("i,i,i->", weights, -rhoj, rho),
+        lib.einsum("i,i,i->", weights, rhoj, rho),
         +lib.einsum('ij,ji->', mf.get_j(mol=mol, dm=(dm[0]+dm[1])), dm[0]+dm[1])/2
     ))
 
