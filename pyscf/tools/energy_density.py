@@ -273,7 +273,6 @@ if __name__ == '__main__':
     mf.kernel()
     dm = mf.make_rdm1()
 
-    print()
     print("UHF/UKS method")
     rho = calc_rho(mf, coords, dm, ao_value=ao_value)
     print("N elec = %f, ref N elec = 10"
