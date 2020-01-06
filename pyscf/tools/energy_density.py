@@ -256,7 +256,7 @@ if __name__ == '__main__':
     print("E j = %f, E ref = %f"
     %(
         lib.einsum("i,i,i->", weights, -rhoj, rho),
-        +lib.einsum('kij,kji->', mf.get_j(mol=mol, dm=(dm[0]+dm[1])), dm[0]+dm[1])/2
+        +lib.einsum('ij,ji->', mf.get_j(mol=mol, dm=(dm[0]+dm[1])), dm[0]+dm[1])/2
     ))
 
     rhok = calc_rhok(mf, coords, dm, ao_value=ao_value)
