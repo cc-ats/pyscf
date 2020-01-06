@@ -15,10 +15,8 @@ def calc_rho(mf, coords, dms, ao_value=None):
     ni  = numint
 
     if (dms.ndim == 3 and dms.shape[0] == 2):
-        print("this is a UKS/UHF instance")
         dm = dms[0] + dms[1]
     else:
-        print("this is a RKS/RHF instance")
         dm = dms
 
     if ao_value is None:
@@ -35,10 +33,8 @@ def calc_rho_t(mf, coords, dms, ao_value=None):
     ni  = numint
 
     if (dms.ndim == 3 and dms.shape[0] == 2):
-        print("this is a UKS/UHF instance")
         dm = dms[0] + dms[1]
     else:
-        print("this is a RKS/RHF instance")
         dm = dms
 
     if ao_value is None:
@@ -54,10 +50,8 @@ def calc_rhov_rhoj(mf, coords, dms, ao_value=None):
     mol = mf.mol
 
     if (dms.ndim == 3 and dms.shape[0] == 2):
-        print("this is a UKS/UHF instance")
         dm = dms[0] + dms[1]
     else:
-        print("this is a RKS/RHF instance")
         dm = dms
 
     rhov = 0
@@ -76,7 +70,6 @@ def calc_rhov_rhoj(mf, coords, dms, ao_value=None):
 
 def calc_rhok(mf, coords, dms, ao_value=None):
     if (dms.ndim == 3 and dms.shape[0] == 2):
-        print("this is a UKS/UHF instance")
         dma = dms[0]
         dmb = dms[1]
         nbas = mf.mol.nbas
@@ -94,7 +87,6 @@ def calc_rhok(mf, coords, dms, ao_value=None):
             rhokb[ip0:ip1] = -numpy.einsum('mp,up,mup->p', espb, espb, ints)
         return (rhoka + rhokb)/2
     else:
-        print("this is a RKS/RHF instance")
         dm = dms/2
         nbas = mf.mol.nbas
         ngrids = coords.shape[0]
@@ -111,7 +103,6 @@ def calc_rhok(mf, coords, dms, ao_value=None):
 def calc_rhok_lr(mf, coords, dms):
     ks = mf
     if (dms.ndim == 3 and dms.shape[0] == 2):
-        print("this is a UKS/UHF instance")
         dma = dms[0]
         dmb = dms[1]
         ni = ks._numint
@@ -132,7 +123,6 @@ def calc_rhok_lr(mf, coords, dms):
                 rhok_lrb[ip0:ip1] = -numpy.einsum('mp,up,mup->p', espb, espb, ints)
         return (rhok_lra + rhok_lrb)/2
     else:
-        print("this is a RKS/RHF instance")
         dm = dms/2
         ni = ks._numint
         omega, alpha, hyb = ni.rsh_and_hybrid_coeff(ks.xc, spin=ks.mol.spin)
