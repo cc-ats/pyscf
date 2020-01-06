@@ -8,8 +8,6 @@ from pyscf import dft
 from pyscf.dft import numint, xcfun
 from pyscf import __config__
 
-#TODO: support UKS and UHF
-
 def calc_rho(mf, coords, dms, ao_value=None):
     mol = mf.mol
     ni  = numint
@@ -18,6 +16,24 @@ def calc_rho(mf, coords, dms, ao_value=None):
         dm = dms[0] + dms[1]
     else:
         dm = dms
+
+    if ao_value is None:
+        ao_value = ni.eval_ao(mol, coords, deriv=0)
+        return ni.eval_rho(mol, ao_value, dm, xctype='LDA')
+    else:
+        if len(ao_value.shape) == 2:
+            return ni.eval_rho(mol, ao_value, dm, xctype='LDA')
+        else:
+            return ni.eval_rho(mol, ao_value[0], dm, xctype='LDA')
+
+def calc_spin_rho(mf, coords, dms, ao_value=None):
+    mol = mf.mol
+    ni  = numint
+
+    if (dms.ndim == 3 and dms.shape[0] == 2):
+        dm = dms[0] - dms[1]
+    else:
+        dm = dms - dms
 
     if ao_value is None:
         ao_value = ni.eval_ao(mol, coords, deriv=0)
@@ -100,7 +116,7 @@ def calc_rhok(mf, coords, dms, ao_value=None):
             rhok[ip0:ip1] = -numpy.einsum('mp,up,mup->p', esp, esp, ints)
         return rhok
 
-def calc_rhok_lr(mf, coords, dms):
+def calc_rhok_lr(mf, coords, dms, ao_value=None):
     ks = mf
     if (dms.ndim == 3 and dms.shape[0] == 2):
         dma = dms[0]
