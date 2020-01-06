@@ -152,7 +152,6 @@ def calc_rhok_lr(mf, coords, dms):
 
 def calc_rhoxc(mf, coords, dm, ao_value=None):
     mol = mf.mol
-    ni = ks._numint
     if ao_value is None:
         ao_value = numint.eval_ao(mol, coords, deriv=2)
     rho = ni.eval_rho(mol, ao_value, dm, xctype='mGGA')
