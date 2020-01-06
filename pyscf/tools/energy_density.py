@@ -221,12 +221,14 @@ if __name__ == '__main__':
     mf.kernel()
     dm = mf.make_rdm1()
 
+    print()
     print("RHF/RKS method")
     rho = calc_rho(mf, coords, dm, ao_value=ao_value)
     print("N elec = %f, ref N elec = 10"
     %(lib.einsum("i,i->", weights, rho))
     )
 
+    print()
     print("*****RHF*****")
     rhoe = calc_rho_ene(mf, coords, dm, ao_value=ao_value)
     print("E elec = %f, ref E elec = %f"
@@ -271,12 +273,13 @@ if __name__ == '__main__':
     mf.kernel()
     dm = mf.make_rdm1()
 
+    print()
     print("UHF/UKS method")
     rho = calc_rho(mf, coords, dm, ao_value=ao_value)
     print("N elec = %f, ref N elec = 10"
     %(lib.einsum("i,i->", weights, rho))
     )
-
+    print()
     print("*****UHF*****")
     rhoe = calc_rho_ene(mf, coords, dm, ao_value=ao_value)
     print("E elec = %f, ref E elec = %f"
