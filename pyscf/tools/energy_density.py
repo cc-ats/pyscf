@@ -271,7 +271,7 @@ if __name__ == '__main__':
     (rhov + rhoj)*rho[0]
     ), mf.energy_elec()[0]))
 
-    print("(rhov + rhoj)*rho[0].shape" , (rhov + rhoj)*rho[0].shape)
+    print("((rhov + rhoj)*rho[0]).shape" , ((rhov + rhoj)*rho[0]).shape)
     # mf = scf.UKS(mol)
     # mf.xc = 'BLYP'
     # mf.verbose = 0
