@@ -223,7 +223,7 @@ if __name__ == '__main__':
     coords  = grids.coords
     weights = grids.weights
 
-    mf = scf.RHF(mol)
+    mf = scf.UHF(mol)
     mf.verbose = 0
     mf.kernel()
     dm = mf.make_rdm1()
@@ -243,20 +243,20 @@ if __name__ == '__main__':
     print("E t = %f, E ref = %f"
     %(
         lib.einsum("i,i->", weights, rhot),
-        lib.einsum('ij,ji->', mol.intor('cint1e_kin_sph'), dm)
+        lib.einsum('ij,ji->', mol.intor('cint1e_kin_sph'), dm[0]+dm[1])
     ))
 
     rhov, rhoj = calc_rhov_rhoj(mf, coords, dm, ao_value=ao_value)
     print("E v = %f, E ref = %f"
     %(
         lib.einsum("i,i,i->", weights, -rhov, rho),
-        lib.einsum('ij,ji->', mol.intor('cint1e_nuc_sph'), dm)
+        lib.einsum('ij,ji->', mol.intor('cint1e_nuc_sph'), dm[0]+dm[1])
     ))
 
     print("E j = %f, E ref = %f"
     %(
         lib.einsum("i,i,i->", weights, -rhoj, rho),
-        lib.einsum('ij,ji->', 0.5*mf.get_j(mol=mol, dm=dm), dm)
+        lib.einsum('kij,kji->', 0.5*mf.get_j(mol=mol, dm=dm), dm)
     ))
 
     # mf = scf.UKS(mol)
