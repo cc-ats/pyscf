@@ -253,12 +253,11 @@ if __name__ == '__main__':
         lib.einsum('ij,ji->', mol.intor('cint1e_nuc_sph'), dm[0]+dm[1])
     ))
 
-    print("J shape is ", mf.get_j(mol=mol, dm=dm).shape)
-    # print("E j = %f, E ref = %f"
-    # %(
-    #     lib.einsum("i,i->", weights, rhot),
-    #     lib.einsum('ij,ji->', mf.get_j(mol=mol, dm=dm), dm[0]+dm[1])
-    # ))
+    print("E j = %f, E ref = %f"
+    %(
+        lib.einsum("i,i->", weights, rhot),
+        lib.einsum('kij,kji->', mf.get_j(mol=mol, dm=dm), dm)
+    ))
 
     # mf = scf.UKS(mol)
     # mf.xc = 'BLYP'
