@@ -92,7 +92,7 @@ def calc_rhok(mf, coords, dms, ao_value=None):
             espb = lib.einsum('mp,mu->up', esp_ao, dmb)
             rhoka[ip0:ip1] = -numpy.einsum('mp,up,mup->p', espa, espa, ints)
             rhokb[ip0:ip1] = -numpy.einsum('mp,up,mup->p', espb, espb, ints)
-            return rhoka + rhokb
+        return rhoka + rhokb
     else:
         print("this is a RKS/RHF instance")
         dm = dms/2
