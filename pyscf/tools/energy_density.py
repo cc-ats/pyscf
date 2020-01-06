@@ -170,12 +170,11 @@ def calc_rhoxc(mf, coords, dms, ao_value=None):
                 rhok = calc_rhok(mf, coords, dms)
                 if abs(omega) > 1e-10:
                     rhok_lr = calc_rhok_lr(mf, coords, dms)
-                    return rhoxc*rho[0] + 0.5*hyb*rhok + 0.5*(alpha-hyb)*rhok_lr
+                    return rhoxc*rho[0] + hyb*rhok + (alpha-hyb)*rhok_lr
                 else:
-                    return rhoxc*rho[0] + 0.5*hyb*rhok
+                    return rhoxc*rho[0] + hyb*rhok
         else:
-            print("haha")
-            return 0.5*calc_rhok(mf, coords, dms)
+            return calc_rhok(mf, coords, dms)
     else:
         dm = dms
         rho = numint.eval_rho(mol, ao_value, dm, xctype='mGGA')
@@ -194,7 +193,6 @@ def calc_rhoxc(mf, coords, dms, ao_value=None):
                 else:
                     return rhoxc*rho[0] + 0.5*hyb*rhok
         else:
-            print("haha")
             return calc_rhok(mf, coords, dms)
 
 
@@ -206,7 +204,7 @@ def calc_rho_ene(mf, coords, dms, ao_value=None):
         rhot = calc_rho_t(mf, coords, dms, ao_value=ao_value)
         rhoxc = calc_rhoxc(mf, coords, dm, ao_value=ao_value)
         rhov, rhoj = calc_rhov_rhoj(mf, coords, dm)
-        return (rhoxc + rhot - (rhov + rhoj)*rho[0])
+        return (rhoxc + rhot + (rhov + rhoj)*rho[0])
     else:
         raise RuntimeError("Wrong AO value")
 
