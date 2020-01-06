@@ -174,6 +174,7 @@ def calc_rhoxc(mf, coords, dms, ao_value=None):
                 else:
                     return rhoxc*rho[0] + 0.5*hyb*rhok
         else:
+            print("haha")
             return 0.5*calc_rhok(mf, coords, dms)
     else:
         dm = dms
