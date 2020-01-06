@@ -92,7 +92,7 @@ def calc_rhok(mf, coords, dms, ao_value=None):
             espb = lib.einsum('mp,mu->up', esp_ao, dmb)
             rhoka[ip0:ip1] = -numpy.einsum('mp,up,mup->p', espa, espa, ints)
             rhokb[ip0:ip1] = -numpy.einsum('mp,up,mup->p', espb, espb, ints)
-        return rhoka + rhokb
+        return (rhoka + rhokb)/2
     else:
         print("this is a RKS/RHF instance")
         dm = dms/2
@@ -106,7 +106,7 @@ def calc_rhok(mf, coords, dms, ao_value=None):
             esp_ao = gto.intor_cross('int1e_ovlp', mf.mol, fakemol)
             esp = lib.einsum('mp,mu->up', esp_ao, dm)
             rhok[ip0:ip1] = -numpy.einsum('mp,up,mup->p', esp, esp, ints)
-        return 2*rhok
+        return rhok
 
 def calc_rhok_lr(mf, coords, dms):
     ks = mf
@@ -130,7 +130,7 @@ def calc_rhok_lr(mf, coords, dms):
                 espb = lib.einsum('mp,mu->up', esp_ao, dmb)
                 rhok_lra[ip0:ip1] = -numpy.einsum('mp,up,mup->p', espa, espa, ints)
                 rhok_lrb[ip0:ip1] = -numpy.einsum('mp,up,mup->p', espb, espb, ints)
-        return rhok_lra + rhok_lrb
+        return (rhok_lra + rhok_lrb)/2
     else:
         print("this is a RKS/RHF instance")
         dm = dms/2
@@ -147,7 +147,7 @@ def calc_rhok_lr(mf, coords, dms):
                 esp_ao = gto.intor_cross('int1e_ovlp', ks.mol, fakemol)
                 esp = lib.einsum('mp,mu->up', esp_ao, dm)
                 rhok_lr[ip0:ip1] = -numpy.einsum('mp,up,mup->p', esp, esp, ints)
-        return 2*rhok_lr
+        return rhok_lr
 
 
 def calc_rhoxc(mf, coords, dms, ao_value=None):
