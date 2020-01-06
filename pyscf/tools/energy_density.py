@@ -201,10 +201,11 @@ def calc_rho_ene(mf, coords, dms, ao_value=None):
     if ao_value is None:
         ao_value = numint.eval_ao(mol, coords, deriv=2)
     if len(ao_value.shape) == 3 and ao_value.shape[0]==10:
+        rho  = calc_rho(mf, coords, dms, ao_value=ao_value)
         rhot = calc_rho_t(mf, coords, dms, ao_value=ao_value)
         rhoxc = calc_rhoxc(mf, coords, dm, ao_value=ao_value)
         rhov, rhoj = calc_rhov_rhoj(mf, coords, dm)
-        return (rhoxc + rhot + (rhov + rhoj)*rho[0])
+        return (rhoxc + rhot + (rhov + rhoj)*rho)
     else:
         raise RuntimeError("Wrong AO value")
 
@@ -271,9 +272,6 @@ if __name__ == '__main__':
     (rhov + rhoj)*rho + rhot + rhok
     ), mf.energy_elec()[0]))
 
-    print("(rhov ).shape"   , (rhov ).shape)
-    print("(rhoj ).shape"   , (rhoj ).shape)
-    print("(rho[0] ).shape" , (rho ).shape)
     # mf = scf.UKS(mol)
     # mf.xc = 'BLYP'
     # mf.verbose = 0
