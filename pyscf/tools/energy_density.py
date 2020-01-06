@@ -268,7 +268,7 @@ if __name__ == '__main__':
 
     print("E elec = %f, ref E elec = %f"
     %(lib.einsum("i,i->", weights, 
-    rhok + (rhov + rhoj)*rho[0] +rhot
+    (rhov + rhoj)*rho[0]
     ), mf.energy_elec()[0]))
     # mf = scf.UKS(mol)
     # mf.xc = 'BLYP'
