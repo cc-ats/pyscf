@@ -159,6 +159,7 @@ def calc_rhoxc(mf, coords, dms, ao_value=None):
         dmb = dms[1]
         rhoa = numint.eval_rho(mol, ao_value, dma, xctype='mGGA')
         rhob = numint.eval_rho(mol, ao_value, dmb, xctype='mGGA')
+        rho  = rhoa + rhob
         if hasattr(mf, 'xc'):
             ks = mf
             ni = ks._numint
@@ -189,9 +190,9 @@ def calc_rhoxc(mf, coords, dms, ao_value=None):
                 rhok = calc_rhok(mf, coords, dms)
                 if abs(omega) > 1e-10:
                     rhok_lr = calc_rhok_lr(mf, coords, dms)
-                    return rhoxc*rho[0] + 0.5*hyb*rhok + 0.5*(alpha-hyb)*rhok_lr
+                    return rhoxc*rho[0] + hyb*rhok + (alpha-hyb)*rhok_lr
                 else:
-                    return rhoxc*rho[0] + 0.5*hyb*rhok
+                    return rhoxc*rho[0] + hyb*rhok
         else:
             return calc_rhok(mf, coords, dms)
 
