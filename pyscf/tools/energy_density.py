@@ -265,6 +265,11 @@ if __name__ == '__main__':
         lib.einsum("i,i->", weights, rhok),
         -lib.einsum('kij,kji->', mf.get_k(mol=mol, dm=dm), dm)/2
     ))
+
+    print("E elec = %f, ref E elec = %f"
+    %(lib.einsum("i,i->", weights, 
+    rhok + (rhov + rhoj)*rho[0] +rhot
+    ), mf.energy_elec()[0]))
     # mf = scf.UKS(mol)
     # mf.xc = 'BLYP'
     # mf.verbose = 0
