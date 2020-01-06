@@ -223,7 +223,7 @@ if __name__ == '__main__':
     coords  = grids.coords
     weights = grids.weights
 
-    mf = scf.UHF(mol)
+    mf = scf.RHF(mol)
     mf.verbose = 0
     mf.kernel()
     dm = mf.make_rdm1()
