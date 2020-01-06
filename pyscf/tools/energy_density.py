@@ -263,7 +263,7 @@ if __name__ == '__main__':
     print("E k = %f, E ref = %f"
     %(
         lib.einsum("i,i->", weights, rhok),
-        -lib.einsum('kij,kji->', mf.get_k(mol=mol, dm=dm), dm)/2
+        -lib.einsum('kij,kji->', mf.get_k(mol=mol, dm=dm), dm)/4
     ))
     # mf = scf.UKS(mol)
     # mf.xc = 'BLYP'
