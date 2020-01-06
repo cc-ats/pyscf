@@ -239,6 +239,10 @@ if __name__ == '__main__':
     print("E elec = %f, ref E elec = %f"
     %(lib.einsum("i,i->", weights, rhoe), mf.energy_elec()[0]))
 
+    rhot = calc_rho_t(mf, coords, dm, ao_value=ao_value)
+    print("E t = %f"
+    %(lib.einsum("i,i->", weights, rhot)))
+
     mf = scf.UKS(mol)
     mf.xc = 'BLYP'
     mf.verbose = 0
