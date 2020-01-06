@@ -235,28 +235,28 @@ if __name__ == '__main__':
     )
 
     print("HF")
-    # rhoe = calc_rho_ene(mf, coords, dm, ao_value=ao_value)
-    # print("E elec = %f, ref E elec = %f"
-    # %(lib.einsum("i,i->", weights, rhoe), mf.energy_elec()[0]))
+    rhoe = calc_rho_ene(mf, coords, dm, ao_value=ao_value)
+    print("E elec = %f, ref E elec = %f"
+    %(lib.einsum("i,i->", weights, rhoe), mf.energy_elec()[0]))
 
     rhot = calc_rho_t(mf, coords, dm, ao_value=ao_value)
     print("E t = %f, E ref = %f"
     %(
         lib.einsum("i,i->", weights, rhot),
-        lib.einsum('ij,ji->', mol.intor('cint1e_kin_sph'), dm[0]+dm[1])
+        lib.einsum('ij,ji->', mol.intor('cint1e_kin_sph'), dm)
     ))
 
     rhov, rhoj = calc_rhov_rhoj(mf, coords, dm, ao_value=ao_value)
     print("E v = %f, E ref = %f"
     %(
         lib.einsum("i,i,i->", weights, rhov, rho),
-        lib.einsum('ij,ji->', mol.intor('cint1e_nuc_sph'), dm[0]+dm[1])
+        lib.einsum('ij,ji->', mol.intor('cint1e_nuc_sph'), dm)
     ))
 
     print("E j = %f, E ref = %f"
     %(
         lib.einsum("i,i,i->", weights, rhoj, rho),
-        lib.einsum('kij,kji->', mf.get_j(mol=mol, dm=dm), dm)
+        lib.einsum('ij,ji->', mf.get_j(mol=mol, dm=dm), dm)
     ))
 
     # mf = scf.UKS(mol)
