@@ -154,7 +154,7 @@ def calc_rhoxc(mf, coords, dm, ao_value=None):
     mol = mf.mol
     if ao_value is None:
         ao_value = numint.eval_ao(mol, coords, deriv=2)
-    rho = ni.eval_rho(mol, ao_value, dm, xctype='mGGA')
+    rho = numint.eval_rho(mol, ao_value, dm, xctype='mGGA')
     if hasattr(mf, 'xc'):
         ks = mf
         ni = ks._numint
