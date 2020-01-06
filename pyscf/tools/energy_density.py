@@ -240,34 +240,37 @@ if __name__ == '__main__':
     %(lib.einsum("i,i->", weights, rhoe), mf.energy_elec()[0]))
 
     rhot = calc_rho_t(mf, coords, dm, ao_value=ao_value)
-    print("E t = %f"
-    %(lib.einsum("i,i->", weights, rhot)))
+    print("E t = %f, E ref = %f"
+    %(
+        lib.einsum("i,i->", weights, rhot),
+        lib.einsum('ij,ji->', mol.intor('cint1e_kin_sph'), dm[0]+dm[1])
+    ))
 
-    mf = scf.UKS(mol)
-    mf.xc = 'BLYP'
-    mf.verbose = 0
-    mf.kernel()
-    dm = mf.make_rdm1()
+    # mf = scf.UKS(mol)
+    # mf.xc = 'BLYP'
+    # mf.verbose = 0
+    # mf.kernel()
+    # dm = mf.make_rdm1()
 
-    rhoe = calc_rho_ene(mf, coords, dm, ao_value=ao_value)
-    print('BLYP')
-    print("E elec = %f, ref E elec = %f"
-    %(lib.einsum("i,i->", weights, rhoe), mf.energy_elec()[0]))
+    # rhoe = calc_rho_ene(mf, coords, dm, ao_value=ao_value)
+    # print('BLYP')
+    # print("E elec = %f, ref E elec = %f"
+    # %(lib.einsum("i,i->", weights, rhoe), mf.energy_elec()[0]))
 
-    mf.xc = 'b3lyp'
-    mf.kernel()
-    dm = mf.make_rdm1()
+    # mf.xc = 'b3lyp'
+    # mf.kernel()
+    # dm = mf.make_rdm1()
 
-    rhoe = calc_rho_ene(mf, coords, dm, ao_value=ao_value)
-    print('b3lyp')
-    print("E elec = %f, ref E elec = %f"
-    %(lib.einsum("i,i->", weights, rhoe), mf.energy_elec()[0]))
+    # rhoe = calc_rho_ene(mf, coords, dm, ao_value=ao_value)
+    # print('b3lyp')
+    # print("E elec = %f, ref E elec = %f"
+    # %(lib.einsum("i,i->", weights, rhoe), mf.energy_elec()[0]))
 
-    mf.xc = 'camb3lyp'
-    mf.kernel()
-    dm = mf.make_rdm1()
+    # mf.xc = 'camb3lyp'
+    # mf.kernel()
+    # dm = mf.make_rdm1()
 
-    rhoe = calc_rho_ene(mf, coords, dm, ao_value=ao_value)
-    print('cam-b3lyp')
-    print("E elec = %f, ref E elec = %f"
-    %(lib.einsum("i,i->", weights, rhoe), mf.energy_elec()[0]))
+    # rhoe = calc_rho_ene(mf, coords, dm, ao_value=ao_value)
+    # print('cam-b3lyp')
+    # print("E elec = %f, ref E elec = %f"
+    # %(lib.einsum("i,i->", weights, rhoe), mf.energy_elec()[0]))
