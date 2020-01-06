@@ -246,6 +246,20 @@ if __name__ == '__main__':
         lib.einsum('ij,ji->', mol.intor('cint1e_kin_sph'), dm[0]+dm[1])
     ))
 
+    rhov, rhoj = calc_rhov_rhoj(mf, coords, dm, ao_value=ao_value)
+    print("E v = %f, E ref = %f"
+    %(
+        lib.einsum("i,i->", weights, rhov),
+        lib.einsum('ij,ji->', mol.intor('cint1e_nuc_sph'), dm[0]+dm[1])
+    ))
+
+    print("J shape is ", mf.get_j(mol=mol, dm=dm).shape)
+    # print("E j = %f, E ref = %f"
+    # %(
+    #     lib.einsum("i,i->", weights, rhot),
+    #     lib.einsum('ij,ji->', mf.get_j(mol=mol, dm=dm), dm[0]+dm[1])
+    # ))
+
     # mf = scf.UKS(mol)
     # mf.xc = 'BLYP'
     # mf.verbose = 0
