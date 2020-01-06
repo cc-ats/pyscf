@@ -201,7 +201,7 @@ if __name__ == '__main__':
     coords  = grids.coords
     weights = grids.weights
 
-    mf = scf.RHF(mol)
+    mf = scf.UHF(mol)
     mf.verbose = 0
     mf.kernel()
     dm = mf.make_rdm1()
@@ -217,7 +217,7 @@ if __name__ == '__main__':
     print("E elec = %f, ref E elec = %f"
     %(lib.einsum("i,i->", weights, rhoe), mf.energy_elec()[0]))
 
-    mf = scf.RKS(mol)
+    mf = scf.UKS(mol)
     mf.xc = 'BLYP'
     mf.verbose = 0
     mf.kernel()
