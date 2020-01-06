@@ -249,14 +249,14 @@ if __name__ == '__main__':
     rhov, rhoj = calc_rhov_rhoj(mf, coords, dm, ao_value=ao_value)
     print("E v = %f, E ref = %f"
     %(
-        lib.einsum("i,i,i->", weights, rhov, rho),
+        lib.einsum("i,i,i->", weights, -rhov, rho),
         lib.einsum('ij,ji->', mol.intor('cint1e_nuc_sph'), dm)
     ))
 
     print("E j = %f, E ref = %f"
     %(
-        lib.einsum("i,i,i->", weights, rhoj, rho),
-        lib.einsum('ij,ji->', mf.get_j(mol=mol, dm=dm), dm)
+        lib.einsum("i,i,i->", weights, -rhoj, rho),
+        lib.einsum('ij,ji->', 0.5*mf.get_j(mol=mol, dm=dm), dm)
     ))
 
     # mf = scf.UKS(mol)
