@@ -262,7 +262,7 @@ if __name__ == '__main__':
     rhok = calc_rhok(mf, coords, dm, ao_value=ao_value)
     print("E k = %f, E ref = %f"
     %(
-        lib.einsum("i,i,i->", weights, rhok),
+        lib.einsum("i,i->", weights, rhok),
         lib.einsum('kij,kji->', mf.get_k(mol=mol, dm=dm), dm)
     ))
     # mf = scf.UKS(mol)
