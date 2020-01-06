@@ -268,12 +268,12 @@ if __name__ == '__main__':
 
     print("E elec = %f, ref E elec = %f"
     %(lib.einsum("i,i->", weights, 
-    (rhov + rhoj)*rho[0]
+    (rhov + rhoj)
     ), mf.energy_elec()[0]))
 
     print("(rhov ).shape"   , (rhov ).shape)
     print("(rhoj ).shape"   , (rhoj ).shape)
-    print("(rho[0] ).shape" , (rho[0] ).shape)
+    print("(rho[0] ).shape" , (rho ).shape)
     # mf = scf.UKS(mol)
     # mf.xc = 'BLYP'
     # mf.verbose = 0
