@@ -150,27 +150,50 @@ def calc_rhok_lr(mf, coords, dms):
         return 2*rhok_lr
 
 
-def calc_rhoxc(mf, coords, dm, ao_value=None):
+def calc_rhoxc(mf, coords, dms, ao_value=None):
     mol = mf.mol
     if ao_value is None:
         ao_value = numint.eval_ao(mol, coords, deriv=2)
-    rho = numint.eval_rho(mol, ao_value, dm, xctype='mGGA')
-    if hasattr(mf, 'xc'):
-        ks = mf
-        ni = ks._numint
-        omega, alpha, hyb = ni.rsh_and_hybrid_coeff(ks.xc, spin=mol.spin)
-        rhoxc = dft.libxc.eval_xc(mf.xc, rho)[0]
-        if abs(hyb) < 1e-10 and abs(alpha) < 1e-10:
-            return rhoxc*rho[0]
-        else:
-            rhok = calc_rhok(mf, coords, dm)
-            if abs(omega) > 1e-10:
-                rhok_lr = calc_rhok_lr(mf, coords, dm)
-                return rhoxc*rho[0] + 0.5*hyb*rhok + 0.5*(alpha-hyb)*rhok_lr
+    if (dms.ndim == 3 and dms.shape[0] == 2):
+        dma = dms[0]
+        dmb = dms[1]
+        rhoa = numint.eval_rho(mol, ao_value, dma, xctype='mGGA')
+        rhob = numint.eval_rho(mol, ao_value, dmb, xctype='mGGA')
+        if hasattr(mf, 'xc'):
+            ks = mf
+            ni = ks._numint
+            omega, alpha, hyb = ni.rsh_and_hybrid_coeff(ks.xc, spin=mol.spin)
+            rhoxc = dft.libxc.eval_xc(mf.xc, (rhoa, rhob), spin=1)[0]
+            if abs(hyb) < 1e-10 and abs(alpha) < 1e-10:
+                return rhoxc*rho[0]
             else:
-                return rhoxc*rho[0] + 0.5*hyb*rhok
+                rhok = calc_rhok(mf, coords, dms)
+                if abs(omega) > 1e-10:
+                    rhok_lr = calc_rhok_lr(mf, coords, dms)
+                    return rhoxc*rho[0] + 0.5*hyb*rhok + 0.5*(alpha-hyb)*rhok_lr
+                else:
+                    return rhoxc*rho[0] + 0.5*hyb*rhok
+        else:
+            return 0.5*calc_rhok(mf, coords, dms)
     else:
-        return 0.5*calc_rhok(mf, coords, dm)
+        dm = dms
+        rho = numint.eval_rho(mol, ao_value, dm, xctype='mGGA')
+        if hasattr(mf, 'xc'):
+            ks = mf
+            ni = ks._numint
+            omega, alpha, hyb = ni.rsh_and_hybrid_coeff(ks.xc, spin=mol.spin)
+            rhoxc = dft.libxc.eval_xc(mf.xc, rho, spin=0)[0]
+            if abs(hyb) < 1e-10 and abs(alpha) < 1e-10:
+                return rhoxc*rho[0]
+            else:
+                rhok = calc_rhok(mf, coords, dms)
+                if abs(omega) > 1e-10:
+                    rhok_lr = calc_rhok_lr(mf, coords, dms)
+                    return rhoxc*rho[0] + 0.5*hyb*rhok + 0.5*(alpha-hyb)*rhok_lr
+                else:
+                    return rhoxc*rho[0] + 0.5*hyb*rhok
+        else:
+            return 0.5*calc_rhok(mf, coords, dms)
 
 
 def calc_rho_ene(mf, coords, dms, ao_value=None):
