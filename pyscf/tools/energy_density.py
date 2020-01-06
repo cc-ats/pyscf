@@ -219,34 +219,37 @@ if __name__ == '__main__':
                 H 0.761561, 0.478993, 0.00000000
                 H -0.761561, 0.478993, 0.00000000'''
                 , basis='6-31g*')
-
+    mol.verbose = 0
     grids = gen_grid.Grids(mol)
     grids.build()
     coords  = grids.coords
     weights = grids.weights
+    ao_value = numint.eval_ao(mol, coords, deriv=2)
 
-    mf = scf.UHF(mol)
+    mf = scf.RHF(mol)
     mf.verbose = 0
     mf.kernel()
     dm = mf.make_rdm1()
 
-    ao_value = numint.eval_ao(mol, coords, deriv=2)
+    print("RHF/RKS method")
     rho = calc_rho(mf, coords, dm, ao_value=ao_value)
     print("N elec = %f, ref N elec = 10"
     %(lib.einsum("i,i->", weights, rho))
     )
 
-    print("HF")
+    print("*****RHF*****")
     rhoe = calc_rho_ene(mf, coords, dm, ao_value=ao_value)
     print("E elec = %f, ref E elec = %f"
     %(lib.einsum("i,i->", weights, rhoe), mf.energy_elec()[0]))
 
-    mf = scf.UKS(mol)
+    mf = scf.RKS(mol)
     mf.xc = 'BLYP'
     mf.verbose = 0
     mf.kernel()
     dm = mf.make_rdm1()
 
+    print("")
+    print("*****RKS*****")
     rhoe = calc_rho_ene(mf, coords, dm, ao_value=ao_value)
     print('BLYP')
     print("E elec = %f, ref E elec = %f"
@@ -257,15 +260,66 @@ if __name__ == '__main__':
     dm = mf.make_rdm1()
 
     rhoe = calc_rho_ene(mf, coords, dm, ao_value=ao_value)
-    print('b3lyp')
+    print('B3LYP')
     print("E elec = %f, ref E elec = %f"
     %(lib.einsum("i,i->", weights, rhoe), mf.energy_elec()[0]))
 
-    mf.xc = 'camb3lyp'
+    mf.xc = 'CAMB3LYP'
     mf.kernel()
     dm = mf.make_rdm1()
 
     rhoe = calc_rho_ene(mf, coords, dm, ao_value=ao_value)
-    print('cam-b3lyp')
+    print('CAMB3LYP')
     print("E elec = %f, ref E elec = %f"
     %(lib.einsum("i,i->", weights, rhoe), mf.energy_elec()[0]))
+    print("")
+
+
+
+    mf = scf.UHF(mol)
+    mf.verbose = 0
+    mf.kernel()
+    dm = mf.make_rdm1()
+
+    print("UHF/UKS method")
+    rho = calc_rho(mf, coords, dm, ao_value=ao_value)
+    print("N elec = %f, ref N elec = 10"
+    %(lib.einsum("i,i->", weights, rho))
+    )
+
+    print("*****UHF*****")
+    rhoe = calc_rho_ene(mf, coords, dm, ao_value=ao_value)
+    print("E elec = %f, ref E elec = %f"
+    %(lib.einsum("i,i->", weights, rhoe), mf.energy_elec()[0]))
+
+    mf = scf.UKS(mol)
+    mf.xc = 'BLYP'
+    mf.verbose = 0
+    mf.kernel()
+    dm = mf.make_rdm1()
+
+    print("")
+    print("*****UKS*****")
+    rhoe = calc_rho_ene(mf, coords, dm, ao_value=ao_value)
+    print('BLYP')
+    print("E elec = %f, ref E elec = %f"
+    %(lib.einsum("i,i->", weights, rhoe), mf.energy_elec()[0]))
+
+    mf.xc = 'b3lyp'
+    mf.kernel()
+    dm = mf.make_rdm1()
+
+    rhoe = calc_rho_ene(mf, coords, dm, ao_value=ao_value)
+    print('B3LYP')
+    print("E elec = %f, ref E elec = %f"
+    %(lib.einsum("i,i->", weights, rhoe), mf.energy_elec()[0]))
+
+    mf.xc = 'CAMB3LYP'
+    mf.kernel()
+    dm = mf.make_rdm1()
+
+    rhoe = calc_rho_ene(mf, coords, dm, ao_value=ao_value)
+    print('CAMB3LYP')
+    print("E elec = %f, ref E elec = %f"
+    %(lib.einsum("i,i->", weights, rhoe), mf.energy_elec()[0]))
+    print("")
