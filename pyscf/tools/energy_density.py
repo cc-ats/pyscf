@@ -235,9 +235,9 @@ if __name__ == '__main__':
     )
 
     print("HF")
-    rhoe = calc_rho_ene(mf, coords, dm, ao_value=ao_value)
-    print("E elec = %f, ref E elec = %f"
-    %(lib.einsum("i,i->", weights, rhoe), mf.energy_elec()[0]))
+    # rhoe = calc_rho_ene(mf, coords, dm, ao_value=ao_value)
+    # print("E elec = %f, ref E elec = %f"
+    # %(lib.einsum("i,i->", weights, rhoe), mf.energy_elec()[0]))
 
     rhot = calc_rho_t(mf, coords, dm, ao_value=ao_value)
     print("E t = %f, E ref = %f"
