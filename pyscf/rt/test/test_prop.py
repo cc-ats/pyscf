@@ -8,14 +8,14 @@ from  pyscf import gto
 from pyscf  import rt
 
 def delta_efield(t):
-    return 0.001*np.exp(-10*t**2/0.2**2)
+    return 0.0001*np.exp(-10*t**2/0.2**2)
 
 h2o =   gto.Mole( atom='''
   H   -0.0000000    0.4981795    0.7677845
   O   -0.0000000   -0.0157599    0.0000000
   H    0.0000000    0.4981795   -0.7677845
   '''
-  , basis='6-31g(d)', symmetry=False).build()
+  , basis='6-31g', symmetry=False).build()
 
 h2o_rks    = dft.RKS(h2o)
 h2o_rks.xc = "pbe0"
@@ -32,20 +32,20 @@ rttd.set_prop_func(key="amut3")
 rttd.efield_vec = lambda t: [delta_efield(t), 0.0, 0.0]
 rttd.chkfile = 'h2o_rt_x.chk'
 rttd.dt = 0.2
-rttd.maxstep = 5000
+rttd.maxstep = 1000
 rttd.verbose = 4
 rttd.kernel(dm_ao_init=dm)
 
 rttd.efield_vec = lambda t: [0.0, delta_efield(t), 0.0]
 rttd.chkfile = 'h2o_rt_y.chk'
 rttd.dt = 0.2
-rttd.maxstep = 5000
+rttd.maxstep = 1000
 rttd.verbose = 4
 rttd.kernel(dm_ao_init=dm)
 
 rttd.efield_vec = lambda t: [0.0, 0.0, delta_efield(t)]
 rttd.chkfile = 'h2o_rt_z.chk'
 rttd.dt = 0.2
-rttd.maxstep = 5000
+rttd.maxstep = 1000
 rttd.verbose = 4
 rttd.kernel(dm_ao_init=dm)
