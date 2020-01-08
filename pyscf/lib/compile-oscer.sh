@@ -15,6 +15,7 @@ export FC=gfortran
 export CXX=g++
 
 export LD_LIBRARY_PATH=$MKLROOT/lib:$LD_LIBRARY_PATH
+python -c 'import pyscf; print(pyscf.__path__[0])'
 
 # mkdir -p build
 # cd build

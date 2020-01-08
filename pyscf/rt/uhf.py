@@ -119,9 +119,9 @@ def prop_step(tdscf, dt, fock_prim, dm_prim):
     propogator_b = expm(-1j*dt*fock_prim[1])
 
     dm_prim_a_   = reduce(numpy.dot, [propogator_a, dm_prim[0], propogator_a.conj().T])
-    dm_prim_a_   = (dm_prim_a_ + dm_prim_a_.conj().T)/2
+    # dm_prim_a_   = (dm_prim_a_ + dm_prim_a_.conj().T)/2
     dm_prim_b_   = reduce(numpy.dot, [propogator_b, dm_prim[1], propogator_b.conj().T])
-    dm_prim_b_   = (dm_prim_b_ + dm_prim_b_.conj().T)/2
+    # dm_prim_b_   = (dm_prim_b_ + dm_prim_b_.conj().T)/2
 
     dm_prim_     = numpy.array((dm_prim_a_, dm_prim_b_))
     dm_ao_       = tdscf.orth2ao_dm(  dm_prim_)

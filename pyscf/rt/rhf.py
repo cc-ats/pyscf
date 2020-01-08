@@ -111,9 +111,8 @@ def orth2ao_fock(tdscf, fock_prim):
 def prop_step(tdscf, dt, fock_prim, dm_prim):
     propogator = expm(-1j*dt*fock_prim)
     dm_prim_   = reduce(numpy.dot, [propogator, dm_prim, propogator.conj().T])
-    dm_prim_   = (dm_prim_ + dm_prim_.conj().T)/2
+    # dm_prim_   = (dm_prim_ + dm_prim_.conj().T)/2
     dm_ao_     = tdscf.orth2ao_dm(dm_prim_)
-
     return dm_prim_, dm_ao_
 
 
@@ -133,10 +132,10 @@ def euler_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
         _temp_fock_prims[THIS], _temp_dm_prims[THIS],
         )
 
-    h1e_next_ao            = tdscf.get_hcore(t=_temp_ts[NEXT])
+    _h1e_next_ao            = tdscf.get_hcore(t=_temp_ts[NEXT])
     vhf_next_ao            = tdscf.mf.get_veff(dm=_temp_dm_aos[NEXT])
-    _temp_fock_aos[NEXT]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao, vhf=vhf_next_ao)
-    ene_next_tot           = tdscf.mf.energy_tot(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao, vhf=vhf_next_ao)
+    _temp_fock_aos[NEXT]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT], h1e=_h1e_next_ao, vhf=vhf_next_ao)
+    ene_next_tot           = tdscf.mf.energy_tot(dm=_temp_dm_aos[NEXT], h1e=_h1e_next_ao, vhf=vhf_next_ao)
 
     _temp_dm_prims[THIS]   = _temp_dm_prims[NEXT]
     _temp_dm_aos[THIS]     = _temp_dm_aos[NEXT]
@@ -149,7 +148,7 @@ def mmut_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
 
     _temp_dm_prims[NEXT_HALF],   _temp_dm_aos[NEXT_HALF] = tdscf.prop_step(
         _temp_ts[NEXT_HALF] - _temp_ts[LAST_HALF],
-        _temp_fock_prims[LAST_HALF], _temp_dm_prims[LAST_HALF],
+        _temp_fock_prims[THIS], _temp_dm_prims[LAST_HALF],
         )
     
     _temp_dm_prims[NEXT],   _temp_dm_aos[NEXT] = tdscf.prop_step(
@@ -157,14 +156,15 @@ def mmut_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
         _temp_fock_prims[THIS], _temp_dm_prims[NEXT_HALF],
         )
 
-    h1e_next_ao            = tdscf.get_hcore(t=_temp_ts[NEXT])
+    _h1e_next_ao            = tdscf.get_hcore(t=_temp_ts[NEXT])
     vhf_next_ao            = tdscf.mf.get_veff(dm=_temp_dm_aos[NEXT])
-    _temp_fock_aos[NEXT]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao, vhf=vhf_next_ao)
-    ene_next_tot           = tdscf.mf.energy_tot(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao, vhf=vhf_next_ao)
+    _temp_fock_aos[NEXT]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT], h1e=_h1e_next_ao, vhf=vhf_next_ao)
+    ene_next_tot           = tdscf.mf.energy_tot(dm=_temp_dm_aos[NEXT], h1e=_h1e_next_ao, vhf=vhf_next_ao)
 
     _temp_dm_prims[THIS]   = _temp_dm_prims[NEXT]
     _temp_dm_aos[THIS]     = _temp_dm_aos[NEXT]
     _temp_fock_prims[THIS] = tdscf.ao2orth_fock(_temp_fock_aos[NEXT])
+    _temp_fock_aos[THIS]     = _temp_fock_aos[NEXT]
 
     _temp_dm_prims[LAST_HALF]   = _temp_dm_prims[NEXT_HALF]
     _temp_dm_aos[LAST_HALF]     = _temp_dm_aos[NEXT_HALF]
@@ -179,9 +179,9 @@ def amut1_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
         _temp_fock_prims[THIS], _temp_dm_prims[THIS],
         )
 
-    h1e_next_half_ao            = tdscf.get_hcore(t=_temp_ts[NEXT_HALF])
+    _h1e_next_half_ao            = tdscf.get_hcore(t=_temp_ts[NEXT_HALF])
     vhf_next_half_ao            = tdscf.mf.get_veff(dm=_temp_dm_aos[NEXT_HALF])
-    _temp_fock_aos[NEXT_HALF]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT_HALF], h1e=h1e_next_half_ao, vhf=vhf_next_half_ao)
+    _temp_fock_aos[NEXT_HALF]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT_HALF], h1e=_h1e_next_half_ao, vhf=vhf_next_half_ao)
     _temp_fock_prims[NEXT_HALF] = tdscf.ao2orth_fock(_temp_fock_aos[NEXT_HALF])
 
     _temp_dm_prims[NEXT],   _temp_dm_aos[NEXT] = tdscf.prop_step(
@@ -189,10 +189,10 @@ def amut1_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
         _temp_fock_prims[NEXT_HALF], _temp_dm_prims[THIS],
         )
 
-    h1e_next_ao            = tdscf.get_hcore(t=_temp_ts[NEXT])
+    _h1e_next_ao            = tdscf.get_hcore(t=_temp_ts[NEXT])
     vhf_next_ao            = tdscf.mf.get_veff(dm=_temp_dm_aos[NEXT])
-    _temp_fock_aos[NEXT]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao, vhf=vhf_next_ao)
-    ene_next_tot           = tdscf.mf.energy_tot(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao, vhf=vhf_next_ao)
+    _temp_fock_aos[NEXT]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT], h1e=_h1e_next_ao, vhf=vhf_next_ao)
+    ene_next_tot           = tdscf.mf.energy_tot(dm=_temp_dm_aos[NEXT], h1e=_h1e_next_ao, vhf=vhf_next_ao)
 
     _temp_dm_prims[THIS]   = _temp_dm_prims[NEXT]
     _temp_dm_aos[THIS]     = _temp_dm_aos[NEXT]
@@ -208,9 +208,9 @@ def amut2_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
         _temp_fock_prims[THIS], _temp_dm_prims[THIS],
         )
 
-    h1e_next_half_ao            = tdscf.get_hcore(t=_temp_ts[NEXT_HALF])
+    _h1e_next_half_ao            = tdscf.get_hcore(t=_temp_ts[NEXT_HALF])
     vhf_next_half_ao            = tdscf.mf.get_veff(dm=_temp_dm_aos[NEXT_HALF])
-    _temp_fock_aos[NEXT_HALF]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT_HALF], h1e=h1e_next_half_ao, vhf=vhf_next_half_ao)
+    _temp_fock_aos[NEXT_HALF]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT_HALF], h1e=_h1e_next_half_ao, vhf=vhf_next_half_ao)
     _temp_fock_prims[NEXT_HALF] = tdscf.ao2orth_fock(_temp_fock_aos[NEXT_HALF])
 
 
@@ -219,9 +219,9 @@ def amut2_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
         _temp_fock_prims[NEXT_HALF], _temp_dm_prims[THIS],
         )
 
-    h1e_next_half_ao            = tdscf.get_hcore(t=_temp_ts[NEXT_HALF])
+    _h1e_next_half_ao            = tdscf.get_hcore(t=_temp_ts[NEXT_HALF])
     vhf_next_half_ao            = tdscf.mf.get_veff(dm=_temp_dm_aos[NEXT_HALF])
-    _temp_fock_aos[NEXT_HALF]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT_HALF], h1e=h1e_next_half_ao, vhf=vhf_next_half_ao)
+    _temp_fock_aos[NEXT_HALF]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT_HALF], h1e=_h1e_next_half_ao, vhf=vhf_next_half_ao)
     _temp_fock_prims[NEXT_HALF] = tdscf.ao2orth_fock(_temp_fock_aos[NEXT_HALF])
     
     _temp_dm_prims[NEXT],   _temp_dm_aos[NEXT] = tdscf.prop_step(
@@ -229,10 +229,10 @@ def amut2_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
         _temp_fock_prims[NEXT_HALF], _temp_dm_prims[THIS],
         )
 
-    h1e_next_ao            = tdscf.get_hcore(t=_temp_ts[NEXT])
+    _h1e_next_ao            = tdscf.get_hcore(t=_temp_ts[NEXT])
     vhf_next_ao            = tdscf.mf.get_veff(dm=_temp_dm_aos[NEXT])
-    _temp_fock_aos[NEXT]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao, vhf=vhf_next_ao)
-    ene_next_tot           = tdscf.mf.energy_tot(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao, vhf=vhf_next_ao)
+    _temp_fock_aos[NEXT]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT], h1e=_h1e_next_ao, vhf=vhf_next_ao)
+    ene_next_tot           = tdscf.mf.energy_tot(dm=_temp_dm_aos[NEXT], h1e=_h1e_next_ao, vhf=vhf_next_ao)
 
     _temp_dm_prims[THIS]   = _temp_dm_prims[NEXT]
     _temp_dm_aos[THIS]     = _temp_dm_aos[NEXT]
@@ -248,9 +248,9 @@ def amut3_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
         _temp_fock_prims[THIS], _temp_dm_prims[THIS],
         )
 
-    h1e_next_half_ao            = tdscf.get_hcore(t=_temp_ts[NEXT_HALF])
+    _h1e_next_half_ao            = tdscf.get_hcore(t=_temp_ts[NEXT_HALF])
     vhf_next_half_ao            = tdscf.mf.get_veff(dm=_temp_dm_aos[NEXT_HALF])
-    _temp_fock_aos[NEXT_HALF]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT_HALF], h1e=h1e_next_half_ao, vhf=vhf_next_half_ao)
+    _temp_fock_aos[NEXT_HALF]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT_HALF], h1e=_h1e_next_half_ao, vhf=vhf_next_half_ao)
     _temp_fock_prims[NEXT_HALF] = tdscf.ao2orth_fock(_temp_fock_aos[NEXT_HALF])
 
 
@@ -259,9 +259,9 @@ def amut3_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
         _temp_fock_prims[NEXT_HALF], _temp_dm_prims[THIS],
         )
 
-    h1e_next_half_ao            = tdscf.get_hcore(t=_temp_ts[NEXT_HALF])
+    _h1e_next_half_ao            = tdscf.get_hcore(t=_temp_ts[NEXT_HALF])
     vhf_next_half_ao            = tdscf.mf.get_veff(dm=_temp_dm_aos[NEXT_HALF])
-    _temp_fock_aos[NEXT_HALF]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT_HALF], h1e=h1e_next_half_ao, vhf=vhf_next_half_ao)
+    _temp_fock_aos[NEXT_HALF]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT_HALF], h1e=_h1e_next_half_ao, vhf=vhf_next_half_ao)
     _temp_fock_prims[NEXT_HALF] = tdscf.ao2orth_fock(_temp_fock_aos[NEXT_HALF])
 
 
@@ -270,9 +270,9 @@ def amut3_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
         _temp_fock_prims[NEXT_HALF], _temp_dm_prims[THIS],
         )
 
-    h1e_next_half_ao            = tdscf.get_hcore(t=_temp_ts[NEXT_HALF])
+    _h1e_next_half_ao            = tdscf.get_hcore(t=_temp_ts[NEXT_HALF])
     vhf_next_half_ao            = tdscf.mf.get_veff(dm=_temp_dm_aos[NEXT_HALF])
-    _temp_fock_aos[NEXT_HALF]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT_HALF], h1e=h1e_next_half_ao, vhf=vhf_next_half_ao)
+    _temp_fock_aos[NEXT_HALF]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT_HALF], h1e=_h1e_next_half_ao, vhf=vhf_next_half_ao)
     _temp_fock_prims[NEXT_HALF] = tdscf.ao2orth_fock(_temp_fock_aos[NEXT_HALF])
     
     _temp_dm_prims[NEXT],   _temp_dm_aos[NEXT] = tdscf.prop_step(
@@ -280,10 +280,10 @@ def amut3_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
         _temp_fock_prims[NEXT_HALF], _temp_dm_prims[THIS],
         )
 
-    h1e_next_ao            = tdscf.get_hcore(t=_temp_ts[NEXT])
+    _h1e_next_ao            = tdscf.get_hcore(t=_temp_ts[NEXT])
     vhf_next_ao            = tdscf.mf.get_veff(dm=_temp_dm_aos[NEXT])
-    _temp_fock_aos[NEXT]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao, vhf=vhf_next_ao)
-    ene_next_tot           = tdscf.mf.energy_tot(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao, vhf=vhf_next_ao)
+    _temp_fock_aos[NEXT]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT], h1e=_h1e_next_ao, vhf=vhf_next_ao)
+    ene_next_tot           = tdscf.mf.energy_tot(dm=_temp_dm_aos[NEXT], h1e=_h1e_next_ao, vhf=vhf_next_ao)
 
     _temp_dm_prims[THIS]   = _temp_dm_prims[NEXT]
     _temp_dm_aos[THIS]     = _temp_dm_aos[NEXT]
@@ -296,7 +296,9 @@ def lflp_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
 
     step_converged      = False
     inner_iter          = 0
-    h1e_next_ao         = tdscf.get_hcore(t=_temp_ts[NEXT])
+
+    _h1e_next_half_ao      = tdscf.get_hcore(t=_temp_ts[NEXT_HALF])
+    _h1e_next_ao           = tdscf.get_hcore(t=_temp_ts[NEXT])
 
     _fock_prim_next_half_p = 2*_temp_fock_prims[THIS] - _temp_fock_prims[LAST_HALF]
     while (not step_converged) and inner_iter <= max_iter:
@@ -305,30 +307,34 @@ def lflp_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
             _temp_ts[NEXT] - _temp_ts[THIS], _fock_prim_next_half_p, _temp_dm_prims[THIS]
         )
 
-        _vhf_ao_next                = tdscf.mf.get_veff(dm=_temp_dm_aos[NEXT])
-        _temp_fock_aos[NEXT]        = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao, vhf=_vhf_ao_next)
-        _temp_fock_prims[NEXT]      = tdscf.ao2orth_fock(_temp_fock_aos[NEXT])
-        _temp_fock_prim_next_half_c = (_temp_fock_prims[NEXT]+ _temp_fock_prims[THIS])/2
-
-        err = errm(_fock_prim_next_half_p, _temp_fock_prim_next_half_c)
+        _dm_ao_next_half_c     = (_temp_dm_aos[NEXT] + _temp_dm_aos[THIS])/2
+        _vhf_ao_next_half      = tdscf.mf.get_veff(dm=_dm_ao_next_half_c)
+        _fock_ao_next_half_c   = tdscf.mf.get_fock(dm=_dm_ao_next_half_c, h1e=_h1e_next_half_ao, vhf=_vhf_ao_next_half)
+        _fock_prim_next_half_c = tdscf.ao2orth_fock(_fock_ao_next_half_c)
+        
+        err = errm(_fock_prim_next_half_p, _fock_prim_next_half_c)
         logger.debug(tdscf, "inner_iter = %d, err = %e", inner_iter, err)
         step_converged = (err<tol)
-        _fock_prim_next_half_p = _temp_fock_prim_next_half_c
+        _fock_prim_next_half_p = _fock_prim_next_half_c
+    
+    _vhf_ao_next           = tdscf.mf.get_veff(dm=_temp_dm_aos[NEXT])
+    _temp_fock_aos[NEXT]   = tdscf.mf.get_fock(dm=_temp_dm_aos[NEXT], h1e=_h1e_next_ao, vhf=_vhf_ao_next)
+    _temp_fock_prims[NEXT] = tdscf.ao2orth_fock(_temp_fock_aos[NEXT])
+
     _temp_dm_prims[THIS]     = _temp_dm_prims[NEXT]
     _temp_dm_aos[THIS]       = _temp_dm_aos[NEXT]
     _temp_fock_aos[THIS]     = _temp_fock_aos[NEXT]
     _temp_fock_prims[THIS]   = _temp_fock_prims[NEXT]
 
     _temp_fock_prims[LAST_HALF] = _fock_prim_next_half_p
-    
-    return tdscf.mf.energy_tot(dm=_temp_dm_aos[NEXT], h1e=h1e_next_ao, vhf=_vhf_ao_next).real
+    return tdscf.mf.energy_tot(dm=_temp_dm_aos[NEXT], h1e=_h1e_next_ao, vhf=_vhf_ao_next).real
 
 def ep_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
                  _temp_fock_prims, _temp_fock_aos, tol=PC_TOL, max_iter=PC_MAX_ITER):
 
     step_converged      = False
     inner_iter          = 0
-    h1e_next_ao         = tdscf.get_hcore(t=_temp_ts[NEXT])
+    _h1e_next_ao         = tdscf.get_hcore(t=_temp_ts[NEXT])
 
     _dm_prim_next_p, _dm_ao_next_p  = tdscf.prop_step(
             _temp_ts[NEXT] - _temp_ts[THIS], _temp_fock_prims[THIS], _temp_dm_prims[THIS]
@@ -337,7 +343,7 @@ def ep_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
         inner_iter += 1
 
         _vhf_ao_next                = tdscf.mf.get_veff(dm=_dm_ao_next_p)
-        _temp_fock_aos[NEXT]        = tdscf.mf.get_fock(dm=_dm_ao_next_p, h1e=h1e_next_ao, vhf=_vhf_ao_next)
+        _temp_fock_aos[NEXT]        = tdscf.mf.get_fock(dm=_dm_ao_next_p, h1e=_h1e_next_ao, vhf=_vhf_ao_next)
         _temp_fock_prims[NEXT]      = tdscf.ao2orth_fock(_temp_fock_aos[NEXT])
         _temp_fock_prim_next_half   = (_temp_fock_prims[NEXT]+ _temp_fock_prims[THIS])/2
 
@@ -355,7 +361,7 @@ def ep_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
     _temp_fock_aos[THIS]     = _temp_fock_aos[NEXT]
     _temp_fock_prims[THIS]   = _temp_fock_prims[NEXT]
     
-    return tdscf.mf.energy_tot(dm=_dm_ao_next_c, h1e=h1e_next_ao, vhf=_vhf_ao_next).real
+    return tdscf.mf.energy_tot(dm=_dm_ao_next_c, h1e=_h1e_next_ao, vhf=_vhf_ao_next).real
 
 def kernel(tdscf,              dm_ao_init= None,
            ndm_prim  = None, nfock_prim  = None, #output
@@ -420,6 +426,7 @@ def kernel(tdscf,              dm_ao_init= None,
     h1e_ao_last_half            = tdscf.get_hcore(t=_temp_ts[LAST_HALF])
     vhf_ao_last_half            = tdscf.mf.get_veff(  dm=_temp_dm_aos[LAST_HALF])
     _temp_fock_aos[LAST_HALF]   = tdscf.mf.get_fock(  dm=_temp_dm_aos[LAST_HALF], h1e=h1e_ao_last_half, vhf=vhf_ao_last_half)
+    _temp_fock_prims[LAST_HALF] = tdscf.ao2orth_fock( _temp_fock_aos[LAST_HALF])
     ene_last_half_tot           = tdscf.mf.energy_tot(dm=_temp_dm_aos[LAST_HALF], h1e=h1e_ao_last_half, vhf=vhf_ao_last_half)
 
     _temp_dm_prims[THIS],   _temp_dm_aos[THIS] = tdscf.prop_step(
@@ -427,14 +434,15 @@ def kernel(tdscf,              dm_ao_init= None,
         _temp_fock_prims[LAST_HALF], _temp_dm_prims[LAST_HALF]
         )
 
-    h1e_ao_this            = tdscf.get_hcore(t=_temp_ts[THIS])
+    h1e_ao_this            = tdscf.get_hcore(     t=_temp_ts[THIS])
     vhf_ao_this            = tdscf.mf.get_veff(  dm=_temp_dm_aos[THIS])
-    _temp_fock_aos[THIS]   = tdscf.mf.get_fock(  dm=_temp_dm_aos[THIS], h1e=h1e_ao_last_half, vhf=vhf_ao_last_half)
-    ene_this_tot           = tdscf.mf.energy_tot(dm=_temp_dm_aos[THIS], h1e=h1e_ao_last_half, vhf=vhf_ao_last_half)
+    _temp_fock_aos[THIS]   = tdscf.mf.get_fock(  dm=_temp_dm_aos[THIS], h1e=h1e_ao_this, vhf=vhf_ao_this)
+    _temp_fock_prims[THIS] = tdscf.ao2orth_fock( _temp_fock_aos[THIS])
+    ene_this_tot           = tdscf.mf.energy_tot(dm=_temp_dm_aos[THIS], h1e=h1e_ao_this, vhf=vhf_ao_this)
 
     istep = 1
     while istep <= maxstep:
-        if istep%100==1:
+        if istep%100 ==1:
             logger.note(tdscf, 'istep=%d, time=%f, delta e=%e',
             istep-1, tdscf.ntime[istep-1], tdscf.netot[istep-1]-tdscf.netot[0])
         # propagation step
