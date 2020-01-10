@@ -768,8 +768,11 @@ class TDA(lib.StreamObject):
                               tol=self.conv_tol,
                               nroots=nstates, lindep=self.lindep,
                               max_space=self.max_space, pick=pickeig,
-                              verbose=log)
+                              verbose=log, max_cycle=self.max_cycle)
 
+        for iconverged, converged in enumerate(self.converged):
+            if not converged:
+                log.warn('Excited state is not converged')
         nocc = (self._scf.mo_occ>0).sum()
         nmo = self._scf.mo_occ.size
         nvir = nmo - nocc
@@ -943,11 +946,14 @@ class TDHF(TDA):
 
         self.converged, w, x1 = \
                 lib.davidson_nosym1(vind, x0, precond,
-                                    tol=self.conv_tol,
+                                    tol=self.conv_tol, max_cycle=self.max_cycle,
                                     nroots=nstates, lindep=self.lindep,
                                     max_space=self.max_space, pick=pickeig,
                                     verbose=log)
 
+        for iconverged, converged in enumerate(self.converged):
+            if not converged:
+                log.warn('Excited state is not converged')
         nocc = (self._scf.mo_occ>0).sum()
         nmo = self._scf.mo_occ.size
         nvir = nmo - nocc
