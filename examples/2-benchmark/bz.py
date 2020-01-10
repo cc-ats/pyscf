@@ -42,8 +42,8 @@ with open('/proc/meminfo') as f:
     log.note(f.readline()[:-1])
 log.note('OMP_NUM_THREADS=%s\n', os.environ.get('OMP_NUM_THREADS', None))
 
-#for bas in ('3-21g', '6-31g*', 'cc-pVTZ', 'ANO-Roos-TZ'):
-for bas in ('ANO-Roos-TZ',):
+for bas in ('3-21g', '6-31g*', 'cc-pVDZ', 'cc-pVQZ'):
+# for bas in ('ANO-Roos-TZ',):
     mol.atom = '''
 c   1.217739890298750 -0.703062453466927  0.000000000000000
 h   2.172991468538160 -1.254577209307266  0.000000000000000
@@ -67,15 +67,15 @@ h   0.000000000000000 -2.509154418614532  0.000000000000000
     mf.kernel()
     cpu0 = log.timer('C6H6 %s RHF'%bas, *cpu0)
 
-#    mymp2 = mp.MP2(mf)
-#    mymp2.kernel()
-#    cpu0 = log.timer('C6H6 %s MP2'%bas, *cpu0)
-#
-#    mymc = mcscf.CASSCF(mf, 6, 6)
-#    idx = mol.search_ao_label('C 2pz')
-#    mo = sort_mo(mymc, idx, mf.mo_coeff)
-#    mymc.kernel(mo)
-#    cpu0 = log.timer('C6H6 %s CASSCF'%bas, *cpu0)
+    mymp2 = mp.MP2(mf)
+    mymp2.kernel()
+    cpu0 = log.timer('C6H6 %s MP2'%bas, *cpu0)
+
+    mymc = mcscf.CASSCF(mf, 6, 6)
+    idx = mol.search_ao_label('C 2pz')
+    mo = sort_mo(mymc, idx, mf.mo_coeff)
+    mymc.kernel(mo)
+    cpu0 = log.timer('C6H6 %s CASSCF'%bas, *cpu0)
 
     mycc = cc.CCSD(mf)
     mycc.kernel()
@@ -85,8 +85,4 @@ h   0.000000000000000 -2.509154418614532  0.000000000000000
     mf.xc = 'b3lyp'
     mf.kernel()
     cpu0 = log.timer('C6H6 %s B3LYP'%bas, *cpu0)
-
-    mf = scf.density_fit(mf)
-    mf.kernel()
-    cpu0 = log.timer('C6H6 %s density-fit RHF'%bas, *cpu0)
 
