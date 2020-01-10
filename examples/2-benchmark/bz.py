@@ -6,6 +6,8 @@ import numpy
 from pyscf import lib
 from pyscf import gto, scf, dft, mcscf, mp, cc, lo
 
+from functools import reduce
+
 def sort_mo(casscf, idx, mo_coeff):
     mol = casscf.mol
     corth = lo.orth.orth_ao(mol)

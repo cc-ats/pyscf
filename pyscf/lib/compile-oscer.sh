@@ -3,7 +3,7 @@
 # this file must be copied in pyscf/lib
 # Python path binary if necessary (Anaconda, intelPython)
 export PATH=/home/yangjunjie/anaconda3/bin:$PATH
-export PYTHONPATH=/home/yangjunjie/work/pyscf:$PYTHONPATH
+export PYTHONPATH=/home/yangjunjie/pyscf:$PYTHONPATH
 
 which python
 which cmake

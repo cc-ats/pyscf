@@ -1,0 +1,598 @@
+#INFO: **** input file is /home/yangjunjie/pyscf/examples/2-benchmark/bz.py ****
+#!/usr/bin/env python
+import os
+import time
+import re
+import numpy
+from pyscf import lib
+from pyscf import gto, scf, dft, mcscf, mp, cc, lo
+
+from functools import reduce
+
+def sort_mo(casscf, idx, mo_coeff):
+    mol = casscf.mol
+    corth = lo.orth.orth_ao(mol)
+    casorb = corth[:,idx]
+
+    nmo = mo_coeff.shape[1]
+    ncore = casscf.ncore
+    ncas = casscf.ncas
+    nelecas = casscf.nelecas
+    assert(ncas == casorb.shape[1])
+
+    mo1 = reduce(numpy.dot, (casorb.T, casscf._scf.get_ovlp(), mo_coeff))
+    sdiag = numpy.einsum('pi,pi->i', mo1, mo1)
+
+    nocc = ncore + nelecas[0]
+    casidx = numpy.hstack((numpy.argsort(sdiag[:nocc])[ncore:],
+                           nocc+numpy.argsort(-sdiag[nocc:])[:ncas-nelecas[0]]))
+    notcas = [i for i in range(nmo) if i not in casidx]
+    mo = numpy.hstack((mo_coeff[:,notcas[:ncore]],
+                       mo_coeff[:,casidx],
+                       mo_coeff[:,notcas[ncore:]]))
+    return mo
+
+mol = gto.Mole()
+mol.verbose = 5
+mol.max_memory = 16000
+log = lib.logger.Logger(mol.stdout, 5)
+with open('/proc/cpuinfo') as f:
+    for line in f:
+        if 'model name' in line:
+            log.note(line[:-1])
+            break
+with open('/proc/meminfo') as f:
+    log.note(f.readline()[:-1])
+log.note('OMP_NUM_THREADS=%s\n', os.environ.get('OMP_NUM_THREADS', None))
+
+for bas in ('3-21g', '6-31g*', 'cc-pVDZ', 'cc-pVQZ'):
+# for bas in ('ANO-Roos-TZ',):
+    mol.atom = '''
+c   1.217739890298750 -0.703062453466927  0.000000000000000
+h   2.172991468538160 -1.254577209307266  0.000000000000000
+c   1.217739890298750  0.703062453466927  0.000000000000000
+h   2.172991468538160  1.254577209307266  0.000000000000000
+c   0.000000000000000  1.406124906933854  0.000000000000000
+h   0.000000000000000  2.509154418614532  0.000000000000000
+c  -1.217739890298750  0.703062453466927  0.000000000000000
+h  -2.172991468538160  1.254577209307266  0.000000000000000
+c  -1.217739890298750 -0.703062453466927  0.000000000000000
+h  -2.172991468538160 -1.254577209307266  0.000000000000000
+c   0.000000000000000 -1.406124906933854  0.000000000000000
+h   0.000000000000000 -2.509154418614532  0.000000000000000
+'''
+    mol.basis = bas
+    mol.output = 'bz-%s.out' %bas
+    mol.build()
+    cpu0 = time.clock(), time.time()
+
+    mf = scf.RHF(mol)
+    mf.kernel()
+    cpu0 = log.timer('C6H6 %s RHF'%bas, *cpu0)
+
+    mymp2 = mp.MP2(mf)
+    mymp2.kernel()
+    cpu0 = log.timer('C6H6 %s MP2'%bas, *cpu0)
+
+    mymc = mcscf.CASSCF(mf, 6, 6)
+    idx = mol.search_ao_label('C 2pz')
+    mo = sort_mo(mymc, idx, mf.mo_coeff)
+    mymc.kernel(mo)
+    cpu0 = log.timer('C6H6 %s CASSCF'%bas, *cpu0)
+
+    mycc = cc.CCSD(mf)
+    mycc.kernel()
+    cpu0 = log.timer('C6H6 %s CCSD'%bas, *cpu0)
+
+    mf = dft.RKS(mol)
+    mf.xc = 'b3lyp'
+    mf.kernel()
+    cpu0 = log.timer('C6H6 %s B3LYP'%bas, *cpu0)
+
+#INFO: ******************** input file end ********************
+
+
+System: uname_result(system='Linux', node='schooner2.oscer.ou.edu', release='3.10.0-693.11.6.el7.x86_64', version='#1 SMP Thu Jan 4 01:06:37 UTC 2018', machine='x86_64', processor='x86_64')  Threads 40
+Python 3.7.4 (default, Aug 13 2019, 20:35:49) 
+[GCC 7.3.0]
+numpy 1.17.2  scipy 1.3.1
+Date: Fri Jan 10 13:16:21 2020
+PySCF version 1.6.5
+PySCF path  /home/yangjunjie/work/pyscf/pyscf
+GIT ORIG_HEAD ac7fac1ea834546382ab95daca9ac425b11a6adb
+GIT HEAD      ref: refs/heads/dev
+GIT dev branch  4013c78d3eedd162c3be972d507498597f3d32bd
+
+[ENV] PYSCF_WORK /home/yangjunjie/work/pyscf/pyscf/lib/compile-oscer.sh
+[ENV] PYSCF_HOME /home/yangjunjie/pyscf/pyscf/lib/compile-oscer.sh
+[CONFIG] conf_file None
+[INPUT] verbose = 5
+[INPUT] max_memory = 16000 
+[INPUT] num. atoms = 12
+[INPUT] num. electrons = 42
+[INPUT] charge = 0
+[INPUT] spin (= nelec alpha-beta = 2S) = 0
+[INPUT] symmetry False subgroup None
+[INPUT] Mole.unit = angstrom
+[INPUT]  1 C      1.217739890299  -0.703062453467   0.000000000000 AA    2.301194883623  -1.328595485517   0.000000000000 Bohr
+[INPUT]  2 H      2.172991468538  -1.254577209307   0.000000000000 AA    4.106358746554  -2.370807327712   0.000000000000 Bohr
+[INPUT]  3 C      1.217739890299   0.703062453467   0.000000000000 AA    2.301194883623   1.328595485517   0.000000000000 Bohr
+[INPUT]  4 H      2.172991468538   1.254577209307   0.000000000000 AA    4.106358746554   2.370807327712   0.000000000000 Bohr
+[INPUT]  5 C      0.000000000000   1.406124906934   0.000000000000 AA    0.000000000000   2.657190971035   0.000000000000 Bohr
+[INPUT]  6 H      0.000000000000   2.509154418615   0.000000000000 AA    0.000000000000   4.741614655424   0.000000000000 Bohr
+[INPUT]  7 C     -1.217739890299   0.703062453467   0.000000000000 AA   -2.301194883623   1.328595485517   0.000000000000 Bohr
+[INPUT]  8 H     -2.172991468538   1.254577209307   0.000000000000 AA   -4.106358746554   2.370807327712   0.000000000000 Bohr
+[INPUT]  9 C     -1.217739890299  -0.703062453467   0.000000000000 AA   -2.301194883623  -1.328595485517   0.000000000000 Bohr
+[INPUT] 10 H     -2.172991468538  -1.254577209307   0.000000000000 AA   -4.106358746554  -2.370807327712   0.000000000000 Bohr
+[INPUT] 11 C      0.000000000000  -1.406124906934   0.000000000000 AA    0.000000000000  -2.657190971035   0.000000000000 Bohr
+[INPUT] 12 H      0.000000000000  -2.509154418615   0.000000000000 AA    0.000000000000  -4.741614655424   0.000000000000 Bohr
+[INPUT] ---------------- BASIS SET ---------------- 
+[INPUT] l, kappa, [nprim/nctr], expnt,             c_1 c_2 ...
+[INPUT] H
+[INPUT] 0    0    [2    /1   ]  5.447178          0.156285
+                                0.824547          0.904691
+[INPUT] 0    0    [1    /1   ]  0.183192             1
+[INPUT] C
+[INPUT] 0    0    [3    /1   ]  172.256           0.0617669
+                                25.9109           0.358794
+                                5.53335           0.700713
+[INPUT] 0    0    [2    /1   ]  3.66498           -0.395897
+                                0.770545          1.21584
+[INPUT] 0    0    [1    /1   ]  0.195857             1
+[INPUT] 1    0    [2    /1   ]  3.66498           0.23646
+                                0.770545          0.860619
+[INPUT] 1    0    [1    /1   ]  0.195857             1
+
+nuclear repulsion = 201.574407105832
+number of shells = 42
+number of NR pGTOs = 108
+number of NR cGTOs = 66
+basis = 3-21g
+ecp = {}
+CPU time:         0.86
+
+
+******** <class 'pyscf.scf.hf.RHF'> ********
+method = RHF
+initial guess = minao
+damping factor = 0
+level_shift factor = 0
+DIIS = <class 'pyscf.scf.diis.CDIIS'>
+diis_start_cycle = 1
+diis_space = 8
+SCF conv_tol = 1e-09
+SCF conv_tol_grad = None
+SCF max_cycles = 50
+direct_scf = True
+direct_scf_tol = 1e-13
+chkfile to save SCF result = /home/yangjunjie/pyscf/examples/2-benchmark/tmpry6nakn_
+max_memory 16000 MB (current use 63 MB)
+Set gradient conv threshold to 3.16228e-05
+cond(S) = 2463.987751432577
+E1 = -703.404575188902  E_coul = 270.5246522690647
+init E= -231.305515814005
+    CPU time for initialize scf      2.87 sec, wall time      0.21 sec
+  HOMO = -0.291648628065299  LUMO = 0.00810378868346188
+  mo_energy =
+[-1.13654504e+01 -1.13628150e+01 -1.13628150e+01 -1.13613991e+01
+ -1.13613538e+01 -1.13613538e+01 -1.73136090e+00 -1.35168115e+00
+ -1.35168115e+00 -9.39118202e-01 -9.39118202e-01 -7.25266746e-01
+ -6.26204889e-01 -5.46086032e-01 -5.17831574e-01 -5.17831574e-01
+ -4.77175989e-01 -3.76686318e-01 -3.76686318e-01 -2.91648628e-01
+ -2.91648628e-01  8.10378868e-03  8.10378868e-03  1.49511754e-01
+  2.05789606e-01  2.34374787e-01  2.34374787e-01  2.55665124e-01
+  2.55665124e-01  2.64366658e-01  3.96787490e-01  3.96787490e-01
+  4.15825020e-01  4.15825020e-01  6.60193751e-01  6.92609890e-01
+  8.12961610e-01  8.37075985e-01  8.55031432e-01  8.90039585e-01
+  8.90039585e-01  9.50736899e-01  9.50736899e-01  9.69402922e-01
+  9.69402922e-01  9.92972114e-01  9.92972114e-01  1.04026280e+00
+  1.06836685e+00  1.14106019e+00  1.18535014e+00  1.18535014e+00
+  1.28771082e+00  1.29485145e+00  1.29485145e+00  1.47171732e+00
+  1.48668767e+00  1.48668767e+00  1.64049085e+00  1.65312970e+00
+  1.65312970e+00  1.68052956e+00  1.68052956e+00  2.03458709e+00
+  2.03458709e+00  2.62607243e+00]
+E1 = -707.7508420053899  E_coul = 276.8092882845385
+cycle= 1 E= -229.367146615019  delta_E= 1.94  |g|= 0.341  |ddm|= 3.68
+    CPU time for cycle= 1      0.59 sec, wall time      0.02 sec
+  HOMO = -0.333476143984055  LUMO = 0.146209804305791
+  mo_energy =
+[-11.17967907 -11.17943615 -11.17943615 -11.17911842 -11.17911842
+ -11.17848904  -1.14095572  -1.00684036  -1.00684036  -0.81756262
+  -0.81756262  -0.70385874  -0.63776066  -0.60373222  -0.57710957
+  -0.57710957  -0.49676175  -0.47771516  -0.47771516  -0.33347614
+  -0.33347614   0.1462098    0.1462098    0.24109607   0.31134152
+   0.31134152   0.35188425   0.35356538   0.35356538   0.36273146
+   0.4959327    0.4959327    0.511228     0.511228     0.79277352
+   0.80155165   0.88899889   0.91167978   0.96118921   0.99804529
+   0.99804529   1.0561821    1.0561821    1.07275145   1.07275145
+   1.10602554   1.10602554   1.13330623   1.17473269   1.26140212
+   1.28737466   1.28737466   1.39045716   1.39045716   1.4026934
+   1.56078556   1.56078556   1.57746899   1.70247252   1.72405759
+   1.72405759   1.80479557   1.80479557   2.15588849   2.15588849
+   2.73201232]
+E1 = -707.439868961759  E_coul = 276.45555850741727
+cycle= 2 E= -229.409903348509  delta_E= -0.0428  |g|= 0.0795  |ddm|= 0.819
+    CPU time for cycle= 2      1.38 sec, wall time      0.04 sec
+  HOMO = -0.341940160423605  LUMO = 0.139809849440525
+  mo_energy =
+[-11.19598874 -11.19574667 -11.19574667 -11.19544225 -11.19544225
+ -11.19482973  -1.15169232  -1.01388833  -1.01388833  -0.82209983
+  -0.82209983  -0.70856385  -0.63531043  -0.62265383  -0.58771674
+  -0.58771674  -0.506704    -0.49079418  -0.49079418  -0.34194016
+  -0.34194016   0.13980985   0.13980985   0.24515389   0.31415531
+   0.31415531   0.35810603   0.35972535   0.35972535   0.36043358
+   0.49217598   0.49217598   0.50979613   0.50979613   0.78997742
+   0.7964984    0.8833029    0.90503322   0.95073867   0.9910115
+   0.9910115    1.04718159   1.04718159   1.06794424   1.06794424
+   1.09779621   1.09779621   1.12558873   1.1677309    1.25592732
+   1.2874822    1.2874822    1.39082597   1.39082597   1.3939975
+   1.55810691   1.55810691   1.57691266   1.70842294   1.72569231
+   1.72569231   1.7903684    1.7903684    2.14460937   2.14460937
+   2.72470569]
+E1 = -707.7015719078449  E_coul = 276.71454743860033
+cycle= 3 E= -229.412617363412  delta_E= -0.00271  |g|= 0.0148  |ddm|= 0.215
+    CPU time for cycle= 3      1.02 sec, wall time      0.03 sec
+  HOMO = -0.335681368679409  LUMO = 0.145342062299861
+  mo_energy =
+[-11.18497638 -11.18473832 -11.18473832 -11.18444032 -11.18444032
+ -11.18383073  -1.143236    -1.00674202  -1.00674202  -0.81659069
+  -0.81659069  -0.70469442  -0.63266635  -0.61595955  -0.58346866
+  -0.58346866  -0.50012752  -0.4865494   -0.4865494   -0.33568137
+  -0.33568137   0.14534206   0.14534206   0.2473549    0.31573291
+   0.31573291   0.3613062    0.3613062    0.36160178   0.36331574
+   0.49673933   0.49673933   0.5134997    0.5134997    0.79341054
+   0.80302368   0.88676432   0.90967227   0.95722926   0.99594263
+   0.99594263   1.05315684   1.05315684   1.07208503   1.07208503
+   1.10362917   1.10362917   1.13065753   1.17306576   1.26082579
+   1.29084528   1.29084528   1.39399978   1.39399978   1.39937232
+   1.56137294   1.56137294   1.58074207   1.70969934   1.72796038
+   1.72796038   1.79807297   1.79807297   2.15133936   2.15133936
+   2.72978188]
+E1 = -707.5984746136792  E_coul = 276.6113882856567
+cycle= 4 E= -229.41267922219  delta_E= -6.19e-05  |g|= 0.00237  |ddm|= 0.0246
+    CPU time for cycle= 4      0.72 sec, wall time      0.02 sec
+  HOMO = -0.336098633976696  LUMO = 0.144852838140205
+  mo_energy =
+[-11.18675391 -11.18651552 -11.18651552 -11.18621684 -11.18621684
+ -11.18560692  -1.14383023  -1.00733363  -1.00733363  -0.81723193
+  -0.81723193  -0.70538762  -0.6331562   -0.61693342  -0.58418863
+  -0.58418863  -0.50053126  -0.48733377  -0.48733377  -0.33609863
+  -0.33609863   0.14485284   0.14485284   0.24702955   0.31534527
+   0.31534527   0.36093218   0.36093218   0.36129334   0.36278282
+   0.49615989   0.49615989   0.51287256   0.51287256   0.79268579
+   0.80232808   0.88610737   0.90920879   0.9567968    0.99512522
+   0.99512522   1.05266289   1.05266289   1.07125538   1.07125538
+   1.10304218   1.10304218   1.13011603   1.17248102   1.25989499
+   1.29003198   1.29003198   1.39322885   1.39322885   1.39841904
+   1.56082907   1.56082907   1.58003433   1.70925121   1.72745405
+   1.72745405   1.79751612   1.79751612   2.15080729   2.15080729
+   2.72931103]
+E1 = -707.6096948477675  E_coul = 276.6226062407803
+cycle= 5 E= -229.412681501155  delta_E= -2.28e-06  |g|= 0.00024  |ddm|= 0.005
+    CPU time for cycle= 5      0.82 sec, wall time      0.02 sec
+  HOMO = -0.336092658958464  LUMO = 0.144862719052193
+  mo_energy =
+[-11.18672805 -11.18648971 -11.18648971 -11.18619119 -11.18619119
+ -11.18558132  -1.14385784  -1.00734182  -1.00734182  -0.81723192
+  -0.81723192  -0.70540855  -0.63314597  -0.61694848  -0.5842034
+  -0.5842034   -0.50053227  -0.48733098  -0.48733098  -0.33609266
+  -0.33609266   0.14486272   0.14486272   0.24702622   0.3153409
+   0.3153409    0.36093891   0.36093891   0.36130073   0.36279671
+   0.49615489   0.49615489   0.51288054   0.51288054   0.79270486
+   0.80232831   0.88612473   0.90918057   0.95680185   0.99513833
+   0.99513833   1.05267383   1.05267383   1.07126812   1.07126812
+   1.10305402   1.10305402   1.13008302   1.1724935    1.25989029
+   1.29003443   1.29003443   1.39323871   1.39323871   1.39843616
+   1.56083319   1.56083319   1.58005073   1.70925997   1.7274645
+   1.7274645    1.79748345   1.79748345   2.15078732   2.15078732
+   2.72930203]
+E1 = -707.6101404872023  E_coul = 276.62305185207686
+cycle= 6 E= -229.412681529293  delta_E= -2.81e-08  |g|= 3.54e-05  |ddm|= 0.000851
+    CPU time for cycle= 6      0.84 sec, wall time      0.02 sec
+  HOMO = -0.336089087061719  LUMO = 0.144865860936427
+  mo_energy =
+[-11.18673115 -11.18649279 -11.18649279 -11.18619423 -11.18619423
+ -11.18558434  -1.14385728  -1.00734074  -1.00734074  -0.81723031
+  -0.81723031  -0.70540915  -0.63314492  -0.61694599  -0.58420253
+  -0.58420253  -0.50052873  -0.48732757  -0.48732757  -0.33608909
+  -0.33608909   0.14486586   0.14486586   0.24702631   0.31533997
+   0.31533997   0.36093831   0.36093831   0.36129983   0.3627998
+   0.49615527   0.49615527   0.51288066   0.51288066   0.79270669
+   0.80232834   0.88612876   0.90918082   0.95680534   0.9951404
+   0.9951404    1.05267702   1.05267702   1.07126979   1.07126979
+   1.10305653   1.10305653   1.13008308   1.17249576   1.25988898
+   1.29003353   1.29003353   1.39323871   1.39323871   1.39843754
+   1.56083466   1.56083466   1.580052     1.70926112   1.72746613
+   1.72746613   1.79748461   1.79748461   2.15078903   2.15078903
+   2.72930428]
+E1 = -707.6102747424893  E_coul = 276.62318610673594
+cycle= 7 E= -229.412681529921  delta_E= -6.28e-10  |g|= 2.43e-06  |ddm|= 0.000117
+    CPU time for cycle= 7      0.85 sec, wall time      0.02 sec
+  HOMO = -0.336088752164337  LUMO = 0.144866193868089
+  mo_energy =
+[-11.18673106 -11.18649269 -11.18649269 -11.18619413 -11.18619413
+ -11.18558424  -1.14385689  -1.00734041  -1.00734041  -0.81723003
+  -0.81723003  -0.70540899  -0.63314484  -0.61694551  -0.58420236
+  -0.58420236  -0.50052837  -0.4873273   -0.4873273   -0.33608875
+  -0.33608875   0.14486619   0.14486619   0.24702655   0.31534007
+   0.31534007   0.36093847   0.36093847   0.36129999   0.36280014
+   0.49615552   0.49615552   0.51288092   0.51288092   0.79270695
+   0.80232869   0.88612912   0.90918121   0.95680572   0.99514076
+   0.99514076   1.05267735   1.05267735   1.07127012   1.07127012
+   1.10305683   1.10305683   1.13008352   1.17249603   1.25988917
+   1.29003372   1.29003372   1.39323891   1.39323891   1.39843782
+   1.56083493   1.56083493   1.58005228   1.70926137   1.72746639
+   1.72746639   1.79748511   1.79748511   2.15078946   2.15078946
+   2.72930467]
+E1 = -707.6102809748058  E_coul = 276.62319233904884
+Extra cycle  E= -229.412681529925  delta_E= -3.64e-12  |g|= 6.49e-07  |ddm|= 6.58e-06
+    CPU time for scf_cycle      9.92 sec, wall time      0.39 sec
+    CPU time for SCF      9.92 sec, wall time      0.39 sec
+converged SCF energy = -229.412681529925
+
+******** <class 'pyscf.mp.mp2.MP2'> ********
+nocc = 21, nmo = 66
+max_memory 16000 MB (current use 124 MB)
+transform (ia|jb) incore
+    CPU time for Integral transformation      1.59 sec, wall time      0.04 sec
+E(MP2) = -229.946761437297  E_corr = -0.534079907371901
+
+******** <class 'pyscf.mcscf.mc1step.CASSCF'> ********
+CAS (3e+3e, 6o), ncore = 18, nvir = 42
+max_cycle_macro = 50
+max_cycle_micro = 4
+conv_tol = 1e-07
+conv_tol_grad = None
+orbital rotation max_stepsize = 0.02
+augmented hessian ah_max_cycle = 30
+augmented hessian ah_conv_tol = 1e-12
+augmented hessian ah_linear dependence = 1e-14
+augmented hessian ah_level shift = 0
+augmented hessian ah_start_tol = 2.5
+augmented hessian ah_start_cycle = 3
+augmented hessian ah_grad_trust_region = 3
+kf_trust_region = 3
+kf_interval = 4
+ci_response_space = 4
+ci_grad_trust_region = 3
+with_dep4 0
+natorb = False
+canonicalization = True
+sorting_mo_energy = False
+ao2mo_level = 2
+chkfile = /home/yangjunjie/pyscf/examples/2-benchmark/tmpry6nakn_
+max_memory 16000 MB (current use 217 MB)
+internal_rotation = False
+******** <class 'pyscf.fci.direct_spin1.FCISolver'> ********
+max. cycles = 50
+conv_tol = 1e-08
+davidson only = False
+linear dependence = 1e-10
+level shift = 0.001
+max iter space = 12
+max_memory 16000 MB
+nroots = 1
+pspace_size = 400
+spin = None
+Start 1-step CASSCF
+Start CASCI
+    CPU time for integral transformation to CAS space      0.00 sec, wall time      0.00 sec
+core energy = -223.041381194705
+    CPU time for effective h1e in CAS space      0.00 sec, wall time      0.00 sec
+    CPU time for FCI solver      4.31 sec, wall time      0.11 sec
+CAS space CI energy = -6.43642364986655
+CASCI E = -229.477804844572  S^2 = 0.0000000
+Set conv_tol_grad to 0.000316228
+    CPU time for Initializing 1-step CASSCF      8.36 sec, wall time      0.21 sec
+    CPU time for CAS DM      0.04 sec, wall time      0.00 sec
+    |g|=0.0433
+    CPU time for gen h_op      1.32 sec, wall time      0.03 sec
+    imic 1(3)  |g[o]|=0.0398  |dxi|=0.0285  max(|x|)= 0.23  |dr|=0.0285  eig=-0.0104  seig=0.000903
+    imic 2(4)  |g[o]|=0.0363  |dxi|=0.0285  max(|x|)=0.216  |dr|=0.057  eig=-0.00899  seig=0.000891
+    imic 3(5)  |g[o]|=0.0329  |dxi|=0.0279  max(|x|)=0.207  |dr|=0.0849  eig=-0.00766  seig=0.000877
+    imic 4(6)  |g[o]|=0.0297  |dxi|=0.0277  max(|x|)=0.193  |dr|=0.113  eig=-0.00645  seig=0.000876
+    CPU time for aug_hess in 4 inner iters      1.54 sec, wall time      0.04 sec
+    CPU time for orbital rotation      2.87 sec, wall time      0.07 sec
+CI step by 4D subspace response
+    CPU time for update CAS DM      1.36 sec, wall time      0.03 sec
+micro 1  |u-1|=0.159  |g[o]|=0.0433  |g[c]|=0.0127  |ddm|=0.0217
+    CPU time for micro iter 1      0.00 sec, wall time      0.00 sec
+    |g|=0.0321 (keyframe), |g-correction|=0.0026
+    CPU time for gen h_op      1.17 sec, wall time      0.03 sec
+    imic 5(7)  |g[o]|=0.0288  |dxi|=0.0275  max(|x|)=0.188  |dr|=0.0275  eig=-0.00598  seig=0.000875
+    imic 6(8)  |g[o]|=0.0256  |dxi|=0.0273  max(|x|)=0.174  |dr|=0.0548  eig=-0.00491  seig=0.000872
+    imic 7(9)  |g[o]|=0.0225  |dxi|=0.0271  max(|x|)=0.158  |dr|=0.0819  eig=-0.00395  seig=0.000824
+    imic 8(10)  |g[o]|=0.0193  |dxi|=0.0269  max(|x|)=0.142  |dr|=0.109  eig=-0.00308  seig=0.000817
+    CPU time for aug_hess in 8 inner iters      1.07 sec, wall time      0.03 sec
+    CPU time for orbital rotation      2.25 sec, wall time      0.06 sec
+CI step by 4D subspace response
+    CPU time for update CAS DM      1.34 sec, wall time      0.03 sec
+micro 2  |u-1|=0.313  |g[o]|=0.0321  |g[c]|=0.0117  |ddm|=0.0321
+    CPU time for micro iter 2      0.00 sec, wall time      0.00 sec
+    |g|=0.0195 (keyframe), |g-correction|=0.00177
+    CPU time for gen h_op      1.26 sec, wall time      0.03 sec
+    imic 9(11)  |g[o]|=0.0161  |dxi|=0.0272  max(|x|)=0.114  |dr|=0.0272  eig=-0.00203  seig=0.0008
+    imic 10(12)  |g[o]|=0.0128  |dxi|=0.0271  max(|x|)=0.0957  |dr|=0.0543  eig=-0.00141  seig=0.0008
+    imic 11(13)  |g[o]|=0.00948  |dxi|=0.027  max(|x|)=0.077  |dr|=0.0812  eig=-0.000893  seig=0.000796
+    imic 12(14)  |g[o]|=0.00621  |dxi|=0.0269  max(|x|)=0.0578  |dr|=0.108  eig=-0.000495  seig=0.000782
+    CPU time for aug_hess in 12 inner iters      1.13 sec, wall time      0.03 sec
+    CPU time for orbital rotation      2.40 sec, wall time      0.06 sec
+CI step by 4D subspace response
+    CPU time for update CAS DM      1.36 sec, wall time      0.03 sec
+micro 3  |u-1|=0.465  |g[o]|=0.0195  |g[c]|=0.012  |ddm|=0.0317
+    CPU time for micro iter 3      0.00 sec, wall time      0.00 sec
+    |g|=0.00524 (keyframe), |g-correction|=0.0019
+    CPU time for gen h_op      1.16 sec, wall time      0.03 sec
+    imic 13(15)  |g[o]|=5.86e-05  |dxi|=0.0267  max(|x|)=0.0161  |dr|=0.0267  eig=-7.5e-05  seig=0.000767
+    CPU time for aug_hess in 13 inner iters      0.34 sec, wall time      0.01 sec
+    CPU time for orbital rotation      1.51 sec, wall time      0.04 sec
+micro 4  |u-1|=0.502  |g[o]|=0.00524
+Active space overlap to initial guess, SVD = [0.99995723 0.99989342 0.99989342 0.98493478 0.98493478 0.96738445]
+Active space overlap to last step, SVD = [0.99995723 0.99989342 0.99989342 0.98493478 0.98493478 0.96738445]
+    CPU time for update eri      5.29 sec, wall time      0.14 sec
+Start CASCI
+    CPU time for integral transformation to CAS space      0.00 sec, wall time      0.00 sec
+core energy = -223.024000009195
+    CPU time for effective h1e in CAS space      0.00 sec, wall time      0.00 sec
+davidson 0 1  |r|= 0.00116  e= [-6.4656278]  max|de|= -6.47  lindep= 0.671
+davidson 1 2  |r|= 0.000406  e= [-6.46562917]  max|de|= -1.36e-06  lindep= 0.785
+davidson 2 3  |r|= 9.39e-05  e= [-6.4656293]  max|de|= -1.33e-07  lindep= 0.991
+root 0 converged  |r|= 2.67e-05  e= -6.46562930524975  max|de|= -5.28e-09
+converged 3 4  |r|= 2.67e-05  e= [-6.46562931]  max|de|= -5.28e-09
+    CPU time for FCI solver      8.62 sec, wall time      0.22 sec
+CAS space CI energy = -6.46562930524976
+macro iter 1 (18 JK  4 micro), CASSCF E = -229.489629314445  dE = -0.01182447  S^2 = 0.0000000
+               |grad[o]|=0.0433  |grad[c]|= 0.011992728655496361  |ddm|=0.0317
+    CPU time for CASCI solver      9.74 sec, wall time      0.25 sec
+    CPU time for macro iter 1     28.17 sec, wall time      0.72 sec
+    |g|=0.000996
+    CPU time for gen h_op      2.04 sec, wall time      0.05 sec
+    imic 1(3)  |g[o]|=3.67e-05  |dxi|=0.00767  max(|x|)=0.00569  |dr|=0.00767  eig=-5.87e-06  seig=0.000341
+    CPU time for aug_hess in 1 inner iters      0.79 sec, wall time      0.02 sec
+    CPU time for orbital rotation      3.26 sec, wall time      0.08 sec
+CI step by 4D subspace response
+    CPU time for update CAS DM      1.41 sec, wall time      0.04 sec
+micro 1  |u-1|=0.0108  |g[o]|=0.000996  |g[c]|=0.000406  |ddm|=0.00069
+    CPU time for micro iter 1      0.00 sec, wall time      0.00 sec
+    |g|=9.94e-05 (keyframe), |g-correction|=8.71e-05
+    CPU time for gen h_op      1.23 sec, wall time      0.03 sec
+    imic 2(4)  |g[o]|=3.38e-05  |dxi|=0.000263  max(|x|)=0.000184  |dr|=0.000263  eig=-1.05e-08  seig=0.000231
+    imic 3(5)  |g[o]|=1.17e-06  |dxi|=7.65e-05  max(|x|)=6.95e-05  |dr|=0.000246  eig=-9.28e-10  seig=0.000203
+    CPU time for orbital rotation      2.19 sec, wall time      0.06 sec
+CI step by 4D subspace response
+    CPU time for update CAS DM      2.79 sec, wall time      0.07 sec
+micro 2  |u-1|=0.0112  |g[o]|=9.94e-05  |g[c]|=3.76e-05  |ddm|=0.000737
+    CPU time for micro iter 2      0.00 sec, wall time      0.00 sec
+Active space overlap to initial guess, SVD = [0.99995646 0.99989296 0.99989296 0.98558153 0.98558149 0.96883935]
+Active space overlap to last step, SVD = [1.         1.         1.         0.99999285 0.99999285 0.99998313]
+    CPU time for update eri      4.71 sec, wall time      0.12 sec
+Start CASCI
+    CPU time for integral transformation to CAS space      0.00 sec, wall time      0.00 sec
+core energy = -223.024124141462
+    CPU time for effective h1e in CAS space      0.00 sec, wall time      0.00 sec
+davidson 0 1  |r|= 2.45e-06  e= [-6.46551128]  max|de|= -6.47  lindep=    1
+Linear dependency in trial subspace. |r| for each state [2.449365446599535e-06]
+    CPU time for FCI solver      2.87 sec, wall time      0.07 sec
+CAS space CI energy = -6.46551127763763
+macro iter 2 (6 JK  2 micro), CASSCF E = -229.4896354191  dE = -6.1046553e-06  S^2 = 0.0000000
+               |grad[o]|=0.000996  |grad[c]|= 3.756736319989984e-05  |ddm|=0.000737
+    CPU time for CASCI solver      3.47 sec, wall time      0.09 sec
+    CPU time for macro iter 2     17.84 sec, wall time      0.46 sec
+    |g|=6.52e-06
+    CPU time for gen h_op      3.15 sec, wall time      0.08 sec
+    CPU time for orbital rotation      3.48 sec, wall time      0.09 sec
+CI step by 4D subspace response
+    CPU time for update CAS DM      2.88 sec, wall time      0.07 sec
+micro 1  |u-1|=    0  |g[o]|=6.52e-06  |g[c]|=2.45e-06  |ddm|=6.1e-07
+    CPU time for micro iter 1      0.00 sec, wall time      0.00 sec
+Active space overlap to initial guess, SVD = [0.99995646 0.99989296 0.99989296 0.98558153 0.98558149 0.96883935]
+Active space overlap to last step, SVD = [1. 1. 1. 1. 1. 1.]
+    CPU time for update eri      5.52 sec, wall time      0.14 sec
+Start CASCI
+    CPU time for integral transformation to CAS space      0.00 sec, wall time      0.00 sec
+core energy = -223.024124141462
+    CPU time for effective h1e in CAS space      0.00 sec, wall time      0.00 sec
+davidson 0 1  |r|= 1.31e-07  e= [-6.46551128]  max|de|= -6.47  lindep=    1
+Linear dependency in trial subspace. |r| for each state [1.3139375824865482e-07]
+    CPU time for FCI solver      2.70 sec, wall time      0.07 sec
+CAS space CI energy = -6.46551127764153
+macro iter 3 (1 JK  1 micro), CASSCF E = -229.489635419104  dE = -3.8937742e-12  S^2 = 0.0000000
+               |grad[o]|=6.52e-06  |grad[c]|= 2.449365446627539e-06  |ddm|=6.1e-07
+    CPU time for CASCI solver      3.28 sec, wall time      0.08 sec
+    CPU time for macro iter 3     15.16 sec, wall time      0.39 sec
+1-step CASSCF converged in 3 macro (25 JK 7 micro) steps
+CASSCF canonicalization
+Density matrix diagonal elements [1.89197022 1.89197013 1.95659204 0.10915756 0.10915747 0.04115258]
+i = 1  <i|F|i> = -11.17656899
+i = 2  <i|F|i> = -11.17632687
+i = 3  <i|F|i> = -11.17632685
+i = 4  <i|F|i> = -11.17601162
+i = 5  <i|F|i> = -11.17601160
+i = 6  <i|F|i> = -11.17539391
+i = 7  <i|F|i> =  -1.13944910
+i = 8  <i|F|i> =  -1.00269849
+i = 9  <i|F|i> =  -1.00269848
+i = 10  <i|F|i> =  -0.81318448
+i = 11  <i|F|i> =  -0.81318448
+i = 12  <i|F|i> =  -0.70181188
+i = 13  <i|F|i> =  -0.62965718
+i = 14  <i|F|i> =  -0.61186307
+i = 15  <i|F|i> =  -0.58035914
+i = 16  <i|F|i> =  -0.58035913
+i = 17  <i|F|i> =  -0.48308180
+i = 18  <i|F|i> =  -0.48308180
+i = 19  <i|F|i> =  -0.32232699
+i = 20  <i|F|i> =  -0.32232697
+i = 21  <i|F|i> =  -0.48942951
+i = 22  <i|F|i> =   0.16125349
+i = 23  <i|F|i> =   0.16125358
+i = 24  <i|F|i> =   0.40408554
+i = 25  <i|F|i> =   0.24884836
+i = 26  <i|F|i> =   0.31764277
+i = 27  <i|F|i> =   0.31764277
+i = 28  <i|F|i> =   0.36315236
+i = 29  <i|F|i> =   0.36315236
+i = 30  <i|F|i> =   0.36329682
+i = 31  <i|F|i> =   0.49845999
+i = 32  <i|F|i> =   0.49845999
+i = 33  <i|F|i> =   0.51576256
+i = 34  <i|F|i> =   0.51576256
+i = 35  <i|F|i> =   0.79622309
+i = 36  <i|F|i> =   0.80480283
+i = 37  <i|F|i> =   0.88915918
+i = 38  <i|F|i> =   0.91118333
+i = 39  <i|F|i> =   0.95730222
+i = 40  <i|F|i> =   0.99903132
+i = 41  <i|F|i> =   0.99903133
+i = 42  <i|F|i> =   1.05311717
+i = 43  <i|F|i> =   1.05311718
+i = 44  <i|F|i> =   1.07565091
+i = 45  <i|F|i> =   1.07565091
+i = 46  <i|F|i> =   1.07651356
+i = 47  <i|F|i> =   1.07651363
+i = 48  <i|F|i> =   1.12375625
+i = 49  <i|F|i> =   1.13288327
+i = 50  <i|F|i> =   1.26496314
+i = 51  <i|F|i> =   1.29444313
+i = 52  <i|F|i> =   1.29444314
+i = 53  <i|F|i> =   1.39741112
+i = 54  <i|F|i> =   1.39741113
+i = 55  <i|F|i> =   1.40348780
+i = 56  <i|F|i> =   1.56350220
+i = 57  <i|F|i> =   1.56350220
+i = 58  <i|F|i> =   1.58409936
+i = 59  <i|F|i> =   1.71141770
+i = 60  <i|F|i> =   1.72985610
+i = 61  <i|F|i> =   1.72985610
+i = 62  <i|F|i> =   1.80042182
+i = 63  <i|F|i> =   1.80042183
+i = 64  <i|F|i> =   2.15286492
+i = 65  <i|F|i> =   2.15286492
+i = 66  <i|F|i> =   2.73067550
+    CPU time for 1-step CASSCF     76.74 sec, wall time      1.97 sec
+CASSCF energy = -229.489635419104
+CASCI E = -229.489635419104  E(CI) = -6.46551127764153  S^2 = 0.0000000
+
+******** <class 'pyscf.cc.ccsd.CCSD'> ********
+CC2 = 0
+CCSD nocc = 21, nmo = 66
+max_cycle = 50
+direct = 0
+conv_tol = 1e-07
+conv_tol_normt = 1e-05
+diis_space = 6
+diis_start_cycle = 0
+diis_start_energy_diff = 1e+09
+max_memory 16000 MB (current use 289 MB)
+    CPU time for CCSD integral transformation      5.30 sec, wall time      0.14 sec
+Init t2, MP2 energy = -0.534079916410911
+    CPU time for init mp2      0.84 sec, wall time      0.02 sec
+Init E(CCSD) = -0.534079916411057
+cycle = 1  E(CCSD) = -0.548225029191241  dE = -0.0141451128  norm(t1,t2) = 0.0708726
+    CPU time for CCSD iter     46.11 sec, wall time      1.25 sec
+cycle = 2  E(CCSD) = -0.567032333437451  dE = -0.0188073042  norm(t1,t2) = 0.0299774
+    CPU time for CCSD iter     41.37 sec, wall time      1.16 sec
+cycle = 3  E(CCSD) = -0.572921608689229  dE = -0.00588927525  norm(t1,t2) = 0.0146591
+    CPU time for CCSD iter     40.42 sec, wall time      1.13 sec
+cycle = 4  E(CCSD) = -0.57607634523781  dE = -0.00315473655  norm(t1,t2) = 0.00605204
+    CPU time for CCSD iter     41.49 sec, wall time      1.18 sec
