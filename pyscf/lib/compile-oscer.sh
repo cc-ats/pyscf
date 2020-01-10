@@ -16,3 +16,9 @@ export CXX=g++
 
 export LD_LIBRARY_PATH=$MKLROOT/lib:$LD_LIBRARY_PATH
 python -c "import pyscf; print('pyscf path is ', pyscf.__path__[0])"
+
+# mkdir -p build
+# cd build
+# rm -rf *
+# cmake -DBLA_VENDOR=Intel10_64lp_seq ..
+# make VERBOSE=1
