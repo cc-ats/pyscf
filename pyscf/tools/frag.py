@@ -151,7 +151,7 @@ H        -1.9144370615   -0.7531546521    0.0000000000
 H        -0.5641810316   -0.0319363903    0.0000000000'''
     frag1.basis = '6-31g(d)'
     frag1.build()
-    mf1 = dft.RKS(frag1)
+    mf1 = dft.UKS(frag1)
     mf1.xc = 'pbe0'
     mf1.kernel()
 
@@ -162,7 +162,7 @@ H         1.7527099026    0.3464799298   -0.7644430086
 H         1.7527099026    0.3464799298    0.7644430086'''
     frag2.basis = '6-31g(d)'
     frag2.build()
-    mf2 = dft.RKS(frag2)
+    mf2 = dft.UKS(frag2)
     mf2.xc = 'pbe0'
     mf2.kernel()
 

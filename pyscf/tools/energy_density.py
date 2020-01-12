@@ -210,8 +210,8 @@ def calc_rho_ene(mf, coords, dms, ao_value=None):
     if len(ao_value.shape) == 3 and ao_value.shape[0]==10:
         rho  = calc_rho(mf, coords, dms, ao_value=ao_value)
         rhot = calc_rho_t(mf, coords, dms, ao_value=ao_value)
-        rhoxc = calc_rhoxc(mf, coords, dm, ao_value=ao_value)
-        rhov, rhoj = calc_rhov_rhoj(mf, coords, dm)
+        rhoxc = calc_rhoxc(mf, coords, dms, ao_value=ao_value)
+        rhov, rhoj = calc_rhov_rhoj(mf, coords, dms, ao_value=ao_value)
         return (rhoxc + rhot + (rhov + rhoj)*rho)
     else:
         raise RuntimeError("Wrong AO value")
