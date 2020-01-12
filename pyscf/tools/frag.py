@@ -75,7 +75,8 @@ class FragmentMethod(lib.StreamObject):
         if non0tab is None:
             non0tab = grid.non0tab
         ao_value = numint.eval_ao(self.mol, coords, deriv=0)
-        rho = numint.eval_rho(self.mol, ao_value, dm, xctype='lda')
+        # rho = numint.eval_rho(self.mol, ao_value, dm, xctype='lda')
+        rho = energy_density.calc_rho(self.mf, coords, dm, ao_value=ao_value)
         n = numpy.dot(rho, weights)
         mol = self.mol
         size = weights.size
@@ -94,9 +95,13 @@ class FragmentMethod(lib.StreamObject):
         if not hasattr(self, "fbh_weight"):
             frag_ao_value_list = [numint.eval_ao(frag.mol, self.grid.coords, deriv=0) for frag in self.frag_list]
             frag_rho_list = []
-            for imf, frag_mf in enumerate(self.frag_list):
+            for ifrag_mf, frag_mf in enumerate(self.frag_list):
                 frag_rho_list.append(
-                    numint.eval_rho(frag_mf.mol, frag_ao_value_list[imf], frag_mf.make_rdm1(), xctype='lda')
+                    # numint.eval_rho(frag_mf.mol, frag_ao_value_list[imf], frag_mf.make_rdm1(), xctype='lda')
+                    energy_density.calc_rho(
+                        self.mf, self.grid.coords, 
+                        frag_mf.make_rdm1(), 
+                        ao_value=frag_ao_value_list[ifrag_mf])
                 )
             frag_rho_list = numpy.array(frag_rho_list)
             self.fbh_weight = frag_rho_list/numpy.einsum("ij->j", frag_rho_list)
@@ -167,9 +172,11 @@ H         1.7527099026    0.3464799298    0.7644430086'''
     print("diff_e = ", fm.build())
 
     ao_value = numint.eval_ao(fm.mol, fm.grid.coords, deriv=2)
-    rho      = numint.eval_rho(fm.mol, ao_value, fm.mf.make_rdm1(), xctype='mGGA')
+    rho      = energy_density.calc_rho(fm.mf, fm.grid.coords, 
+                                       fm.mf.make_rdm1(), 
+                                       ao_value=ao_value)
 
-    elec_den = rho[0]
+    elec_den = rho
     ener_den = energy_density.calc_rho_ene(fm.mf, fm.grid.coords, fm.mf.make_rdm1(), ao_value=ao_value)
     print(fm.mol.nelec)
     print("FBH density partition",   fm.real_space_func_partition(elec_den, method='fbh'))
