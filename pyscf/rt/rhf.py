@@ -19,7 +19,7 @@ REF_BASIS         = getattr(__config__, 'lo_orth_pre_orth_ao_method', 'ANO'     
 MUTE_CHKFILE      = getattr(__config__, 'rt_tdscf_mute_chkfile',      False      )
 PRINT_MAT_NCOL    = getattr(__config__, 'rt_tdscf_print_mat_ncol',    7          )
 ORTH_METHOD       = getattr(__config__, 'rt_tdscf_orth_ao_method',    'canonical')
-PC_TOL            = getattr(__config__, 'rt_tdscf_pc_tol',                   1e-6)
+PC_TOL            = getattr(__config__, 'rt_tdscf_pc_tol',                  1e-12)
 PC_MAX_ITER       = getattr(__config__, 'rt_tdscf_pc_max_iter',                20)
 
 # re-define Orthogonalize AOs
@@ -313,7 +313,7 @@ def lflp_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
         
         err = errm(_fock_prim_next_half_p, _fock_prim_next_half_c)
         logger.debug(tdscf, "inner_iter = %d, err = %e", inner_iter, err)
-        if inner_iter >= 2:
+        if inner_iter >= 3:
             logger.info(tdscf, "inner_iter = %d, err = %e", inner_iter, err)
         step_converged = (err<tol)
         _fock_prim_next_half_p = _fock_prim_next_half_c
@@ -354,7 +354,7 @@ def ep_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
 
         err = errm(_dm_prim_next_c, _dm_prim_next_p)
         logger.debug(tdscf, "inner_iter = %d, err = %e", inner_iter, err)
-        if inner_iter >= 2:
+        if inner_iter >= 3:
             logger.info(tdscf, "inner_iter = %d, err = %e", inner_iter, err)
         step_converged = (err<tol)
         _dm_prim_next_p = _dm_prim_next_c
