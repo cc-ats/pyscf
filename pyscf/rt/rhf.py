@@ -313,6 +313,8 @@ def lflp_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
         
         err = errm(_fock_prim_next_half_p, _fock_prim_next_half_c)
         logger.debug(tdscf, "inner_iter = %d, err = %e", inner_iter, err)
+        if inner_iter >= 2:
+            logger.info(tdscf, "inner_iter = %d, err = %e", inner_iter, err)
         step_converged = (err<tol)
         _fock_prim_next_half_p = _fock_prim_next_half_c
     
@@ -352,6 +354,8 @@ def ep_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
 
         err = errm(_dm_prim_next_c, _dm_prim_next_p)
         logger.debug(tdscf, "inner_iter = %d, err = %e", inner_iter, err)
+        if inner_iter >= 2:
+            logger.info(tdscf, "inner_iter = %d, err = %e", inner_iter, err)
         step_converged = (err<tol)
         _dm_prim_next_p = _dm_prim_next_c
 
