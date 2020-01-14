@@ -2,7 +2,6 @@ import time
 import tempfile
 
 from functools import reduce
-
 import numpy
 import scipy
 
