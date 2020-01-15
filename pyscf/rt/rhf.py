@@ -461,9 +461,18 @@ def kernel(tdscf,              dm_ao_init= None,
 
     cput2 = logger.timer(tdscf, 'propagation %d time steps'%(istep-1), *cput0)
 
-    if do_dump_chk and tdscf.chkfile:
+    if (do_dump_chk) and (tdscf.chkfile) and (tdscf.save_step is None):
         ntime = tdscf.ntime
-        nstep = tdscf.nstep
+        tdscf.dump_chk(locals())
+        cput3 = logger.timer(tdscf, 'dump chk finished', *cput0)
+    elif (do_dump_chk) and (tdscf.chkfile) and (tdscf.save_step is not None):
+        logger.note(tdscf, 'The results are saved in every %d steps.', tdscf.save_step)
+        ntime      = tdscf.ntime[::tdscf.save_step]
+        ndm_prim   = tdscf.ndm_prim[::tdscf.save_step]
+        ndm_ao     = tdscf.ndm_ao[::tdscf.save_step]
+        nfock_prim = tdscf.nfock_prim[::tdscf.save_step]
+        nfock_ao   = tdscf.nfock_ao[::tdscf.save_step]
+        netot      = tdscf.netot[::tdscf.save_step]
         tdscf.dump_chk(locals())
         cput3 = logger.timer(tdscf, 'dump chk finished', *cput0)
    
@@ -488,7 +497,8 @@ class TDHF(lib.StreamObject):
 # filename to self.chkfile
             self._chkfile = tempfile.NamedTemporaryFile(dir=lib.param.TMPDIR)
             self.chkfile = self._chkfile.name
-
+        
+        self.save_step  = None
 # input parameters for propagation
 # initial condtion
         self.dm_ao_init = None
@@ -667,12 +677,10 @@ class TDHF(lib.StreamObject):
     def dump_chk(self, envs):
         if self.chkfile:
             logger.info(self, 'chkfile to save RT TDSCF result is %s', self.chkfile)
-            chkfile.dump_rt(self.mol, self.chkfile,
-                             envs['nstep'], envs['ntime'],
+            chkfile.dump_rt(self.mol, self.chkfile, envs['ntime'],
                              envs['ndm_prim'], envs['ndm_ao'],
                              envs['nfock_prim'], envs['nfock_ao'],
-                             envs['netot'],
-                             overwrite_mol=False)
+                             envs['netot'], overwrite_mol=False)
 
 if __name__ == "__main__":
     mol =   gto.Mole( atom='''

@@ -198,16 +198,6 @@ class TDHF(rhf_tdscf.TDHF):
             self.npop[i]    = self.mf.mulliken_pop(dm = idm.real, s=s1e, verbose=0)[1]
         logger.info(self, "Finalization finished")
 
-    def dump_chk(self, envs):
-        if self.chkfile:
-            logger.info(self, 'chkfile to save RT TDSCF result is %s', self.chkfile)
-            chkfile.dump_rt(self.mol, self.chkfile,
-                             envs['nstep'], envs['ntime'],
-                             envs['ndm_prim'], envs['ndm_ao'],
-                             envs['nfock_prim'], envs['nfock_ao'],
-                             envs['netot'],
-                             overwrite_mol=False)
-
 if __name__ == "__main__":
     mol =   gto.Mole( atom='''
     O    0.0000000    0.0000000    0.5754646
