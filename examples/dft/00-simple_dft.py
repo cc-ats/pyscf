@@ -19,7 +19,7 @@ mol.build(
     symmetry = True,
 )
 
-mf = dft.UKS(mol)
+mf = dft.RKS(mol)
 #mf.xc = 'svwn' # shorthand for slater,vwn
 #mf.xc = 'bp86' # shorthand for b88,p86
 #mf.xc = 'blyp' # shorthand for b88,lyp
@@ -35,5 +35,3 @@ mf.kernel()
 
 # Orbital energies, Mulliken population etc.
 mf.analyze()
-
-print("mf.get_fock() = \n", mf.get_fock().shape)
