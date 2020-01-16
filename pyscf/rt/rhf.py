@@ -468,11 +468,8 @@ def kernel(tdscf,              dm_ao_init= None,
     elif (do_dump_chk) and (tdscf.chkfile) and (tdscf.save_step is not None):
         logger.note(tdscf, 'The results are saved in every %d steps.', tdscf.save_step)
         ntime      = tdscf.ntime[::tdscf.save_step]
-        ndm_prim   = tdscf.ndm_prim[::tdscf.save_step]
-        ndm_ao     = tdscf.ndm_ao[::tdscf.save_step]
-        nfock_prim = tdscf.nfock_prim[::tdscf.save_step]
-        nfock_ao   = tdscf.nfock_ao[::tdscf.save_step]
         netot      = tdscf.netot[::tdscf.save_step]
+        ndm_ao     = tdscf.ndm_ao[::tdscf.save_step]
         tdscf.dump_chk(locals())
         cput3 = logger.timer(tdscf, 'dump chk finished', *cput0)
    
@@ -678,9 +675,7 @@ class TDHF(lib.StreamObject):
         if self.chkfile:
             logger.info(self, 'chkfile to save RT TDSCF result is %s', self.chkfile)
             chkfile.dump_rt(self.mol, self.chkfile, envs['ntime'],
-                             envs['ndm_prim'], envs['ndm_ao'],
-                             envs['nfock_prim'], envs['nfock_ao'],
-                             envs['netot'], overwrite_mol=False)
+                             envs['netot'], envs['ndm_ao'], overwrite_mol=False)
 
 if __name__ == "__main__":
     mol =   gto.Mole( atom='''
