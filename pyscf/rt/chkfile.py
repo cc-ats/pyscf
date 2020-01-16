@@ -23,7 +23,7 @@ from pyscf.lib.chkfile import load_mol, save_mol
 def load_rt(chkfile):
     return load_mol(chkfile), load(chkfile, 'rt')
 
-def dump_rt(mol, chkfile, ntime, etot, ndm_ao, overwrite_mol=True):
+def dump_rt(mol, chkfile, ntime, netot, ndm_ao, overwrite_mol=True):
     '''save temporary results'''
     if h5py.is_hdf5(chkfile) and not overwrite_mol:
         with h5py.File(chkfile, 'a') as fh5:
@@ -32,11 +32,8 @@ def dump_rt(mol, chkfile, ntime, etot, ndm_ao, overwrite_mol=True):
     else:
         save_mol(mol, chkfile)
 
-    rt_dic  = { "ntime"      :ntime,      
-                # "ndm_prim"   :ndm_prim,   
-                "ndm_ao"     :ndm_ao.real,     
-                # "nfock_prim" :nfock_prim, 
-                # "nfock_ao"   :nfock_ao,   
+    rt_dic  = { "ntime"      :ntime,
+                "ndm_ao"     :ndm_ao.real,   
                 "netot"      :netot}
     save(chkfile, 'rt', rt_dic)
 

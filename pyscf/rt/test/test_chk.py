@@ -1,3 +1,5 @@
+import sys
+
 import pyscf
 from   pyscf  import dft, scf
 from   pyscf  import gto
@@ -27,14 +29,23 @@ rttd.chkfile = './test_chk.chk'
 rttd.save_step = 3
 rttd.set_prop_func(key="mmut")
 rttd.kernel(dm_ao_init=dm)
-print("rttd.ntime shape is", rttd.ntime.shape)
-print("rttd shape is\n", rttd.ntime)
-print("rttd.ndm_prim shape is", rttd.ndm_prim.shape)
 
-rttd.__dict__.update(
-  scf.chkfile.load('./test_chk.chk', 'rt')
+print("rttd.ntime shape is", rttd.ntime.shape)
+print("rttd time is\n", rttd.ntime)
+
+print("rttd.ndm_ao size is", sys.getsizeof(rttd.ndm_prim))
+print("rttd.ndm_ao shape is", rttd.ndm_prim.shape)
+
+rttd_ = rt.TDSCF(h2o_rks)
+rttd_.__dict__.update(
+  rt.chkfile.load('./test_chk.chk', 'rt')
   )
 
-print("rttd.ntime shape is", rttd.ntime.shape)
-print("rttd shape is\n", rttd.ntime)
-print("rttd.ndm_prim shape is", rttd.ndm_prim.shape)
+print("rttd_.ntime shape is", rttd_.ntime.shape)
+print("rttd_ time is\n", rttd_.ntime)
+
+print("rttd_.netot shape is", rttd_.netot.shape)
+print("rttd_ netot is\n", rttd_.netot)
+
+print("rttd_.ndm_ao size is", sys.getsizeof(rttd_.ndm_ao))
+print("rttd_.ndm_ao shape is", rttd_.ndm_ao.shape)

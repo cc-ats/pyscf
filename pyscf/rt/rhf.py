@@ -462,7 +462,9 @@ def kernel(tdscf,              dm_ao_init= None,
     cput2 = logger.timer(tdscf, 'propagation %d time steps'%(istep-1), *cput0)
 
     if (do_dump_chk) and (tdscf.chkfile) and (tdscf.save_step is None):
-        ntime = tdscf.ntime
+        ntime      = tdscf.ntime
+        netot      = tdscf.netot
+        ndm_ao     = tdscf.ndm_ao
         tdscf.dump_chk(locals())
         cput3 = logger.timer(tdscf, 'dump chk finished', *cput0)
     elif (do_dump_chk) and (tdscf.chkfile) and (tdscf.save_step is not None):
@@ -470,6 +472,7 @@ def kernel(tdscf,              dm_ao_init= None,
         ntime      = tdscf.ntime[::tdscf.save_step]
         netot      = tdscf.netot[::tdscf.save_step]
         ndm_ao     = tdscf.ndm_ao[::tdscf.save_step]
+        # print(locals())
         tdscf.dump_chk(locals())
         cput3 = logger.timer(tdscf, 'dump chk finished', *cput0)
    
@@ -672,10 +675,13 @@ class TDHF(lib.StreamObject):
         self._finalize()
 
     def dump_chk(self, envs):
+        # print('ndm_ao shape is ', envs['ndm_ao'].shape)
         if self.chkfile:
             logger.info(self, 'chkfile to save RT TDSCF result is %s', self.chkfile)
-            chkfile.dump_rt(self.mol, self.chkfile, envs['ntime'],
-                             envs['netot'], envs['ndm_ao'], overwrite_mol=False)
+            chkfile.dump_rt(
+                self.mol, self.chkfile,
+                envs['ntime'], envs['netot'], envs['ndm_ao'],
+                overwrite_mol=False)
 
 if __name__ == "__main__":
     mol =   gto.Mole( atom='''
