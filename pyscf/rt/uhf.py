@@ -142,12 +142,12 @@ class TDHF(rhf_tdscf.TDHF):
         log.info(
         'This is a real time TDSCF calculation initialized with a %s SCF',
             (
-            "converged" if self.mf.converged else "not converged"
+            "converged" if self._scf.converged else "not converged"
             )
         )
-        if self.mf.converged:
+        if self._scf.converged:
             log.info(
-                'The SCF converged tolerence is conv_tol = %g, conv_tol should be less that 1e-8'%self.mf.conv_tol
+                'The SCF converged tolerence is conv_tol = %g, conv_tol should be less that 1e-8'%self._scf.conv_tol
                 )
         log.info(
             'The initial condition is a UHF instance'
@@ -167,35 +167,35 @@ class TDHF(rhf_tdscf.TDHF):
         self.dump_flags()
 
         if self.orth_method is None:
-            x = orth_ao(self.mf, method=ORTH_METHOD)
+            x = orth_ao(self._scf, method=ORTH_METHOD)
             x_t = numpy.einsum('aij->aji', x)
-            x_inv = numpy.einsum('ali,ls->ais', x, self.mf.get_ovlp())
+            x_inv = numpy.einsum('ali,ls->ais', x, self._scf.get_ovlp())
             x_t_inv = numpy.einsum('aij->aji', x_inv)
             self.orth_xtuple = (x, x_t, x_inv, x_t_inv)
         else:
             logger.info(self, 'orth method is %s.', self.orth_method)
-            x = orth_ao(self.mf, method=self.orth_method)
+            x = orth_ao(self._scf, method=self.orth_method)
             x_t = numpy.einsum('aij->aji', x)
-            x_inv = numpy.einsum('ali,ls->ais', x, self.mf.get_ovlp())
+            x_inv = numpy.einsum('ali,ls->ais', x, self._scf.get_ovlp())
             x_t_inv = numpy.einsum('aij->aji', x_inv)
             self.orth_xtuple = (x, x_t, x_inv, x_t_inv)
         
         if self.verbose >= logger.DEBUG1:
             print_matrix(
-                "alpha XT S X", reduce(numpy.dot, (self.orth_xtuple[1][0], self.mf.get_ovlp(), self.orth_xtuple[0][0]))
+                "alpha XT S X", reduce(numpy.dot, (self.orth_xtuple[1][0], self._scf.get_ovlp(), self.orth_xtuple[0][0]))
                 , ncols=PRINT_MAT_NCOL)
             print_matrix(
-                "beta  XT S X", reduce(numpy.dot, (self.orth_xtuple[1][1], self.mf.get_ovlp(), self.orth_xtuple[0][1]))
+                "beta  XT S X", reduce(numpy.dot, (self.orth_xtuple[1][1], self._scf.get_ovlp(), self.orth_xtuple[0][1]))
                 , ncols=PRINT_MAT_NCOL)
 
     def _finalize(self):
         self.ndipole = numpy.zeros([self.maxstep+1,             3])
         self.npop    = numpy.zeros([self.maxstep+1, self.mol.natm])
         logger.info(self, "Finalization begins here")
-        s1e = self.mf.get_ovlp()
+        s1e = self._scf.get_ovlp()
         for i,idm in enumerate(self.ndm_ao):
-            self.ndipole[i] = self.mf.dip_moment(dm = idm.real, unit='au', verbose=0)
-            self.npop[i]    = self.mf.mulliken_pop(dm = idm.real, s=s1e, verbose=0)[1]
+            self.ndipole[i] = self._scf.dip_moment(dm = idm.real, unit='au', verbose=0)
+            self.npop[i]    = self._scf.mulliken_pop(dm = idm.real, s=s1e, verbose=0)[1]
         logger.info(self, "Finalization finished")
 
 if __name__ == "__main__":

@@ -10,18 +10,18 @@ class TDDFT(uhf_tdscf.TDHF):
         log.info(
         'This is a real time TDSCF calculation initialized with a %s SCF',
             (
-            "converged" if self.mf.converged else "not converged"
+            "converged" if self._scf.converged else "not converged"
             )
         )
-        if self.mf.converged:
+        if self._scf.converged:
             log.info(
-                'The SCF converged tolerence is conv_tol = %g, conv_tol should be less that 1e-8'%self.mf.conv_tol
+                'The SCF converged tolerence is conv_tol = %g, conv_tol should be less that 1e-8'%self._scf.conv_tol
                 )
         log.info(
             'The initial condition is a UKS instance'
             )
         log.info(
-            'The xc functional is %s'%self.mf.xc
+            'The xc functional is %s'%self._scf.xc
             )
         if self.chkfile:
             log.info('chkfile to save RT TDSCF result = %s', self.chkfile)

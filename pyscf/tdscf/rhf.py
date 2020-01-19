@@ -773,6 +773,7 @@ class TDA(lib.StreamObject):
         for iconverged, converged in enumerate(self.converged):
             if not converged:
                 log.warn('Excited state is not converged')
+        
         nocc = (self._scf.mo_occ>0).sum()
         nmo = self._scf.mo_occ.size
         nvir = nmo - nocc
@@ -954,6 +955,7 @@ class TDHF(TDA):
         for iconverged, converged in enumerate(self.converged):
             if not converged:
                 log.warn('Excited state is not converged')
+        
         nocc = (self._scf.mo_occ>0).sum()
         nmo = self._scf.mo_occ.size
         nvir = nmo - nocc
