@@ -947,10 +947,10 @@ class TDHF(TDA):
 
         self.converged, w, x1 = \
                 lib.davidson_nosym1(vind, x0, precond,
-                                    tol=self.conv_tol, max_cycle=self.max_cycle,
-                                    nroots=nstates, lindep=self.lindep,
-                                    max_space=self.max_space, pick=pickeig,
-                                    verbose=log)
+                              tol=self.conv_tol,
+                              nroots=nstates, lindep=self.lindep,
+                              max_space=self.max_space, pick=pickeig,
+                              verbose=log, max_cycle=self.max_cycle)
 
         for iconverged, converged in enumerate(self.converged):
             if not converged:
