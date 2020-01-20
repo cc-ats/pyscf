@@ -1,3 +1,5 @@
+# Author: Junjie Yang <yangjunjie0320@gmail.com> Zheng Pei and Yihan Shao
+
 from pyscf.rt  import rhf as rhf_tdscf
 from pyscf     import lib
 from pyscf.lib import logger
