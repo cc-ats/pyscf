@@ -425,27 +425,15 @@ def kernel(tdscf,              dm_ao_init= None,
     _temp_dm_aos[LAST]     = ndm_ao[0]
     _temp_fock_aos[LAST]   = nfock_ao[0]
 
-    _temp_dm_prims[LAST_HALF],   _temp_dm_aos[LAST_HALF] = tdscf.prop_step(
-        _temp_ts[LAST_HALF] - _temp_ts[LAST],
-        _temp_fock_prims[LAST], _temp_dm_prims[LAST]
-        )
+    _temp_dm_prims[LAST_HALF]   = ndm_prim[0]
+    _temp_fock_prims[LAST_HALF] = nfock_prim[0]
+    _temp_dm_aos[LAST_HALF]     = ndm_ao[0]
+    _temp_fock_aos[LAST_HALF]   = nfock_ao[0]
 
-    h1e_ao_last_half            = tdscf.get_hcore(t=_temp_ts[LAST_HALF])
-    vhf_ao_last_half            = tdscf._scf.get_veff(  dm=_temp_dm_aos[LAST_HALF])
-    _temp_fock_aos[LAST_HALF]   = tdscf._scf.get_fock(  dm=_temp_dm_aos[LAST_HALF], h1e=h1e_ao_last_half, vhf=vhf_ao_last_half)
-    _temp_fock_prims[LAST_HALF] = tdscf.ao2orth_fock( _temp_fock_aos[LAST_HALF])
-    ene_last_half_tot           = tdscf._scf.energy_tot(dm=_temp_dm_aos[LAST_HALF], h1e=h1e_ao_last_half, vhf=vhf_ao_last_half)
-
-    _temp_dm_prims[THIS],   _temp_dm_aos[THIS] = tdscf.prop_step(
-        _temp_ts[THIS] - _temp_ts[LAST_HALF],
-        _temp_fock_prims[LAST_HALF], _temp_dm_prims[LAST_HALF]
-        )
-
-    h1e_ao_this            = tdscf.get_hcore(     t=_temp_ts[THIS])
-    vhf_ao_this            = tdscf._scf.get_veff(  dm=_temp_dm_aos[THIS])
-    _temp_fock_aos[THIS]   = tdscf._scf.get_fock(  dm=_temp_dm_aos[THIS], h1e=h1e_ao_this, vhf=vhf_ao_this)
-    _temp_fock_prims[THIS] = tdscf.ao2orth_fock( _temp_fock_aos[THIS])
-    ene_this_tot           = tdscf._scf.energy_tot(dm=_temp_dm_aos[THIS], h1e=h1e_ao_this, vhf=vhf_ao_this)
+    _temp_dm_prims[THIS]   = ndm_prim[0]
+    _temp_fock_prims[THIS] = nfock_prim[0]
+    _temp_dm_aos[THIS]     = ndm_ao[0]
+    _temp_fock_aos[THIS]   = nfock_ao[0]
 
     istep = 1
     while istep <= maxstep:
