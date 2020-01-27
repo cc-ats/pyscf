@@ -113,7 +113,7 @@ def orth2ao_fock(tdscf, fock_prim):
 def prop_step(tdscf, dt, fock_prim, dm_prim):
     propogator = expm(-1j*dt*fock_prim)
     dm_prim_   = reduce(numpy.dot, [propogator, dm_prim, propogator.conj().T])
-    # dm_prim_   = (dm_prim_ + dm_prim_.conj().T)/2
+    dm_prim_   = (dm_prim_ + dm_prim_.conj().T)/2
     dm_ao_     = tdscf.orth2ao_dm(dm_prim_)
     return dm_prim_, dm_ao_
 
@@ -137,7 +137,9 @@ def euler_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
     _h1e_next_ao            = tdscf.get_hcore(t=_temp_ts[NEXT])
     vhf_next_ao            = tdscf._scf.get_veff(dm=_temp_dm_aos[NEXT])
     _temp_fock_aos[NEXT]   = tdscf._scf.get_fock(dm=_temp_dm_aos[NEXT], h1e=_h1e_next_ao, vhf=vhf_next_ao)
-    ene_next_tot           = tdscf._scf.energy_tot(dm=_temp_dm_aos[NEXT], h1e=_h1e_next_ao, vhf=vhf_next_ao)
+    ene_next_tot           = tdscf._scf.energy_tot(
+        dm=_temp_dm_aos[NEXT], h1e=_h1e_next_ao, vhf=vhf_next_ao
+        )
 
     _temp_dm_prims[THIS]   = _temp_dm_prims[NEXT]
     _temp_dm_aos[THIS]     = _temp_dm_aos[NEXT]
@@ -361,6 +363,7 @@ def ep_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
             logger.info(tdscf, "inner_iter = %d, err = %e", inner_iter, err)
         step_converged = (err<tol)
         _dm_prim_next_p = _dm_prim_next_c
+        _dm_ao_next_p   = _dm_ao_next_c
 
     _temp_dm_prims[THIS]     = _dm_prim_next_c
     _temp_dm_aos[THIS]       = _dm_ao_next_c
@@ -368,6 +371,50 @@ def ep_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
     _temp_fock_prims[THIS]   = _temp_fock_prims[NEXT]
     
     return tdscf._scf.energy_tot(dm=_dm_ao_next_c, h1e=_h1e_next_ao, vhf=_vhf_ao_next).real
+
+def amut_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
+                 _temp_fock_prims, _temp_fock_aos, tol=PC_TOL, max_iter=PC_MAX_ITER):
+
+    step_converged      = False
+    inner_iter          = 0
+    _h1e_next_ao         = tdscf.get_hcore(t=_temp_ts[NEXT])
+    _h1e_next_half_ao    = tdscf.get_hcore(t=_temp_ts[NEXT_HALF])
+
+    _dm_prim_next_half_p, _dm_ao_next_half_p  = tdscf.prop_step(
+            _temp_ts[NEXT_HALF] - _temp_ts[THIS], _temp_fock_prims[THIS], _temp_dm_prims[THIS]
+        )
+    while (not step_converged) and inner_iter <= max_iter:
+        inner_iter += 1
+
+        _vhf_ao_next_half                = tdscf._scf.get_veff(dm=_dm_ao_next_half_p)
+        _temp_fock_aos[NEXT_HALF]        = tdscf._scf.get_fock(dm=_dm_ao_next_half_p, h1e=_h1e_next_half_ao, vhf=_vhf_ao_next_half)
+        _temp_fock_prims[NEXT_HALF]      = tdscf.ao2orth_fock(_temp_fock_aos[NEXT_HALF])
+
+        _dm_prim_next_half_c, _dm_ao_next_half_c  = tdscf.prop_step(
+            _temp_ts[NEXT_HALF] - _temp_ts[THIS], _temp_fock_prims[NEXT_HALF], _temp_dm_prims[THIS]
+        )
+
+        err = errm(_dm_prim_next_half_c, _dm_prim_next_half_p)
+        logger.debug(tdscf, "inner_iter = %d, err = %e", inner_iter, err)
+        if inner_iter >= 3:
+            logger.info(tdscf, "inner_iter = %d, err = %e", inner_iter, err)
+        step_converged = (err<tol)
+        _dm_prim_next_half_p = _dm_prim_next_half_c
+        _dm_ao_next_half_p   = _dm_ao_next_half_c
+
+    _temp_dm_prims[NEXT], _temp_dm_aos[NEXT]  = tdscf.prop_step(
+            _temp_ts[NEXT] - _temp_ts[THIS], _temp_fock_prims[NEXT_HALF], _temp_dm_prims[THIS]
+        )
+    _vhf_ao_next                = tdscf._scf.get_veff(dm=_temp_dm_aos[NEXT])
+    _temp_fock_aos[NEXT]        = tdscf._scf.get_fock(dm=_temp_dm_aos[NEXT], h1e=_h1e_next_ao, vhf=_vhf_ao_next)
+    _temp_fock_prims[NEXT]      = tdscf.ao2orth_fock(_temp_fock_aos[NEXT])
+
+    _temp_dm_prims[THIS]     = _temp_dm_prims[NEXT]
+    _temp_dm_aos[THIS]       = _temp_dm_aos[NEXT]
+    _temp_fock_aos[THIS]     = _temp_fock_aos[NEXT]
+    _temp_fock_prims[THIS]   = _temp_fock_prims[NEXT]
+
+    return tdscf._scf.energy_tot(dm=_temp_dm_aos[NEXT], h1e=_h1e_next_ao, vhf=_vhf_ao_next).real
 
 def kernel(tdscf,              dm_ao_init= None,
            ndm_prim  = None, nfock_prim  = None, #output
@@ -567,6 +614,8 @@ class TDHF(lib.StreamObject):
                 self.prop_func = amut2_prop
             elif (key.lower() == 'amut3'):
                 self.prop_func = amut3_prop
+            elif (key.lower() == 'amut_pc'):
+                self.prop_func = amut_pc_prop
             elif (key.lower() == 'ep_pc'):
                 self.prop_func = ep_pc_prop
             elif (key.lower() == 'lflp_pc'):
