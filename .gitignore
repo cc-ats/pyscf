@@ -27,6 +27,9 @@ var/
 
 # Calculation examples
 *.molden
+*.cube
+tmp*
+*chk
 
 # Installer logs
 pip-log.txt
@@ -83,3 +86,13 @@ tmp/
 # IDEs
 .idea/
 .vscode/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride

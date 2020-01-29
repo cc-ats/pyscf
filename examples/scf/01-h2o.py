@@ -23,10 +23,12 @@ mol.build function, you can execute mol.build(0,0) instead.
 '''
 
 from pyscf import gto, scf
+import pyscf
+
+print("pyscf path = ", pyscf.__path__)
 
 mol = gto.Mole()
 mol.verbose = 5
-#mol.output = 'out_h2o'
 mol.atom = '''
 O 0 0      0
 H 0 -2.757 2.587

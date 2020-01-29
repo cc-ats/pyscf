@@ -27,9 +27,9 @@ mf = mol.KS()
 #mf.xc = 'b97,pw91'
 #mf.xc = 'pbe0'
 #mf.xc = 'b3p86'
-#mf.xc = 'wb97x'
+mf.xc = 'wb97xd'
 #mf.xc = '' or mf.xc = None # Hartree term only, without exchange
-mf.xc = 'b3lyp'
+#mf.xc = 'b3lyp'
 mf.kernel()
 
 # Orbital energies, Mulliken population etc.
