@@ -135,6 +135,7 @@ Keyword argument "init_dm" is replaced by "dm0"''')
     if isinstance(mf.diis, lib.diis.DIIS):
         mf_diis = mf.diis
     elif mf.diis:
+        assert issubclass(mf.DIIS, lib.diis.DIIS)
         mf_diis = mf.DIIS(mf, mf.diis_file)
         mf_diis.space = mf.diis_space
         mf_diis.rollback = mf.diis_space_rollback
@@ -150,8 +151,8 @@ Keyword argument "init_dm" is replaced by "dm0"''')
         # Note in pbc.scf, mf.mol == mf.cell, cell is saved under key "mol"
         chkfile.save_mol(mol, mf.chkfile)
 
-#    # A preprocessing hook before the SCF iteration
-#    mf.pre_kernel(locals())
+    # A preprocessing hook before the SCF iteration
+    mf.pre_kernel(locals())
 
     scf_conv = False
     cycle = 0
@@ -222,8 +223,8 @@ Keyword argument "init_dm" is replaced by "dm0"''')
             mf.dump_chk(locals())
 
     logger.timer(mf, 'scf_cycle', *cput0)
-#    # A post-processing hook before return
-#    mf.post_kernel(locals())
+    # A post-processing hook before return
+    mf.post_kernel(locals())
     return scf_conv, e_tot, mo_energy, mo_coeff, mo_occ
 
 
@@ -235,6 +236,8 @@ def energy_elec(mf, dm=None, h1e=None, vhf=None):
 
         E = \sum_{ij}h_{ij} \gamma_{ji}
           + \frac{1}{2}\sum_{ijkl} \gamma_{ji}\gamma_{lk} \langle ik||jl\rangle
+
+    Note this function has side effects which cause mf.scf_summary updated.
 
     Args:
         mf : an instance of SCF class
@@ -265,8 +268,10 @@ def energy_elec(mf, dm=None, h1e=None, vhf=None):
     if dm is None: dm = mf.make_rdm1()
     if h1e is None: h1e = mf.get_hcore()
     if vhf is None: vhf = mf.get_veff(mf.mol, dm)
-    e1 = numpy.einsum('ij,ji', h1e, dm)
-    e_coul = numpy.einsum('ij,ji', vhf, dm) * .5
+    e1 = numpy.einsum('ij,ji->', h1e, dm)
+    e_coul = numpy.einsum('ij,ji->', vhf, dm) * .5
+    mf.scf_summary['e1'] = e1.real
+    mf.scf_summary['e2'] = e_coul.real
     logger.debug(mf, 'E1 = %s  E_coul = %s', e1, e_coul)
     return (e1+e_coul).real, e_coul
 
@@ -274,9 +279,14 @@ def energy_elec(mf, dm=None, h1e=None, vhf=None):
 def energy_tot(mf, dm=None, h1e=None, vhf=None):
     r'''Total Hartree-Fock energy, electronic part plus nuclear repulstion
     See :func:`scf.hf.energy_elec` for the electron part
+
+    Note this function has side effects which cause mf.scf_summary updated.
+
     '''
-    e_tot = mf.energy_elec(dm, h1e, vhf)[0] + mf.energy_nuc()
-    return e_tot.real
+    nuc = mf.energy_nuc()
+    e_tot = mf.energy_elec(dm, h1e, vhf)[0] + nuc
+    mf.scf_summary['nuc'] = nuc.real
+    return e_tot
 
 
 def get_hcore(mol):
@@ -489,6 +499,18 @@ def init_guess_by_huckel(mol):
     on occupancy averaged atomic RHF calculations, doi:10.1021/acs.jctc.8b01089
 
     Returns:
+        Density matrix, 2D ndarray
+    '''
+    if mol is None: mol = self.mol
+    mo_energy, mo_coeff = _init_guess_huckel_orbitals(mol)
+    mo_occ = get_occ(SCF(mol), mo_energy, mo_coeff)
+    return make_rdm1(mo_coeff, mo_occ)
+
+def _init_guess_huckel_orbitals(mol):
+    '''Generate initial guess density matrix from a Huckel calculation based
+    on occupancy averaged atomic RHF calculations, doi:10.1021/acs.jctc.8b01089
+
+    Returns:
         An 1D array for Huckel orbital energies and an 2D array for orbital coefficients
     '''
     import copy
@@ -644,7 +666,7 @@ def make_rdm1(mo_coeff, mo_occ, **kwargs):
 # hermi = 1 : hermitian
 # hermi = 2 : anti-hermitian
 ################################################
-def dot_eri_dm(eri, dm, hermi=0):
+def dot_eri_dm(eri, dm, hermi=0, with_j=True, with_k=True):
     '''Compute J, K matrices in terms of the given 2-electron integrals and
     density matrix:
 
@@ -682,30 +704,31 @@ def dot_eri_dm(eri, dm, hermi=0):
     >>> print(j.shape)
     (3, 2, 2)
     '''
-    dm = numpy.asarray(dm,order='C')
+    dm = numpy.asarray(dm)
     nao = dm.shape[-1]
-    dms = dm.reshape(-1,nao,nao)
     if eri.dtype == numpy.complex128 or eri.size == nao**4:
         eri = eri.reshape((nao,)*4)
-        vj = numpy.empty(dms.shape, dtype=eri.dtype)
-        vk = numpy.empty(dms.shape, dtype=eri.dtype)
-        for i, dmi in enumerate(dms):
-            vj[i] = numpy.einsum('ijkl,ji->kl', eri, dmi)
-            vk[i] = numpy.einsum('ijkl,jk->il', eri, dmi)
+        dms = dm.reshape(-1,nao,nao)
+        vj = vk = None
+        if with_j:
+            vj = numpy.einsum('ijkl,xji->xkl', eri, dms)
+            vj = vj.reshape(dm.shape)
+        if with_k:
+            vk = numpy.einsum('ijkl,xjk->xil', eri, dms)
+            vk = vk.reshape(dm.shape)
     else:
-        vj = numpy.empty_like(dms)
-        vk = numpy.empty_like(dms)
-        for i, dmi in enumerate(dms):
-            vj[i], vk[i] = _vhf.incore(eri, dmi.real, hermi=hermi)
-            if dms.dtype == numpy.complex128:
-                jk = _vhf.incore(eri, dmi.imag, hermi=0)
-                vj[i] += jk[0] * 1j
-                vk[i] += jk[1] * 1j
-    return vj.reshape(dm.shape), vk.reshape(dm.shape)
+        vj, vk = _vhf.incore(eri, dm.real, hermi, with_j, with_k)
+        if dm.dtype == numpy.complex128:
+            vs = _vhf.incore(eri, dm.imag, 0, with_j, with_k)
+            if with_j:
+                vj = vj + vs[0] * 1j
+            if with_k:
+                vk = vk + vs[1] * 1j
+    return vj, vk
 
 
-def get_jk(mol, dm, hermi=1, vhfopt=None):
-    '''Compute J, K matrices for the given density matrix
+def get_jk(mol, dm, hermi=1, vhfopt=None, with_j=True, with_k=True, omega=None):
+    '''Compute J, K matrices for all input density matrices
 
     Args:
         mol : an instance of :class:`Mole`
@@ -725,6 +748,17 @@ def get_jk(mol, dm, hermi=1, vhfopt=None):
             A class which holds precomputed quantities to optimize the
             computation of J, K matrices
 
+        with_j : boolean
+            Whether to compute J matrices
+
+        with_k : boolean
+            Whether to compute K matrices
+
+        omega : float
+            Parameter of range-seperated Coulomb operator: erf( omega * r12 ) / r12.
+            If specified, integration are evaluated based on the long-range
+            part of the range-seperated Coulomb operator.
+
     Returns:
         Depending on the given dm, the function returns one J and one K matrix,
         or a list of J matrices and a list of K matrices, corresponding to the
@@ -741,19 +775,36 @@ def get_jk(mol, dm, hermi=1, vhfopt=None):
     (3, 2, 2)
     '''
     dm = numpy.asarray(dm, order='C')
-    nao = dm.shape[-1]
-    if dm.dtype == numpy.complex128:
-        dms = numpy.vstack((dm.real, dm.imag)).reshape(-1,nao,nao)
-        vj, vk = _vhf.direct(dms, mol._atm, mol._bas, mol._env,
-                             vhfopt=vhfopt, hermi=0, cart=mol.cart)
-        vj = vj.reshape(2,-1,nao,nao)
-        vk = vk.reshape(2,-1,nao,nao)
-        vj = vj[0] + vj[1] * 1j
-        vk = vk[0] + vk[1] * 1j
+    dm_shape = dm.shape
+    dm_dtype = dm.dtype
+    nao = dm_shape[-1]
+
+    if dm_dtype == numpy.complex128:
+        dm = numpy.vstack((dm.real, dm.imag)).reshape(-1,nao,nao)
+        hermi = 0
+
+    if omega is None:
+        vj, vk = _vhf.direct(dm, mol._atm, mol._bas, mol._env,
+                             vhfopt, hermi, mol.cart, with_j, with_k)
     else:
-        vj, vk = _vhf.direct(dm.reshape(-1,nao,nao), mol._atm, mol._bas, mol._env,
-                             vhfopt=vhfopt, hermi=hermi, cart=mol.cart)
-    return vj.reshape(dm.shape), vk.reshape(dm.shape)
+# The vhfopt of standard Coulomb operator can be used here as an approximate
+# integral prescreening conditioner since long-range part Coulomb is always
+# smaller than standard Coulomb.  It's safe to filter LR integrals with the
+# integral estimation from standard Coulomb.
+        with mol.with_range_coulomb(omega):
+            vj, vk = _vhf.direct(dm, mol._atm, mol._bas, mol._env,
+                                 vhfopt, hermi, mol.cart, with_j, with_k)
+
+    if dm_dtype == numpy.complex128:
+        if with_j:
+            vj = vj.reshape(2,-1)
+            vj = vj[0] + vj[1] * 1j
+            vj = vj.reshape(dm_shape)
+        if with_k:
+            vk = vk.reshape(2,-1)
+            vk = vk[0] + vk[1] * 1j
+            vk = vk.reshape(dm_shape)
+    return vj, vk
 
 
 def get_veff(mol, dm, dm_last=None, vhf_last=None, hermi=1, vhfopt=None):
@@ -929,7 +980,9 @@ def analyze(mf, verbose=logger.DEBUG, with_meta_lowdin=WITH_META_LOWDIN,
     mo_occ = mf.mo_occ
     mo_coeff = mf.mo_coeff
     log = logger.new_logger(mf, verbose)
+
     if log.verbose >= logger.NOTE:
+        mf.dump_scf_summary(log)
         log.note('**** MO energy ****')
         for i,c in enumerate(mo_occ):
             log.note('MO #%-3d energy= %-18.15g occ= %g', i+MO_BASE,
@@ -953,6 +1006,31 @@ def analyze(mf, verbose=logger.DEBUG, with_meta_lowdin=WITH_META_LOWDIN,
     else:
         return (mf.mulliken_pop(mf.mol, dm, s=ovlp_ao, verbose=log),
                 mf.dip_moment(mf.mol, dm, verbose=log))
+
+def dump_scf_summary(mf, verbose=logger.DEBUG):
+    if not mf.scf_summary:
+        return
+
+    log = logger.new_logger(mf, verbose)
+    summary = mf.scf_summary
+    def write(fmt, key):
+        if key in summary:
+            log.info(fmt, summary[key])
+    log.info('**** SCF Summaries ****')
+    log.info('Total Energy =                    %24.15f', mf.e_tot)
+    write('Nuclear Repulsion Energy =        %24.15f', 'nuc')
+    write('One-electron Energy =             %24.15f', 'e1')
+    write('Two-electron Energy =             %24.15f', 'e2')
+    write('Two-electron Coulomb Energy =     %24.15f', 'coul')
+    write('DFT Exchange-Correlation Energy = %24.15f', 'exc')
+    write('Empirical Dispersion Energy =     %24.15f', 'dispersion')
+    write('PCM Polarization Energy =         %24.15f', 'epcm')
+    write('EFP Energy =                      %24.15f', 'efp')
+    if getattr(mf, 'entropy', None):
+        log.info('(Electronic) Entropy              %24.15f', mf.entropy)
+        log.info('(Electronic) Zero Point Energy    %24.15f', mf.e_zero)
+        log.info('Free Energy =                     %24.15f', mf.e_free)
+
 
 def mulliken_pop(mol, dm, s=None, verbose=logger.DEBUG):
     r'''Mulliken population analysis
@@ -1186,26 +1264,6 @@ def as_scanner(mf):
     class SCF_Scanner(mf.__class__, lib.SinglePointScanner):
         def __init__(self, mf_obj):
             self.__dict__.update(mf_obj.__dict__)
-            mf_obj = self
-            mf_objs = []
-            # partial deepcopy to avoid overwriting existing objects
-            while mf_obj is not None:
-                mf_objs.append(mf_obj)
-                if getattr(mf_obj, 'with_df', None):
-                    mf_obj.with_df = copy.copy(mf_obj.with_df)
-                if getattr(mf_obj, 'with_x2c', None):
-                    mf_obj.with_x2c = copy.copy(mf_obj.with_x2c)
-                if getattr(mf_obj, 'grids', None):  # DFT
-                    mf_obj.grids = copy.copy(mf_obj.grids)
-                    mf_obj._numint = copy.copy(mf_obj._numint)
-                if getattr(mf_obj, '_scf', None):
-                    # avoid endless loop caused by circular reference
-                    if mf_obj._scf in mf_objs:
-                        break
-                    mf_obj._scf = copy.copy(mf_obj._scf)
-                    mf_obj = mf_obj._scf
-                else:
-                    break
 
         def __call__(self, mol_or_geom, **kwargs):
             if isinstance(mol_or_geom, gto.Mole):
@@ -1219,26 +1277,12 @@ def as_scanner(mf):
                    # avoid endless loop caused by circular reference
                    mf_obj not in mf_objs):
                 mf_objs.append(mf_obj)
-                mf_obj.mol = mol
-                mf_obj.opt = None
-                mf_obj._eri = None
-                if getattr(mf_obj, 'with_df', None):
-                    mf_obj.with_df.mol = mol
-                    mf_obj.with_df.auxmol = None
-                    mf_obj.with_df._cderi = None
-                if getattr(mf_obj, 'with_x2c', None):
-                    mf_obj.with_x2c.mol = mol
-                if getattr(mf_obj, 'grids', None):  # DFT
-                    mf_obj.grids.mol = mol
-                    mf_obj.grids.coords = None
-                    mf_obj.grids.weights = None
-                    mf_obj._dm_last = None
-                if getattr(mf_obj, 'with_solvent', None):
-                    mf_obj.with_solvent.mol = mol
-                    mf_obj.with_solvent.grids.mol = mol
-                    mf_obj.with_solvent.grids.coords = None
-                    mf_obj.with_solvent.grids.weights = None
-                    mf_obj.with_solvent._solver_ = None
+                mf_obj.reset(mol)
+                for key in ('with_df', 'with_x2c', 'grids', 'nlcgrids',
+                            'with_solvent', 'with_dftd3'):
+                    sub_mod = getattr(mf_obj, key, None)
+                    if sub_mod:
+                        sub_mod.reset(mol)
                 mf_obj = getattr(mf_obj, '_scf', None)
 
             if 'dm0' in kwargs:
@@ -1247,7 +1291,6 @@ def as_scanner(mf):
                 dm0 = None
             elif self.chkfile and h5py.is_hdf5(self.chkfile):
                 dm0 = self.from_chk(self.chkfile)
-            #elif mol.natm == 0: self._eri = mol._eri?
             else:
                 dm0 = self.make_rdm1()
                 # dm0 form last calculation cannot be used in the current
@@ -1401,6 +1444,7 @@ class SCF(lib.StreamObject):
         self.e_tot = 0
         self.converged = False
         self.callback = None
+        self.scf_summary = {}
 
         self.opt = None
         self._eri = None # Note: self._eri requires large amount of memory
@@ -1415,9 +1459,8 @@ class SCF(lib.StreamObject):
         if mol is None: mol = self.mol
         if self.verbose >= logger.WARN:
             self.check_sanity()
-        if not mol.incore_anyway and not self._is_mem_enough():
-# Should I lazy initialize direct SCF?
-            self.opt = self.init_direct_scf(mol)
+        # lazily initialize direct SCF
+        self.opt = None
         return self
 
     def dump_flags(self, verbose=None):
@@ -1506,7 +1549,7 @@ class SCF(lib.StreamObject):
     def init_guess_by_huckel(self, mol=None):
         if mol is None: mol = self.mol
         logger.info(self, 'Initial guess from on-the-fly Huckel, doi:10.1021/acs.jctc.8b01089.')
-        mo_energy, mo_coeff = init_guess_by_huckel(mol)
+        mo_energy, mo_coeff = _init_guess_huckel_orbitals(mol)
         mo_occ = self.get_occ(mo_energy, mo_coeff)
         return self.make_rdm1(mo_coeff, mo_occ)
 
@@ -1575,7 +1618,7 @@ class SCF(lib.StreamObject):
     energy_tot = energy_tot
 
     def energy_nuc(self):
-        return self.mol.energy_nuc()
+        return gto.mole.energy_nuc(self.mol)
 
     # A hook for overloading convergence criteria in SCF iterations. Assigning
     # a function
@@ -1634,27 +1677,36 @@ class SCF(lib.StreamObject):
         return opt
 
     @lib.with_doc(get_jk.__doc__)
-    def get_jk(self, mol=None, dm=None, hermi=1):
+    def get_jk(self, mol=None, dm=None, hermi=1, with_j=True, with_k=True,
+               omega=None):
         if mol is None: mol = self.mol
         if dm is None: dm = self.make_rdm1()
         cpu0 = (time.clock(), time.time())
         if self.direct_scf and self.opt is None:
             self.opt = self.init_direct_scf(mol)
-        dm = numpy.asarray(dm)
-        nao = dm.shape[-1]
-        vj, vk = get_jk(mol, dm.reshape(-1,nao,nao), hermi, self.opt)
+
+        if with_j and with_k:
+            vj, vk = get_jk(mol, dm, hermi, self.opt, with_j, with_k, omega)
+        else:
+            if with_j:
+                prescreen = 'CVHFnrs8_vj_prescreen'
+            else:
+                prescreen = 'CVHFnrs8_vk_prescreen'
+            with lib.temporary_env(self.opt, prescreen=prescreen):
+                vj, vk = get_jk(mol, dm, hermi, self.opt, with_j, with_k, omega)
+
         logger.timer(self, 'vj and vk', *cpu0)
-        return vj.reshape(dm.shape), vk.reshape(dm.shape)
+        return vj, vk
 
-    def get_j(self, mol=None, dm=None, hermi=1):
-        '''Compute J matrix for the given density matrix.
+    def get_j(self, mol=None, dm=None, hermi=1, omega=None):
+        '''Compute J matrices for all input density matrices
         '''
-        return self.get_jk(mol, dm, hermi)[0]
+        return self.get_jk(mol, dm, hermi, with_k=False, omega=omega)[0]
 
-    def get_k(self, mol=None, dm=None, hermi=1):
-        '''Compute K matrix for the given density matrix.
+    def get_k(self, mol=None, dm=None, hermi=1, omega=None):
+        '''Compute K matrices for all input density matrices
         '''
-        return self.get_jk(mol, dm, hermi)[1]
+        return self.get_jk(mol, dm, hermi, with_j=False, omega=omega)[1]
 
     @lib.with_doc(get_veff.__doc__)
     def get_veff(self, mol=None, dm=None, dm_last=0, vhf_last=0, hermi=1):
@@ -1674,6 +1726,8 @@ class SCF(lib.StreamObject):
                 **kwargs):
         if verbose is None: verbose = self.verbose
         return analyze(self, verbose, with_meta_lowdin, **kwargs)
+
+    dump_scf_summary = dump_scf_summary
 
     @lib.with_doc(mulliken_pop.__doc__)
     def mulliken_pop(self, mol=None, dm=None, s=None, verbose=logger.DEBUG):
@@ -1708,9 +1762,9 @@ class SCF(lib.StreamObject):
         nbf = self.mol.nao_nr()
         return nbf**4/1e6+lib.current_memory()[0] < self.max_memory*.95
 
-    def density_fit(self, auxbasis=None, with_df=None):
+    def density_fit(self, auxbasis=None, with_df=None, only_dfj=False):
         import pyscf.df.df_jk
-        return pyscf.df.df_jk.density_fit(self, auxbasis, with_df)
+        return pyscf.df.df_jk.density_fit(self, auxbasis, with_df, only_dfj)
 
     def sfx2c1e(self):
         import pyscf.x2c.sfx2c1e
@@ -1737,6 +1791,14 @@ class SCF(lib.StreamObject):
     update_from_chk = update_from_chk_ = update = update_
 
     as_scanner = as_scanner
+
+    def reset(self, mol=None):
+        '''Reset mol and clean up relevant attributes for scanner mode'''
+        if mol is not None:
+            self.mol = mol
+        self.opt = None
+        self._eri = None
+        return self
 
     @property
     def hf_energy(self):  # pragma: no cover
@@ -1820,16 +1882,18 @@ class RHF(SCF):
         return SCF.check_sanity(self)
 
     @lib.with_doc(get_jk.__doc__)
-    def get_jk(self, mol=None, dm=None, hermi=1):
+    def get_jk(self, mol=None, dm=None, hermi=1, with_j=True, with_k=True,
+               omega=None):
 # Note the incore version, which initializes an _eri array in memory.
         if mol is None: mol = self.mol
         if dm is None: dm = self.make_rdm1()
-        if self._eri is not None or mol.incore_anyway or self._is_mem_enough():
+        if (not omega and
+            (self._eri is not None or mol.incore_anyway or self._is_mem_enough())):
             if self._eri is None:
                 self._eri = mol.intor('int2e', aosym='s8')
-            vj, vk = dot_eri_dm(self._eri, dm, hermi)
+            vj, vk = dot_eri_dm(self._eri, dm, hermi, with_j, with_k)
         else:
-            vj, vk = SCF.get_jk(self, mol, dm, hermi)
+            vj, vk = SCF.get_jk(self, mol, dm, hermi, with_j, with_k, omega)
         return vj, vk
 
     @lib.with_doc(get_veff.__doc__)

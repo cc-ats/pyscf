@@ -77,34 +77,36 @@ def kernel(mf, conv_tol=1e-9, conv_tol_grad=None,
                      callback=callback, conv_check=conv_check)
 
 def get_jk_coulomb(mol, dm, hermi=1, coulomb_allow='SSSS',
-                   opt_llll=None, opt_ssll=None, opt_ssss=None, verbose=None):
+                   opt_llll=None, opt_ssll=None, opt_ssss=None, omega=None, verbose=None):
     log = logger.new_logger(mol, verbose)
-    if coulomb_allow.upper() == 'LLLL':
-        log.debug('Coulomb integral: (LL|LL)')
-        j1, k1 = _call_veff_llll(mol, dm, hermi, opt_llll)
-        n2c = j1.shape[1]
-        vj = numpy.zeros_like(dm)
-        vk = numpy.zeros_like(dm)
-        vj[...,:n2c,:n2c] = j1
-        vk[...,:n2c,:n2c] = k1
-    elif coulomb_allow.upper() == 'SSLL' \
-      or coulomb_allow.upper() == 'LLSS':
-        log.debug('Coulomb integral: (LL|LL) + (SS|LL)')
-        vj, vk = _call_veff_ssll(mol, dm, hermi, opt_ssll)
-        j1, k1 = _call_veff_llll(mol, dm, hermi, opt_llll)
-        n2c = j1.shape[1]
-        vj[...,:n2c,:n2c] += j1
-        vk[...,:n2c,:n2c] += k1
-    else: # coulomb_allow == 'SSSS'
-        log.debug('Coulomb integral: (LL|LL) + (SS|LL) + (SS|SS)')
-        vj, vk = _call_veff_ssll(mol, dm, hermi, opt_ssll)
-        j1, k1 = _call_veff_llll(mol, dm, hermi, opt_llll)
-        n2c = j1.shape[1]
-        vj[...,:n2c,:n2c] += j1
-        vk[...,:n2c,:n2c] += k1
-        j1, k1 = _call_veff_ssss(mol, dm, hermi, opt_ssss)
-        vj[...,n2c:,n2c:] += j1
-        vk[...,n2c:,n2c:] += k1
+    with mol.with_range_coulomb(omega):
+        if coulomb_allow.upper() == 'LLLL':
+            log.debug('Coulomb integral: (LL|LL)')
+            j1, k1 = _call_veff_llll(mol, dm, hermi, opt_llll)
+            n2c = j1.shape[1]
+            vj = numpy.zeros_like(dm)
+            vk = numpy.zeros_like(dm)
+            vj[...,:n2c,:n2c] = j1
+            vk[...,:n2c,:n2c] = k1
+        elif coulomb_allow.upper() == 'SSLL' \
+          or coulomb_allow.upper() == 'LLSS':
+            log.debug('Coulomb integral: (LL|LL) + (SS|LL)')
+            vj, vk = _call_veff_ssll(mol, dm, hermi, opt_ssll)
+            j1, k1 = _call_veff_llll(mol, dm, hermi, opt_llll)
+            n2c = j1.shape[1]
+            vj[...,:n2c,:n2c] += j1
+            vk[...,:n2c,:n2c] += k1
+        else: # coulomb_allow == 'SSSS'
+            log.debug('Coulomb integral: (LL|LL) + (SS|LL) + (SS|SS)')
+            vj, vk = _call_veff_ssll(mol, dm, hermi, opt_ssll)
+            j1, k1 = _call_veff_llll(mol, dm, hermi, opt_llll)
+            n2c = j1.shape[1]
+            vj[...,:n2c,:n2c] += j1
+            vk[...,:n2c,:n2c] += k1
+            j1, k1 = _call_veff_ssss(mol, dm, hermi, opt_ssss)
+            vj[...,n2c:,n2c:] += j1
+            vk[...,n2c:,n2c:] += k1
+
     return vj, vk
 get_jk = get_jk_coulomb
 
@@ -152,9 +154,10 @@ def init_guess_by_atom(mol):
     dm = hf.init_guess_by_atom(mol)
     return _proj_dmll(mol, dm, mol)
 
-# TODO: the Huckel initital guess for DHF needs to transform the returned
-# Huckel orbitals to 4c form
-# init_guess_by_huckel = hf.init_guess_by_huckel
+def init_guess_by_huckel(mol):
+    '''Initial guess from on-the-fly Huckel, doi:10.1021/acs.jctc.8b01089.'''
+    dm = hf.init_guess_by_huckel(mol)
+    return _proj_dmll(mol, dm, mol)
 
 def init_guess_by_chkfile(mol, chkfile_name, project=None):
     '''Read SCF chkfile and make the density matrix for 4C-DHF initial guess.
@@ -251,6 +254,7 @@ def analyze(mf, verbose=logger.DEBUG, **kwargs):
     mo_occ = mf.mo_occ
     mo_coeff = mf.mo_coeff
 
+    mf.dump_scf_summary(log)
     log.info('**** MO energy ****')
     for i in range(len(mo_energy)):
         if mo_occ[i] > 0:
@@ -376,7 +380,7 @@ class UHF(hf.SCF):
     def __init__(self, mol):
         hf.SCF.__init__(self, mol)
         self._coulomb_now = 'SSSS' # 'SSSS' ~ LLLL+LLSS+SSSS
-        self.opt = (None, None, None, None) # (opt_llll, opt_ssll, opt_ssss, opt_gaunt)
+        self.opt = None # (opt_llll, opt_ssll, opt_ssss, opt_gaunt)
         self._keys.update(('conv_tol', 'with_ssss', 'with_gaunt',
                            'with_breit', 'opt'))
 
@@ -419,10 +423,7 @@ class UHF(hf.SCF):
     def init_guess_by_huckel(self, mol=None):
         if mol is None: mol = self.mol
         logger.info(self, 'Initial guess from on-the-fly Huckel, doi:10.1021/acs.jctc.8b01089.')
-        mo_energy, mo_coeff = hf.init_guess_by_huckel(mol)
-        mo_occ = hf.get_occ(self, mo_energy, mo_coeff)
-        dm = hf.make_rdm1(mo_coeff, mo_occ)
-        return _proj_dmll(mol, dm, mol)
+        return init_guess_by_huckel(mol)
 
     def init_guess_by_chkfile(self, chkfile=None, project=None):
         if chkfile is None: chkfile = self.chkfile
@@ -431,8 +432,7 @@ class UHF(hf.SCF):
     def build(self, mol=None):
         if self.verbose >= logger.WARN:
             self.check_sanity()
-        if self.direct_scf:
-            self.opt = self.init_direct_scf(self.mol)
+        self.opt = None
 
     def get_occ(self, mo_energy=None, mo_coeff=None):
         if mo_energy is None: mo_energy = self.mo_energy
@@ -486,17 +486,18 @@ class UHF(hf.SCF):
         opt_gaunt = None
         return opt_llll, opt_ssll, opt_ssss, opt_gaunt
 
-    def get_jk(self, mol=None, dm=None, hermi=1):
+    def get_jk(self, mol=None, dm=None, hermi=1, with_j=True, with_k=True,
+               omega=None):
         if mol is None: mol = self.mol
         if dm is None: dm = self.make_rdm1()
         t0 = (time.clock(), time.time())
         log = logger.new_logger(self)
-        if self.direct_scf and self.opt[0] is None:
+        if self.direct_scf and self.opt is None:
             self.opt = self.init_direct_scf(mol)
         opt_llll, opt_ssll, opt_ssss, opt_gaunt = self.opt
 
         vj, vk = get_jk_coulomb(mol, dm, hermi, self._coulomb_now,
-                                opt_llll, opt_ssll, opt_ssss, log)
+                                opt_llll, opt_ssll, opt_ssss, omega, log)
 
         if self.with_breit:
             if 'SSSS' in self._coulomb_now.upper():
@@ -572,6 +573,14 @@ class UHF(hf.SCF):
     def nuc_grad_method(self):
         from pyscf.grad import dhf
         return dhf.Gradients(self)
+
+    def reset(self, mol):
+        '''Reset mol and clean up relevant attributes for scanner mode'''
+        self.mol = mol
+        self._coulomb_now = 'SSSS' # 'SSSS' ~ LLLL+LLSS+SSSS
+        self.opt = None # (opt_llll, opt_ssll, opt_ssss, opt_gaunt)
+        return self
+
 DHF = UHF
 
 
@@ -584,7 +593,8 @@ class HF1e(UHF):
         s1e = self.get_ovlp(self.mol)
         self.mo_energy, self.mo_coeff = self.eig(h1e, s1e)
         self.mo_occ = self.get_occ(self.mo_energy, self.mo_coeff)
-        self.e_tot = self.mo_energy[self.mo_occ>0][0] + self.mol.energy_nuc()
+        self.e_tot = (self.mo_energy[self.mo_occ>0][0] +
+                      self.mol.energy_nuc()).real
         self._finalize()
         return self.e_tot
 

@@ -266,6 +266,9 @@ def get_coulG(cell, k=np.zeros(3), exx=False, mf=None, mesh=None, Gv=None,
             coulG = 4*np.pi/absG2*(1.0 - np.cos(np.sqrt(absG2)*Rc))
         coulG[absG2==0] = 4*np.pi*0.5*Rc**2
 
+        if cell.dimension < 3:
+            raise NotImplementedError
+
     elif exxdiv == 'vcut_ws':  # PRB 87, 165122
         assert(cell.dimension == 3)
         if not getattr(mf, '_ws_exx', None):
@@ -287,10 +290,16 @@ def get_coulG(cell, k=np.zeros(3), exx=False, mf=None, mesh=None, Gv=None,
         #qidx = [np.linalg.norm(exx_q-kGi,axis=1).argmin() for kGi in kG]
         maxqv = abs(exx_q).max(axis=0)
         is_lt_maxqv = (abs(kG) <= maxqv).all(axis=1)
-        coulG = coulG.astype(np.complex128)
+        coulG = coulG.astype(exx_vq.dtype)
         coulG[is_lt_maxqv] += exx_vq[qidx[is_lt_maxqv]]
 
+        if cell.dimension < 3:
+            raise NotImplementedError
+
     else:
+        # Ewald probe charge method to get the leading term of the finite size
+        # error in exchange integrals
+
         G0_idx = np.where(absG2==0)[0]
         if cell.dimension != 2 or cell.low_dim_ft_type == 'inf_vacuum':
             with np.errstate(divide='ignore'):
@@ -308,7 +317,7 @@ def get_coulG(cell, k=np.zeros(3), exx=False, mf=None, mesh=None, Gv=None,
             with np.errstate(divide='ignore', invalid='ignore'):
                 coulG = weights*4*np.pi/absG2
             if len(G0_idx) > 0:
-                coulG[G0_idx] = -2*np.pi*(np.pi/np.linalg.norm(b[2]))**2 #-pi*L_z^2/2
+                coulG[G0_idx] = -2*np.pi*Ld2**2 #-pi*L_z^2/2
 
         elif cell.dimension == 1:
             logger.warn(cell, 'No method for PBC dimension 1, dim-type %s.'
@@ -331,10 +340,20 @@ def get_coulG(cell, k=np.zeros(3), exx=False, mf=None, mesh=None, Gv=None,
             if len(G0_idx) > 0:
                 coulG[G0_idx] = -np.pi*Rc**2 * (2*np.log(Rc) - 1)
 
+        # The divergent part of periodic summation of (ii|ii) integrals in
+        # Coulomb integrals were cancelled out by electron-nucleus
+        # interaction. The periodic part of (ii|ii) in exchange cannot be
+        # cancelled out by Coulomb integrals. Its leading term is calculated
+        # using Ewald probe charge (the function madelung below)
         if cell.dimension > 0 and exxdiv == 'ewald' and len(G0_idx) > 0:
             coulG[G0_idx] += Nk*cell.vol*madelung(cell, kpts)
 
     coulG[equal2boundary] = 0
+
+    # Scale the coulG kernel for attenuated Coulomb integrals. cell.omega is
+    # often set by DFT code when RSH functionals are used.
+    if cell.omega != 0:
+        coulG *= np.exp(-.25/cell.omega**2 * absG2)
 
     return coulG
 
@@ -359,16 +378,16 @@ def precompute_exx(cell, kpts):
     # ASE:
     alpha = 5./Rin # sqrt(-ln eps) / Rc, eps ~ 10^{-11}
     log.info("WS alpha = %s", alpha)
-    kcell.mesh = np.array([4*int(L*alpha*3.0) for L in Lc])  # ~ [60,60,60]
+    kcell.mesh = np.array([4*int(L*alpha*3.0) for L in Lc])  # ~ [120,120,120]
     # QE:
     #alpha = 3./Rin * np.sqrt(0.5)
     #kcell.mesh = (4*alpha*np.linalg.norm(kcell.a,axis=1)).astype(int)
     log.debug("# kcell.mesh FFT = %s", kcell.mesh)
-    kcell.build(False,False)
     rs = gen_grid.gen_uniform_grids(kcell)
     kngs = len(rs)
     log.debug("# kcell kngs = %d", kngs)
-    corners = np.dot(np.indices((2,2,2)).reshape((3,8)).T, kcell.a)
+    corners_coord = lib.cartesian_prod(([0, 1], [0, 1], [0, 1]))
+    corners = np.dot(corners_coord, kcell.a)
     #vR = np.empty(kngs)
     #for i, rv in enumerate(rs):
     #    # Minimum image convention to corners of kcell parallelepiped
@@ -381,10 +400,20 @@ def precompute_exx(cell, kpts):
     vR = scipy.special.erf(alpha*r) / (r+1e-200)
     vR[r<1e-9] = 2*alpha / np.sqrt(np.pi)
     vG = (kcell.vol/kngs) * fft(vR, kcell.mesh)
+
+    if abs(vG.imag).max() > 1e-6:
+        # vG should be real in regular lattice. If imaginary part is observed,
+        # this probably means a ws cell was built from a unconventional
+        # lattice. The SR potential erfc(alpha*r) for the charge in the center
+        # of ws cell decays to the region out of ws cell. The Ewald-sum based
+        # on the minimum image convention cannot be used to build the kernel
+        # Eq (12) of PRB 87, 165122
+        raise RuntimeError('Unconventional lattice was found')
+
     ws_exx = {'alpha': alpha,
               'kcell': kcell,
               'q'    : kcell.Gv,
-              'vq'   : vG}
+              'vq'   : vG.real.copy()}
     log.debug("# Finished precomputing")
     return ws_exx
 
@@ -392,16 +421,29 @@ def precompute_exx(cell, kpts):
 def madelung(cell, kpts):
     Nk = get_monkhorst_pack_size(cell, kpts)
     ecell = copy.copy(cell)
-    ecell._atm = np.array([[1, 0, 0, 0, 0, 0]])
-    ecell._env = np.array([0., 0., 0.])
+    ecell._atm = np.array([[1, cell._env.size, 0, 0, 0, 0]])
+    ecell._env = np.append(cell._env, [0., 0., 0.])
     ecell.unit = 'B'
     #ecell.verbose = 0
     ecell.a = np.einsum('xi,x->xi', cell.lattice_vectors(), Nk)
     ecell.mesh = np.asarray(cell.mesh) * Nk
-    ew_eta, ew_cut = ecell.get_ewald_params(cell.precision, ecell.mesh)
-    lib.logger.debug1(cell, 'Monkhorst pack size %s ew_eta %s ew_cut %s',
-                      Nk, ew_eta, ew_cut)
-    return -2*ecell.ewald(ew_eta, ew_cut)
+
+    if cell.omega == 0:
+        ew_eta, ew_cut = ecell.get_ewald_params(cell.precision, ecell.mesh)
+        lib.logger.debug1(cell, 'Monkhorst pack size %s ew_eta %s ew_cut %s',
+                          Nk, ew_eta, ew_cut)
+        return -2*ecell.ewald(ew_eta, ew_cut)
+
+    else:
+        # cell.ewald function does not use the Coulomb kernel function
+        # get_coulG. When computing the nuclear interactions with attenuated
+        # Coulomb operator, the Ewald summation technique is not needed
+        # because the Coulomb kernel 4pi/G^2*exp(-G^2/4/omega**2) decays
+        # quickly.
+        coulG = get_coulG(ecell)
+        Gv, Gvbase, weights = ecell.get_Gv_weights(ecell.mesh)
+        ZSI = np.einsum("i,ij->j", ecell.atom_charges(), ecell.get_SI(Gv))
+        return -np.einsum('i,i,i->', ZSI.conj(), ZSI, coulG*weights).real
 
 
 def get_monkhorst_pack_size(cell, kpts):

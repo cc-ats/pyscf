@@ -60,9 +60,8 @@ def init_guess_by_atom(mol, breaksym=BREAKSYM):
             dma[p0:p1,p0:p1] = dmb[p0:p1,p0:p1]
     return numpy.array((dma,dmb))
 
-def init_guess_by_huckel(mol):
-    mo_energy, mo_c = hf.init_guess_by_huckel(mol)
-    return [mo_energy, mo_energy], [mo_c, mo_c]
+def init_guess_by_huckel(mol, breaksym=BREAKSYM):
+    return UHF(mol).init_guess_by_huckel(mol)
 
 def init_guess_by_chkfile(mol, chkfile_name, project=None):
     '''Read SCF chkfile and make the density matrix for UHF initial guess.
@@ -304,6 +303,8 @@ def get_grad(mo_coeff, mo_occ, fock_ao):
 def energy_elec(mf, dm=None, h1e=None, vhf=None):
     '''Electronic energy of Unrestricted Hartree-Fock
 
+    Note this function has side effects which cause mf.scf_summary updated.
+
     Returns:
         Hartree-Fock electronic energy and the 2-electron part contribution
     '''
@@ -314,12 +315,15 @@ def energy_elec(mf, dm=None, h1e=None, vhf=None):
         dm = numpy.array((dm*.5, dm*.5))
     if vhf is None:
         vhf = mf.get_veff(mf.mol, dm)
-    e1 = numpy.einsum('ij,ji', h1e, dm[0])
-    e1+= numpy.einsum('ij,ji', h1e, dm[1])
-    e_coul =(numpy.einsum('ij,ji', vhf[0], dm[0]) +
-             numpy.einsum('ij,ji', vhf[1], dm[1])) * .5
+    e1 = numpy.einsum('ij,ji->', h1e, dm[0])
+    e1+= numpy.einsum('ij,ji->', h1e, dm[1])
+    e_coul =(numpy.einsum('ij,ji->', vhf[0], dm[0]) +
+             numpy.einsum('ij,ji->', vhf[1], dm[1])) * .5
+    e_elec = (e1 + e_coul).real
+    mf.scf_summary['e1'] = e1.real
+    mf.scf_summary['e2'] = e_coul.real
     logger.debug(mf, 'E1 = %s  Ecoul = %s', e1, e_coul.real)
-    return (e1+e_coul).real, e_coul
+    return e_elec, e_coul
 
 # mo_a and mo_b are occupied orbitals
 def spin_square(mo, s=1):
@@ -442,6 +446,8 @@ def analyze(mf, verbose=logger.DEBUG, with_meta_lowdin=WITH_META_LOWDIN,
     nmo = len(mo_occ[0])
     log = logger.new_logger(mf, verbose)
     if log.verbose >= logger.NOTE:
+        mf.dump_scf_summary(log)
+
         log.note('**** MO energy ****')
         log.note('                             alpha | beta                alpha | beta')
         for i in range(nmo):
@@ -725,15 +731,11 @@ class UHF(hf.SCF):
     def init_guess_by_huckel(self, mol=None, breaksym=BREAKSYM):
         if mol is None: mol = self.mol
         logger.info(self, 'Initial guess from on-the-fly Huckel, doi:10.1021/acs.jctc.8b01089.')
-        mo_energy, mo_coeff = init_guess_by_huckel(mol)
+        mo_energy, mo_coeff = hf._init_guess_huckel_orbitals(mol)
+        mo_energy = (mo_energy, mo_energy)
+        mo_coeff = (mo_coeff, mo_coeff)
         mo_occ = self.get_occ(mo_energy, mo_coeff)
-        dma, dmb = self.make_rdm1(mo_coeff, mo_occ)
-        if mol.spin == 0 and breaksym:
-            #remove off-diagonal part of beta DM
-            dmb = numpy.zeros_like(dma)
-            for b0, b1, p0, p1 in mol.aoslice_by_atom():
-                dmb[p0:p1,p0:p1] = dma[p0:p1,p0:p1]
-        return numpy.array((dma,dmb))
+        return self.make_rdm1(mo_coeff, mo_occ)
 
     def init_guess_by_1e(self, mol=None, breaksym=BREAKSYM):
         if mol is None: mol = self.mol
@@ -754,7 +756,8 @@ class UHF(hf.SCF):
         if chkfile is None: chkfile = self.chkfile
         return init_guess_by_chkfile(self.mol, chkfile, project=project)
 
-    def get_jk(self, mol=None, dm=None, hermi=1):
+    def get_jk(self, mol=None, dm=None, hermi=1, with_j=True, with_k=True,
+               omega=None):
         '''Coulomb (J) and exchange (K)
 
         Args:
@@ -763,13 +766,14 @@ class UHF(hf.SCF):
         '''
         if mol is None: mol = self.mol
         if dm is None: dm = self.make_rdm1()
-        if self._eri is not None or mol.incore_anyway or self._is_mem_enough():
+        if (not omega and
+            (self._eri is not None or mol.incore_anyway or self._is_mem_enough())):
             if self._eri is None:
                 self._eri = mol.intor('int2e', aosym='s8')
-            vj, vk = hf.dot_eri_dm(self._eri, dm, hermi)
+            vj, vk = hf.dot_eri_dm(self._eri, dm, hermi, with_j, with_k)
         else:
-            vj, vk = hf.SCF.get_jk(self, mol, dm, hermi)
-        return numpy.asarray(vj), numpy.asarray(vk)
+            vj, vk = hf.SCF.get_jk(self, mol, dm, hermi, with_j, with_k, omega)
+        return vj, vk
 
     @lib.with_doc(get_veff.__doc__)
     def get_veff(self, mol=None, dm=None, dm_last=0, vhf_last=0, hermi=1):

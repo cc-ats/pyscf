@@ -1633,7 +1633,7 @@ class RCCSD(pyscf.pbc.cc.kccsd_rhf.RCCSD):
         #                    index += 1
         return vector
 
-    def ipccsd_star(self, ipccsd_evals, ipccsd_evecs, lipccsd_evecs):
+    def ipccsd_star_contract(self, ipccsd_evals, ipccsd_evecs, lipccsd_evecs):
         nproc = comm.Get_size()
         nocc = self.nocc
         nvir = self.nmo - nocc
@@ -2359,7 +2359,7 @@ class RCCSD(pyscf.pbc.cc.kccsd_rhf.RCCSD):
         #                    index += 1
         return vector
 
-    def eaccsd_star(self, eaccsd_evals, eaccsd_evecs, leaccsd_evecs):
+    def eaccsd_star_contract(self, eaccsd_evals, eaccsd_evecs, leaccsd_evecs):
         nocc = self.nocc
         nvir = self.nmo - nocc
         nkpts = self.nkpts

@@ -294,10 +294,22 @@ class GCCSD(ccsd.CCSD):
     def nuc_grad_method(self):
         raise NotImplementedError
 
-CCSD = GCCSD
+    def get_t1_diagnostic(self, t1=None):
+        if t1 is None: t1 = self.t1
+        raise NotImplementedError
+        #return get_t1_diagnostic(t1)
 
-from pyscf import scf
-scf.ghf.GHF.CCSD = lib.class_as_method(CCSD)
+    def get_d1_diagnostic(self, t1=None):
+        if t1 is None: t1 = self.t1
+        raise NotImplementedError
+        #return get_d1_diagnostic(t1)
+
+    def get_d2_diagnostic(self, t2=None):
+        if t2 is None: t2 = self.t2
+        raise NotImplementedError
+        #return get_d2_diagnostic(self.spin2spatial(t2))
+
+CCSD = GCCSD
 
 
 class _PhysicistsERIs:

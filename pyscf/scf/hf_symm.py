@@ -61,6 +61,8 @@ def analyze(mf, verbose=logger.DEBUG, with_meta_lowdin=WITH_META_LOWDIN,
     ovlp_ao = mf.get_ovlp()
     log = logger.new_logger(mf, verbose)
     if log.verbose >= logger.NOTE:
+        mf.dump_scf_summary(log)
+
         nirrep = len(mol.irrep_id)
         orbsym = get_orbsym(mf.mol, mo_coeff, ovlp_ao, False)
         wfnsym = 0
@@ -273,7 +275,7 @@ def check_irrep_nelec(mol, irrep_nelec, nelec):
         raise ValueError(msg)
     else:
         logger.info(mol, 'Freeze %d electrons in irreps %s',
-                    fix_ne, irrep_nelec.keys())
+                    fix_ne, list(irrep_nelec.keys()))
 
     if len(set(float_irname)) == 0 and fix_ne != mol.nelectron:
         msg =('Num electrons defined by irrep_nelec != total num electrons. '
@@ -724,6 +726,8 @@ class SymAdaptedROHF(rohf.ROHF):
         ovlp_ao = self.get_ovlp()
         log = logger.new_logger(self, verbose)
         if log.verbose >= logger.NOTE:
+            self.dump_scf_summary(log)
+
             nirrep = len(mol.irrep_id)
             orbsym = get_orbsym(self.mol, mo_coeff)
             wfnsym = 0

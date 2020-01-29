@@ -307,6 +307,7 @@ def ddcosmo_for_scf(mf, solvent_obj=None, dm=None):
                 vhf = self.get_veff(self.mol, dm)
             e_tot, e_coul = oldMF.energy_elec(self, dm, h1e, vhf)
             e_tot += vhf.epcm
+            self.scf_summary['epcm'] = vhf.epcm.real
             logger.debug(self, '  E_diel = %.15g', vhf.epcm)
             return e_tot, e_coul
 
@@ -314,6 +315,8 @@ def ddcosmo_for_scf(mf, solvent_obj=None, dm=None):
             from pyscf.solvent import ddcosmo_grad
             grad_method = oldMF.nuc_grad_method(self)
             return ddcosmo_grad.ddcosmo_grad(grad_method, self.with_solvent)
+
+        Gradients = nuc_grad_method
 
     mf1 = SCFWithSolvent(mf, solvent_obj)
     return mf1
@@ -427,6 +430,8 @@ def ddcosmo_for_casscf(mc, solvent_obj=None, dm=None):
             from pyscf.solvent import ddcosmo_grad
             grad_method = oldCAS.nuc_grad_method(self)
             return ddcosmo_grad.ddcosmo_grad(grad_method, self.with_solvent)
+
+        Gradients = nuc_grad_method
 
     return CASSCFWithSolvent(mc, solvent_obj)
 
@@ -551,6 +556,8 @@ def ddcosmo_for_casci(mc, solvent_obj=None, dm=None):
             grad_method = oldCAS.nuc_grad_method(self)
             return ddcosmo_grad.ddcosmo_grad(grad_method, self.with_solvent)
 
+        Gradients = nuc_grad_method
+
     return CASCIWithSolvent(mc, solvent_obj)
 
 
@@ -666,6 +673,8 @@ def ddcosmo_for_post_scf(method, solvent_obj=None, dm=None):
             from pyscf.solvent import ddcosmo_grad
             grad_method = old_method.nuc_grad_method(self)
             return ddcosmo_grad.ddcosmo_grad(grad_method, self.with_solvent)
+
+        Gradients = nuc_grad_method
 
     return PostSCFWithSolvent(method)
 
@@ -1108,6 +1117,14 @@ class DDCOSMO(lib.StreamObject):
 
         epcm, vpcm = self._solver_(dm)
         return epcm, vpcm
+
+    def reset(self, mol=None):
+        '''Reset mol and clean up relevant attributes for scanner mode'''
+        if mol is not None:
+            self.mol = mol
+        self._solver_ = None
+        self.grids.reset(mol)
+        return self
 
     energy = energy
     gen_solver = as_solver = gen_ddcosmo_solver

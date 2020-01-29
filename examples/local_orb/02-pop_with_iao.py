@@ -6,6 +6,7 @@ Mulliken population analysis with IAO orbitals
 import numpy
 from functools import reduce
 from pyscf import gto, scf, lo
+from functools import reduce
 
 x = .63
 mol = gto.M(atom=[['C', (0, 0, 0)],

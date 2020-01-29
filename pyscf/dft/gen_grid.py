@@ -541,6 +541,15 @@ class Grids(lib.StreamObject):
         self.dump_flags()
         return self.build(mol, with_non0tab)
 
+    def reset(self, mol=None):
+        '''Reset mol and clean up relevant attributes for scanner mode'''
+        if mol is not None:
+            self.mol = mol
+        self.coords = None
+        self.weights = None
+        self.non0tab = None
+        return self
+
     @lib.with_doc(gen_atomic_grids.__doc__)
     def gen_atomic_grids(self, mol, atom_grid=None, radi_method=None,
                          level=None, prune=None, **kwargs):

@@ -384,7 +384,12 @@ def davidson1(aop, x0, precond, tol=1e-12, max_cycle=50, max_space=12,
 # Orthogonalize xt space because the basis of subspace xs must be orthogonal
 # but the eigenvectors x0 might not be strictly orthogonal
             xt = None
+            x0len = len(x0)
             xt, x0 = _qr(x0, dot, lindep)[0], None
+            if len(xt) != x0len:
+                log.warn('QR decomposition removed %d vectors.  The davidson may fail.'
+                         'Check to see if `pick` function :%s: is providing linear dependent '
+                         'vectors' % (x0len - len(xt), pick.__name__))
             max_dx_last = 1e9
             if SORT_EIG_BY_SIMILARITY:
                 conv = [False] * nroots
@@ -506,6 +511,7 @@ def davidson1(aop, x0, precond, tol=1e-12, max_cycle=50, max_space=12,
                     xt[k] *= 1/numpy.sqrt(dot(xt[k].conj(), xt[k]).real)
                 else:
                     xt[k] = None
+                    log.debug1('Throwing out eigenvector %d with norm=%4.3g', k, dx_norm[k])
         xt = [xi for xi in xt if xi is not None]
 
         for i in range(space):
@@ -579,18 +585,21 @@ def pick_real_eigs(w, v, nroots, envs):
     '''This function searchs the real eigenvalues or eigenvalues with small
     imaginary component.
     '''
+    threshold = 1e-3
     abs_imag = abs(w.imag)
-    max_imag_tol = max(1e-3, min(abs_imag)*1.1)
-    realidx = numpy.where((abs_imag < max_imag_tol))[0]
-    if len(realidx) < nroots and w.size >= nroots:
-        warnings.warn('%d eigenvalues with imaginary part > 0.01\n' %
-                      numpy.count_nonzero(abs_imag > 1e-2))
+    # Grab `nroots` number of e with small(est) imaginary components
+    max_imag_tol = max(threshold, numpy.sort(abs_imag)[min(w.size,nroots)-1])
+    real_idx = numpy.where((abs_imag <= max_imag_tol))[0]
+    nbelow_thresh = numpy.count_nonzero(abs_imag[real_idx] < threshold)
+    if nbelow_thresh < nroots and w.size >= nroots:
+        warnings.warn('Only %d eigenvalues (out of %3d requested roots) with imaginary part < %4.3g.\n'
+                      % (nbelow_thresh, min(w.size,nroots), threshold))
 
     # Guess whether the matrix to diagonalize is real or complex
     if envs.get('dtype') == numpy.double:
-        w, v, idx = _eigs_cmplx2real(w, v, realidx, real_eigenvectors=True)
+        w, v, idx = _eigs_cmplx2real(w, v, real_idx, real_eigenvectors=True)
     else:
-        w, v, idx = _eigs_cmplx2real(w, v, realidx, real_eigenvectors=False)
+        w, v, idx = _eigs_cmplx2real(w, v, real_idx, real_eigenvectors=False)
     return w, v, idx
 
 def _eigs_cmplx2real(w, v, real_idx, real_eigenvectors=True):
@@ -771,7 +780,12 @@ def davidson_nosym1(aop, x0, precond, tol=1e-12, max_cycle=50, max_space=12,
 # Orthogonalize xt space because the basis of subspace xs must be orthogonal
 # but the eigenvectors x0 might not be strictly orthogonal
             xt = None
+            x0len = len(x0)
             xt, x0 = _qr(x0, dot, lindep)[0], None
+            if len(xt) != x0len:
+                log.warn('QR decomposition removed %d vectors.  The davidson may fail.'
+                         'Check to see if `pick` function :%s: is providing linear dependent '
+                         'vectors' % (x0len - len(xt), pick.__name__))
             max_dx_last = 1e9
             if SORT_EIG_BY_SIMILARITY:
                 conv = [False] * nroots
@@ -882,6 +896,7 @@ def davidson_nosym1(aop, x0, precond, tol=1e-12, max_cycle=50, max_space=12,
                     xt[k] *= 1/numpy.sqrt(dot(xt[k].conj(), xt[k]).real)
                 else:
                     xt[k] = None
+                    log.debug1('Throwing out eigenvector %d with norm=%4.3g', k, dx_norm[k])
         else:
             for k, ek in enumerate(e):
                 if dx_norm[k]**2 > lindep:
