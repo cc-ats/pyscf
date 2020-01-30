@@ -4,22 +4,28 @@
 # Python path binary if necessary (Anaconda, intelPython)
 export PATH=/home/yangjunjie/anaconda3/bin:$PATH
 export PYTHONPATH=/home/yangjunjie/pyscf:$PYTHONPATH
-# export PYTHONPATH=/work/yangjunjie/pyscf:$PYTHONPATH
 
 which python
 which cmake
 module purge
-module load imkl/2018.1.163-iompi-2018a
 
-export CC=gcc
-export FC=gfortran
-export CXX=g++
+module load intel
 
-export LD_LIBRARY_PATH=$MKLROOT/lib:$LD_LIBRARY_PATH
-python -c "import pyscf; print('pyscf path is ', pyscf.__path__[0])"
+# module load compilers/intel/16.3
+# module load imkl/2018.1.163-iompi-2018a
+
+export CC=icc
+export FC=ifort
+export CXX=icpc
 
 # mkdir -p build
 # cd build
 # rm -rf *
 # cmake -DBLA_VENDOR=Intel10_64lp_seq ..
-# make VERBOSE=1
+# make -j 20 VERBOSE=1
+
+export OMP_NUM_THREADS=20
+export TMPDIR=/tmp
+
+export LD_LIBRARY_PATH=$MKLROOT/lib:$LD_LIBRARY_PATH
+python -c "import pyscf; print('pyscf path is ', pyscf.__path__[0])"
