@@ -18,7 +18,7 @@ def dump_rt(mol, chkfile, ntime, netot, ndm_ao, overwrite_mol=True):
         save_mol(mol, chkfile)
 
     rt_dic  = { "ntime"      :ntime,
-                "ndm_ao"     :ndm_ao.real,   
+                "ndm_ao"     :ndm_ao,   
                 "netot"      :netot}
     save(chkfile, 'rt', rt_dic)
 

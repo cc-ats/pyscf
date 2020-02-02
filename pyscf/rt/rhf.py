@@ -22,7 +22,7 @@ REF_BASIS         = getattr(__config__, 'lo_orth_pre_orth_ao_method', 'ANO'     
 MUTE_CHKFILE      = getattr(__config__, 'rt_tdscf_mute_chkfile',      False      )
 PRINT_MAT_NCOL    = getattr(__config__, 'rt_tdscf_print_mat_ncol',    7          )
 ORTH_METHOD       = getattr(__config__, 'rt_tdscf_orth_ao_method',    'canonical')
-PC_TOL            = getattr(__config__, 'rt_tdscf_pc_tol',                  1e-12)
+PC_TOL            = getattr(__config__, 'rt_tdscf_pc_tol',                  1e-14)
 PC_MAX_ITER       = getattr(__config__, 'rt_tdscf_pc_max_iter',                20)
 
 # re-define Orthogonalize AOs
@@ -125,7 +125,7 @@ NEXT_HALF = 3
 NEXT      = 4
 
 # integration schemes
-# euler propagation
+# unitary euler propagation
 def euler_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
                _temp_fock_prims, _temp_fock_aos):
 
@@ -147,6 +147,7 @@ def euler_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
 
     return ene_next_tot.real
 
+# mmut propagation
 def mmut_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
                _temp_fock_prims, _temp_fock_aos):
 
@@ -175,6 +176,7 @@ def mmut_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
 
     return ene_next_tot.real
 
+# amut1 propagation
 def amut1_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
                _temp_fock_prims, _temp_fock_aos):
 
@@ -204,6 +206,7 @@ def amut1_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
 
     return ene_next_tot.real
 
+# amut2 propagation
 def amut2_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
                _temp_fock_prims, _temp_fock_aos):
 
@@ -244,6 +247,7 @@ def amut2_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
     
     return ene_next_tot.real
 
+# amut3 propagation
 def amut3_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
                _temp_fock_prims, _temp_fock_aos):
 
@@ -295,6 +299,7 @@ def amut3_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
     
     return ene_next_tot.real
 
+# lflp-pc propagation
 def lflp_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
                  _temp_fock_prims, _temp_fock_aos, tol=PC_TOL, max_iter=PC_MAX_ITER):
 
@@ -335,6 +340,7 @@ def lflp_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
     _temp_fock_prims[LAST_HALF] = _fock_prim_next_half_p
     return tdscf._scf.energy_tot(dm=_temp_dm_aos[NEXT], h1e=_h1e_next_ao, vhf=_vhf_ao_next).real
 
+# ep-pc propagation
 def ep_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
                  _temp_fock_prims, _temp_fock_aos, tol=PC_TOL, max_iter=PC_MAX_ITER):
 
@@ -372,6 +378,7 @@ def ep_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
     
     return tdscf._scf.energy_tot(dm=_dm_ao_next_c, h1e=_h1e_next_ao, vhf=_vhf_ao_next).real
 
+# amut-pc propagation
 def amut_pc_prop(tdscf,  _temp_ts, _temp_dm_prims,   _temp_dm_aos,
                  _temp_fock_prims, _temp_fock_aos, tol=PC_TOL, max_iter=PC_MAX_ITER):
 
