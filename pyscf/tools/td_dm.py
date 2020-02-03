@@ -212,7 +212,7 @@ if __name__ == "__main__":
     mf1.xc = "PBE"
     mf1.max_cycle = 100
     mf1.conv_tol = 1e-12
-    mf1.verbose = 4
+    mf1.verbose = 0
     mf1.kernel()
     dm1 = mf1.make_rdm1()
     
@@ -220,7 +220,7 @@ if __name__ == "__main__":
     mf2.xc = "pbe"
     mf2.max_cycle = 200
     mf2.conv_tol = 1e-12
-    mf2.verbose = 3
+    mf2.verbose = 0
     h1e_0 = mf2.get_hcore()
     e  = -1e-3
     ee = [e, 0, 0]
@@ -233,6 +233,7 @@ if __name__ == "__main__":
 
     td = tddft.TDDFT(mf1)
     td.nstates = 5
+    td.verbose = 0
     td.kernel()
     am = proj_ex_states(td, dm2)
     print("RKS am = \n", am)
@@ -241,7 +242,7 @@ if __name__ == "__main__":
     mf1.xc = "PBE"
     mf1.max_cycle = 100
     mf1.conv_tol = 1e-12
-    mf1.verbose = 4
+    mf1.verbose = 0
     mf1.kernel()
     dm1 = mf1.make_rdm1()
     
@@ -249,7 +250,7 @@ if __name__ == "__main__":
     mf2.xc = "pbe"
     mf2.max_cycle = 200
     mf2.conv_tol = 1e-12
-    mf2.verbose = 3
+    mf2.verbose = 0
     h1e_0 = mf2.get_hcore()
     e  = -1e-3
     ee = [e, 0, 0]
@@ -262,6 +263,7 @@ if __name__ == "__main__":
 
     td = tddft.TDDFT(mf1)
     td.nstates = 5
+    td.verbose = 0
     td.kernel()
     am = proj_ex_states(td, dm2)
     print("UKS am = \n", am)
