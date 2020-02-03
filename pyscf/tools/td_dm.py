@@ -263,7 +263,6 @@ def eval_rt_dm(tdscf, dm_ao, am, e, t_array):
         x_inv = numpy.einsum('li,ls->is', x, mf.get_ovlp())
         x_t_inv = x_inv.T
         dm_mo = reduce(numpy.dot, (x_inv, dm_ao, x_t_inv))
-        print("dm_mo = ", dm_mo)
         dm_mo_ov = dm_mo[:nocc, nocc:].reshape(nocc,nvir).T
 
         xmy = [(tdscf.xy[i][0]-tdscf.xy[i][1]).reshape(nocc,nvir).T for i in range(len(tdscf.xy))]
@@ -332,7 +331,7 @@ if __name__ == "__main__":
     am = proj_ex_states(td, dm2)
     print("am = \n", am)
     dms_rks = eval_rt_dm(td, dm2, am, td.e, t_array)
-    print(dm2-dms_rks[0])
+    print("dm2-dms_rks[0] = \n", dm2-dms_rks[0])
     # print(dms_rks[0])
 
     print("*******UKS*******")
