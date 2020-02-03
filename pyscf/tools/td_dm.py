@@ -199,11 +199,11 @@ def proj_ex_states(tdscf, dm_ao):
         proj = 2*numpy.einsum("ijk,jk->i",xmy, dm_mo_ov)
         return proj
 
-def eval_rt_dm(tdscf, dm_ao, am, t_array):
+def eval_rt_dm(tdscf, dm_ao, am, e, t_array):
     mf  = tdscf._scf
     mol = tdscf.mol
 
-    wmt = numpy.einsum("i,j->ij", tdscf.e, t_array)
+    wmt = numpy.einsum("i,j->ij", e, t_array)
 
     if isinstance(mf, scf.uhf.UHF):
         mf = scf.addons.convert_to_uhf(mf)
@@ -325,7 +325,7 @@ if __name__ == "__main__":
     print("td.e = ", td.e)
     am = proj_ex_states(td, dm2)
     print("am = \n", am)
-    dms = eval_rt_dm(td, dm2, am, t_array)
+    dms = eval_rt_dm(td, dm2, am, td.e, t_array)
     print(dms[0])
     print(dms[1])
 
