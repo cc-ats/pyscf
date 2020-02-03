@@ -275,9 +275,9 @@ def eval_rt_dm(tdscf, dm_ao, am, e, t_array):
         dm_list = numpy.array([dm_mo for _ in t_array])
         dm_list[:, :nocc,nocc:] = dm_mo_ov
         dm_list[:, nocc:,:nocc] = dm_mo_vo
-        # print(dm_list[0])
-        [print(dm - dm_mo) for dm in dm_list]
-        return dm_list # [reduce(numpy.dot, (x, dm, x.T)) for dm in dm_list]
+        # # print(dm_list[0])
+        # [print(dm - dm_mo) for dm in dm_list]
+        return [reduce(numpy.dot, (x, dm, x.T)) for dm in dm_list]
 
 
 if __name__ == "__main__":
@@ -334,8 +334,7 @@ if __name__ == "__main__":
     am = proj_ex_states(td, dm2)
     print("am = \n", am)
     dms_rks = eval_rt_dm(td, dm2, am, td.e, t_array)
-    print(dm2)
-    # print("dm2-dms_rks[0] = \n", dm2-dms_rks[0])
+    print("dm2-dms_rks[0] = \n", dm2-dms_rks[0])
     # print(dms_rks[0])
 
     print("*******UKS*******")
