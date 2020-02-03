@@ -185,6 +185,9 @@ def proj_ex_states(tdscf, dm_ao):
         dm_mo_a_ov = dm_mo_a[:nocc_a, nocc_a:].reshape(nocc_a,nvir_a).T
         dm_mo_b_ov = dm_mo_b[:nocc_b, nocc_b:].reshape(nocc_b,nvir_b).T
         
+        xmy_a = [(tdscf.xy[0][i][0]-tdscf.xy[0][i][1]).reshape(nocc_a,nvir_a).T for i in range(len(tdscf.xy[0]))]
+        xmy_b = [(tdscf.xy[1][i][0]-tdscf.xy[1][i][1]).reshape(nocc_a,nvir_a).T for i in range(len(tdscf.xy[1]))]
+        xmy_b = [(tdscf.xy[2][i][0]-tdscf.xy[2][i][1]).reshape(nocc_a,nvir_a).T for i in range(len(tdscf.xy[2]))]
         print("tdscf.xy[0].shape = ", tdscf.xy[0].shape)
         print("tdscf.xy[1].shape = ", tdscf.xy[1].shape)
         print("tdscf.xy[2].shape = ", tdscf.xy[2].shape)
