@@ -346,10 +346,10 @@ if __name__ == "__main__":
     td.verbose = 0
     td.kernel()
     print("td.e = ", td.e)
-    am = proj_ex_states(td, dm2)
-    print("am = \n", am)
+    # am = proj_ex_states(td, dm2)
+    # print("am = \n", am)
     dms_rks = eval_rt_dm(td, dm2, am, td.e, t_array)
-    print("dm2-dms_rks[0] = \n", dm2-dms_rks[0])
+    # print("dm2-dms_rks[0] = \n", dm2-dms_rks[0])
     # print(dms_rks[0])
 
     print("*******UKS*******")
@@ -382,10 +382,9 @@ if __name__ == "__main__":
     td.max_cycle = 200
     td.verbose = 5
     td.kernel()
-    print("td,con = ", td.converged)
     am = proj_ex_states(td, dm2)
     print("td.e = ", td.e)
-    print("am = \n", am)
+    # print("am = \n", am)
     dms_uks = eval_rt_dm(td, dm2, am, td.e, t_array)
-    print("dm2-dms_uks[0] = \n", dm2-dms_uks[0])
+    # print("dm2-dms_uks[0] = \n", dm2-dms_uks[0])
 
