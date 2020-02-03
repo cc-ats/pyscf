@@ -182,8 +182,8 @@ def proj_ex_states(tdscf, dm_ao):
         x_t_inv = numpy.einsum('aij->aji', x_inv)
         dm_mo_a = reduce(numpy.dot, (x_inv[0], dm_ao[0], x_t_inv[0]))
         dm_mo_b = reduce(numpy.dot, (x_inv[1], dm_ao[1], x_t_inv[1]))
-        dm_mo_a_ov = dm_mo[:nocc_a, nocc_a:].reshape(nocc_a,nvir_a).T
-        dm_mo_b_ov = dm_mo[:nocc_b, nocc_b:].reshape(nocc_b,nvir_b).T
+        dm_mo_a_ov = dm_mo_a[:nocc_a, nocc_a:].reshape(nocc_a,nvir_a).T
+        dm_mo_b_ov = dm_mo_b[:nocc_b, nocc_b:].reshape(nocc_b,nvir_b).T
         
         print("tdscf.xy.shape = ", tdscf.xy.shape)
         assert  1==2
