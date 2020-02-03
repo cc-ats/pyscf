@@ -185,14 +185,11 @@ def proj_ex_states(tdscf, dm_ao):
         dm_mo_a_ov = dm_mo_a[:nocc_a, nocc_a:].reshape(nocc_a,nvir_a).T
         dm_mo_b_ov = dm_mo_b[:nocc_b, nocc_b:].reshape(nocc_b,nvir_b).T
         
-        xmy_a = [(tdscf.xy[0][i][0]-tdscf.xy[0][i][1]).reshape(nocc_a,nvir_a).T for i in range(len(tdscf.xy[0]))]
-        xmy_b = [(tdscf.xy[1][i][0]-tdscf.xy[1][i][1]).reshape(nocc_a,nvir_a).T for i in range(len(tdscf.xy[1]))]
-        xmy_b = [(tdscf.xy[2][i][0]-tdscf.xy[2][i][1]).reshape(nocc_a,nvir_a).T for i in range(len(tdscf.xy[2]))]
-        print("tdscf.xy[0].shape = ", numpy.array(tdscf.xy[0]).shape)
-        print("tdscf.xy[1].shape = ", tdscf.xy[1].shape)
-        print("tdscf.xy[2].shape = ", tdscf.xy[2].shape)
-        assert  1==2
-        xmy_a = [(tdscf.xy[i][0]-tdscf.xy[i][1]).reshape(nocc,nvir).T for i in range(len(tdscf.xy))]
+        xmy_a = [(tdscf.xy[i][0][0]-tdscf.xy[i][0][1]).reshape(nocc_a,nvir_a).T for i in range(len(tdscf.xy))]
+        xmy_b = [(tdscf.xy[i][1][0]-tdscf.xy[i][1][1]).reshape(nocc_b,nvir_b).T for i in range(len(tdscf.xy))]
+
+        proj = numpy.einsum("ijk,jk->i",xmy_a, dm_mo_a_ov) + numpy.einsum("ijk,jk->i",xmy_b, dm_mo_b_ov)
+        return proj
 
 
 
@@ -209,6 +206,8 @@ if __name__ == "__main__":
     H        -1.2256624142    0.9143693597    0.0000000000
     H        -1.2256624142   -0.9143693597    0.0000000000'''
     mol.basis = '6-31g(d)'
+    mol.charge = 1
+    mol.spin = 1
     mol.build()
 
     mf1 = dft.UKS(mol)
