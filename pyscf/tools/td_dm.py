@@ -189,7 +189,7 @@ def proj_ex_states(tdscf, dm_ao):
         xmy_b = [(tdscf.xy[i][0][1]-tdscf.xy[i][1][1]).reshape(nocc_b,nvir_b).T for i in range(len(tdscf.xy))]
 
         proj = numpy.einsum("ijk,jk->i",xmy_a, dm_mo_a_ov) + numpy.einsum("ijk,jk->i",xmy_b, dm_mo_b_ov)
-        return proj
+        return proj/2
 
 
 
