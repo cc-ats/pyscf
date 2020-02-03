@@ -235,8 +235,8 @@ def eval_rt_dm(tdscf, dm_ao, am, e, t_array):
         xpy_a = [(tdscf.xy[i][0][0]+tdscf.xy[i][1][0]).reshape(nocc_a,nvir_a).T for i in range(len(tdscf.xy))]
         xpy_b = [(tdscf.xy[i][0][1]+tdscf.xy[i][1][1]).reshape(nocc_b,nvir_b).T for i in range(len(tdscf.xy))]
 
-        print("tdscf.xy[0][0][0] = ", tdscf.xy[0][0][0])
-        print("tdscf.xy[0][1][0] = ", tdscf.xy[0][1][0])
+        # print("tdscf.xy[0][0][0] = ", tdscf.xy[0][0][0])
+        # print("tdscf.xy[0][1][0] = ", tdscf.xy[0][1][0])
         # print("tdscf.xy[0][0][1].shape = ", tdscf.xy[0][0][1].shape)
         # print("tdscf.xy[i][0][0].shape = ", tdscf.xy[i][0][0].shape)
 
@@ -254,8 +254,8 @@ def eval_rt_dm(tdscf, dm_ao, am, e, t_array):
         dm_list[:, 1, :nocc_b,nocc_b:] = dm_mo_ov_b
         dm_list[:, 1, nocc_b:,:nocc_b] = dm_mo_vo_b
 
-        print("dm_list[0,0] - dm_mo_a", dm_list[0,0] - dm_mo_a)
-        print("dm_list[0,1] - dm_mo_b", dm_list[0,1] - dm_mo_b)
+        # print("dm_list[0,0] - dm_mo_a", dm_list[0,0] - dm_mo_a)
+        # print("dm_list[0,1] - dm_mo_b", dm_list[0,1] - dm_mo_b)
         return [[reduce(numpy.dot, (x_a, dm[0], x_a.T)), reduce(numpy.dot, (x_b, dm[1], x_b.T))] for dm in dm_list]
     
     else:
