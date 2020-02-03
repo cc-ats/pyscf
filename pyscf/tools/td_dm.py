@@ -247,7 +247,8 @@ def eval_rt_dm(tdscf, dm_ao, am, e, t_array):
         dm_list[:, 1, :nocc_b,nocc_b:] = dm_mo_ov_b
         dm_list[:, 1, nocc_b:,:nocc_b] = dm_mo_vo_b
 
-
+        print("dm_list[0,0] - dm_mo_a", dm_list[0,0] - dm_mo_a)
+        print("dm_list[0,1] - dm_mo_b", dm_list[0,1] - dm_mo_b)
         return [[reduce(numpy.dot, (x_a, dm[0], x_a.T)), reduce(numpy.dot, (x_b, dm[1], x_b.T))] for dm in dm_list]
     
     else:
