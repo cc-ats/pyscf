@@ -295,7 +295,7 @@ if __name__ == "__main__":
       H    0.0000000    0.0000000    0.3540000
       H    0.0000000    0.0000000   -0.3540000
     '''
-    mol.basis = 'sto-3g'
+    mol.basis = '3-21g'
     mol.build()
 
     t_array = numpy.array([0.0, 0.1, 0.2])
