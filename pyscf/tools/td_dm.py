@@ -271,6 +271,7 @@ def eval_rt_dm(tdscf, dm_ao, am, e, t_array):
 
         xmy = [(tdscf.xy[i][0]-tdscf.xy[i][1]).reshape(nocc,nvir).T for i in range(len(tdscf.xy))]
         xpy = [(tdscf.xy[i][0]+tdscf.xy[i][1]).reshape(nocc,nvir).T for i in range(len(tdscf.xy))]
+        print("numpy.einsum(\"ijk,pjk->ip\", xmy, xpy)", numpy.einsum("ijk,pjk->ip", xmy, xpy))
 
         dm_mo_ov = numpy.einsum("mjk,m,mi->ikj", xpy, am, numpy.cos(wmt))
         dm_mo_vo = numpy.einsum("mjk,m,mi->ijk", xpy, am, numpy.cos(wmt))
