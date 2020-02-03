@@ -143,7 +143,6 @@ def calc_diff_dm(tdscf, x_y):
     diff_dm[nocc, :nocc]  -= numpy.einsum('ia,ja->ij', y, y)
     diff_dm[nocc:, nocc:] += numpy.einsum('ia,ib->ab', x, x)
     diff_dm[nocc:, nocc:] += numpy.einsum('ia,ib->ab', y, y)
-    # print("self.diff_dm\n", self.diff_dm)
     diff_dm = numpy.einsum('ij,pi,qj->pq', diff_dm, mo_coeff, mo_coeff.conj())
     diff_dm *= 2.0
     return diff_dm
@@ -235,15 +234,9 @@ def eval_rt_dm(tdscf, dm_ao, am, e, t_array):
         xpy_a = [(tdscf.xy[i][0][0]+tdscf.xy[i][1][0]).reshape(nocc_a,nvir_a).T for i in range(len(tdscf.xy))]
         xpy_b = [(tdscf.xy[i][0][1]+tdscf.xy[i][1][1]).reshape(nocc_b,nvir_b).T for i in range(len(tdscf.xy))]
 
-        print("tdscf.xy[0][0][0] = ", tdscf.xy[0][0][0])
-        print("tdscf.xy[0][1][0] = ", tdscf.xy[0][1][0])
-
-        # print("tdscf.xy[0][0][0] = ", tdscf.xy[0][0][0])
-        # print("tdscf.xy[0][1][0] = ", tdscf.xy[0][1][0])
-        # print("tdscf.xy[0][0][1].shape = ", tdscf.xy[0][0][1].shape)
-        # print("tdscf.xy[i][0][0].shape = ", tdscf.xy[i][0][0].shape)
-
-        print("numpy.einsum(\"ijk,pjk->ip\", xmy_a, xpy_a)", numpy.einsum("ijk,pjk->ip", xmy_a, xpy_a))
+        # print("numpy.einsum(\"ijk,pjk->ip\", xmy_a, xpy_a)", numpy.einsum("ijk,pjk->ip", xmy_a, xpy_a) + numpy.einsum("ijk,pjk->ip", xmy_b, xpy_b))
+        
+        am = am/2
 
         dm_mo_ov_a = numpy.einsum("mjk,m,mi->ikj", xpy_a, am, numpy.cos(wmt))
         dm_mo_vo_a = numpy.einsum("mjk,m,mi->ijk", xpy_a, am, numpy.cos(wmt))
@@ -279,7 +272,7 @@ def eval_rt_dm(tdscf, dm_ao, am, e, t_array):
 
         xmy = [(tdscf.xy[i][0]-tdscf.xy[i][1]).reshape(nocc,nvir).T for i in range(len(tdscf.xy))]
         xpy = [(tdscf.xy[i][0]+tdscf.xy[i][1]).reshape(nocc,nvir).T for i in range(len(tdscf.xy))]
-        print("numpy.einsum(\"ijk,pjk->ip\", xmy, xpy)", numpy.einsum("ijk,pjk->ip", xmy, xpy))
+        # print("numpy.einsum(\"ijk,pjk->ip\", xmy, xpy)", numpy.einsum("ijk,pjk->ip", xmy, xpy))
 
         dm_mo_ov = numpy.einsum("mjk,m,mi->ikj", xpy, am, numpy.cos(wmt))
         dm_mo_vo = numpy.einsum("mjk,m,mi->ijk", xpy, am, numpy.cos(wmt))
@@ -297,25 +290,12 @@ if __name__ == "__main__":
 
     print("*******RKS*******")
     mol = gto.Mole()
-    # mol.atom = '''
-    # C         0.6584188440    0.0000000000    0.0000000000
-    # C        -0.6584188440    0.0000000000    0.0000000000
-    # H         1.2256624142    0.9143693597    0.0000000000
-    # H         1.2256624142   -0.9143693597    0.0000000000
-    # H        -1.2256624142    0.9143693597    0.0000000000
-    # H        -1.2256624142   -0.9143693597    0.0000000000'''
     mol.atom = '''
   H   -0.0000000    0.5383516    0.7830365
   O   -0.0000000   -0.0184041    0.0000000
   H    0.0000000    0.5383516   -0.7830365
     '''
-    # mol.charge = 1
-    # mol.spin = 1
-#     mol.atom = '''
-#   H    0.0000000    0.0000000    0.3540000
-#   H    0.0000000    0.0000000   -0.3540000
-#     '''
-    mol.basis = '3-21g'
+    mol.basis = 'sto-3g'
     mol.build()
 
     t_array = numpy.array([0.0, 0.1, 0.2])
@@ -344,16 +324,16 @@ if __name__ == "__main__":
     dm2  = mf2.make_rdm1()
 
     td = tddft.TDDFT(mf1)
-    td.nstates = 10
+    td.nstates = 100
     td.max_cycle = 200
     td.verbose = 0
     td.kernel()
-    print("td.e = ", td.e)
     am = proj_ex_states(td, dm2)
-    # print("am = \n", am)
+    print("td.e = ", td.e)
+    print("am = \n", am)
+    print("am dot am = \n", numpy.einsum("i,i->",am,am))
     dms_rks = eval_rt_dm(td, dm2, am, td.e, t_array)
-    # print("dm2-dms_rks[0] = \n", dm2-dms_rks[0])
-    # print(dms_rks[0])
+    print("dm2-dms_rks[0] = \n", dm2-dms_rks[0])
 
     print("*******UKS*******")
 
@@ -381,13 +361,14 @@ if __name__ == "__main__":
     dm2  = mf2.make_rdm1()
 
     td = tddft.TDDFT(mf1)
-    td.nstates = 10
+    td.nstates = 100
     td.max_cycle = 200
     td.verbose = 5
     td.kernel()
     am = proj_ex_states(td, dm2)
     print("td.e = ", td.e)
-    # print("am = \n", am)
+    print("am = \n", am)
+    print("am dot am = \n", numpy.einsum("i,i->",am,am))
     dms_uks = eval_rt_dm(td, dm2, am, td.e, t_array)
-    # print("dm2-dms_uks[0] = \n", dm2-dms_uks[0])
+    print("dm2-dms_uks[0] = \n", dm2-dms_uks[0])
 
