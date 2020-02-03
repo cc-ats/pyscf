@@ -276,7 +276,7 @@ def eval_rt_dm(tdscf, dm_ao, am, e, t_array):
         dm_list[:, :nocc,nocc:] = dm_mo_ov
         dm_list[:, nocc:,:nocc] = dm_mo_vo
         # print(dm_list[0])
-        [print(dm) for dm in dm_list]
+        [print(reduce(numpy.dot, (x, dm, x.T))) for dm in dm_list]
         return dm_list # [reduce(numpy.dot, (x, dm, x.T)) for dm in dm_list]
 
 
