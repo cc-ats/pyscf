@@ -362,4 +362,4 @@ if __name__ == "__main__":
     print("am = \n", am)
     dms_uks = eval_rt_dm(td, dm2, am, td.e, t_array)
 
-    print(dms_rks-dms_uks[0,:,:]-dms_uks[1,:,:])
+    print(dms_rks-dms_uks[:,0,:,:]-dms_uks[:,1,:,:])
