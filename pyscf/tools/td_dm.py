@@ -185,7 +185,9 @@ def proj_ex_states(tdscf, dm_ao):
         dm_mo_a_ov = dm_mo_a[:nocc_a, nocc_a:].reshape(nocc_a,nvir_a).T
         dm_mo_b_ov = dm_mo_b[:nocc_b, nocc_b:].reshape(nocc_b,nvir_b).T
         
-        print("tdscf.xy.shape = ", tdscf.xy.shape)
+        print("tdscf.xy[0].shape = ", tdscf.xy[0].shape)
+        print("tdscf.xy[1].shape = ", tdscf.xy[1].shape)
+        print("tdscf.xy[2].shape = ", tdscf.xy[2].shape)
         assert  1==2
         xmy_a = [(tdscf.xy[i][0]-tdscf.xy[i][1]).reshape(nocc,nvir).T for i in range(len(tdscf.xy))]
 
