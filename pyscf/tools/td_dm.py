@@ -169,8 +169,12 @@ def proj_ex_states(tdscf, dm_ao):
         return proj
 
     elif (dm_ao.ndim == 3 and dm_ao.shape[0] == 2):
-        mo_occ = mf.mo_occ
-        print("mo_occ = ", mo_occ)
+        mo_occ_a, mo_occ_b = mf.mo_occ
+        nao, nmo = mo_coeff[0].shape
+        nocc_a = (mo_occ_a>0).sum()
+        nocc_b = (mo_occ_b>0).sum()
+        nvir_a = nmo - nocc_a
+        nvir_b = nmo - nocc_b
 
         x = mf.mo_coeff
         x_t = numpy.einsum('aij->aji', x)
@@ -178,7 +182,12 @@ def proj_ex_states(tdscf, dm_ao):
         x_t_inv = numpy.einsum('aij->aji', x_inv)
         dm_mo_a = reduce(numpy.dot, (x_inv[0], dm_ao[0], x_t_inv[0]))
         dm_mo_b = reduce(numpy.dot, (x_inv[1], dm_ao[1], x_t_inv[1]))
-        dm_mo_ov = dm_mo[:nocc, nocc:].reshape(nocc,nvir).T
+        dm_mo_a_ov = dm_mo[:nocc_a, nocc_a:].reshape(nocc_a,nvir_a).T
+        dm_mo_b_ov = dm_mo[:nocc_b, nocc_b:].reshape(nocc_b,nvir_b).T
+        
+        print("tdscf.xy.shape = ", tdscf.xy.shape)
+        assert  1==2
+        xmy_a = [(tdscf.xy[i][0]-tdscf.xy[i][1]).reshape(nocc,nvir).T for i in range(len(tdscf.xy))]
 
 
 
