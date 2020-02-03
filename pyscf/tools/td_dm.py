@@ -242,10 +242,10 @@ def eval_rt_dm(tdscf, dm_ao, am, e, t_array):
         dm_mo_vo_b = numpy.einsum("mjk,m,mi->ijk", xpy_b, am, numpy.cos(wmt))
 
         dm_list = numpy.array([[dm_mo_a, dm_mo_b] for _ in t_array])
-        dm_list[:, 0, :nocc_a,nocc_a:] = dm_mo_ov_a
-        dm_list[:, 0, nocc_a:,:nocc_a] = dm_mo_vo_a
-        dm_list[:, 1, :nocc_b,nocc_b:] = dm_mo_ov_b
-        dm_list[:, 1, nocc_b:,:nocc_b] = dm_mo_vo_b
+        # dm_list[:, 0, :nocc_a,nocc_a:] = dm_mo_ov_a
+        # dm_list[:, 0, nocc_a:,:nocc_a] = dm_mo_vo_a
+        # dm_list[:, 1, :nocc_b,nocc_b:] = dm_mo_ov_b
+        # dm_list[:, 1, nocc_b:,:nocc_b] = dm_mo_vo_b
 
         print("dm_list[0,0] - dm_mo_a", dm_list[0,0] - dm_mo_a)
         print("dm_list[0,1] - dm_mo_b", dm_list[0,1] - dm_mo_b)
