@@ -152,20 +152,35 @@ def proj_ex_states(tdscf, dm_ao):
     mol = tdscf.mol
     mf = tdscf._scf
     mo_coeff = mf.mo_coeff
-    mo_occ = mf.mo_occ
-    nao, nmo = mo_coeff.shape
-    nocc = (mo_occ>0).sum()
-    nvir = nmo - nocc
 
-    x = mf.mo_coeff
-    x_inv = numpy.einsum('li,ls->is', x, mf.get_ovlp())
-    x_t_inv = x_inv.T
-    dm_mo = reduce(numpy.dot, (x_inv, dm_ao, x_t_inv))
-    dm_mo_ov = dm_mo[:nocc, nocc:].reshape(nocc,nvir).T
+    if (dm_ao.ndim == 2):
+        mo_occ = mf.mo_occ
+        nao, nmo = mo_coeff.shape
+        nocc = (mo_occ>0).sum()
+        nvir = nmo - nocc
 
-    xmy = [(tdscf.xy[i][0]-tdscf.xy[i][1]).reshape(nocc,nvir).T for i in range(len(tdscf.xy))]
-    proj = 2*numpy.einsum("ijk,jk->i",xmy, dm_mo_ov)
-    return proj
+        x = mf.mo_coeff
+        x_inv = numpy.einsum('li,ls->is', x, mf.get_ovlp())
+        x_t_inv = x_inv.T
+        dm_mo = reduce(numpy.dot, (x_inv, dm_ao, x_t_inv))
+        dm_mo_ov = dm_mo[:nocc, nocc:].reshape(nocc,nvir).T
+        xmy = [(tdscf.xy[i][0]-tdscf.xy[i][1]).reshape(nocc,nvir).T for i in range(len(tdscf.xy))]
+        proj = 2*numpy.einsum("ijk,jk->i",xmy, dm_mo_ov)
+        return proj
+
+    elif (dm_ao.ndim == 3 and dm_ao.shape[0] == 2):
+        mo_occ = mf.mo_occ
+        print("mo_occ = ", mo_occ)
+
+        x = mf.mo_coeff
+        x_t = numpy.einsum('aij->aji', x)
+        x_inv = numpy.einsum('ali,ls->ais', x, mf.get_ovlp())
+        x_t_inv = numpy.einsum('aij->aji', x_inv)
+        dm_mo_a = reduce(numpy.dot, (x_inv[0], dm_ao[0], x_t_inv[0]))
+        dm_mo_b = reduce(numpy.dot, (x_inv[1], dm_ao[1], x_t_inv[1]))
+        dm_mo_ov = dm_mo[:nocc, nocc:].reshape(nocc,nvir).T
+
+
 
 
 if __name__ == "__main__":
@@ -182,7 +197,7 @@ if __name__ == "__main__":
     mol.basis = '6-31g(d)'
     mol.build()
 
-    mf1 = dft.RKS(mol)
+    mf1 = dft.UKS(mol)
     mf1.xc = "PBE"
     mf1.max_cycle = 100
     mf1.conv_tol = 1e-12
@@ -190,7 +205,7 @@ if __name__ == "__main__":
     mf1.kernel()
     dm1 = mf1.make_rdm1()
     
-    mf2 = dft.RKS(mol)
+    mf2 = dft.UKS(mol)
     mf2.xc = "pbe"
     mf2.max_cycle = 200
     mf2.conv_tol = 1e-12
