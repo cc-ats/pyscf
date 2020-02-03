@@ -364,7 +364,7 @@ if __name__ == "__main__":
     dm2  = mf2.make_rdm1()
 
     td = tddft.TDDFT(mf1)
-    td.nstates = 100
+    td.nstates = 10
     td.max_cycle = 200
     td.verbose = 5
     td.kernel()
