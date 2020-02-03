@@ -247,7 +247,8 @@ def eval_rt_dm(tdscf, dm_ao, am, e, t_array):
         dm_list[:, 1, :nocc_b,nocc_b:] = dm_mo_ov_b
         dm_list[:, 1, nocc_b:,:nocc_b] = dm_mo_vo_b
 
-        return dm_list
+
+        return [[reduce(numpy.dot, (x_a, dm[0], x_a.T)), reduce(numpy.dot, (x_b, dm[1], x_b.T))] for dm in dm_list]
     
     else:
         mf = scf.addons.convert_to_rhf(mf)
@@ -274,7 +275,7 @@ def eval_rt_dm(tdscf, dm_ao, am, e, t_array):
         dm_list[:, :nocc,nocc:] = dm_mo_ov
         dm_list[:, nocc:,:nocc] = dm_mo_vo
 
-        return dm_list
+        return [reduce(numpy.dot, (x, dm, x.T)) for dm in dm_list]
 
 
 if __name__ == "__main__":
@@ -326,6 +327,7 @@ if __name__ == "__main__":
     am = proj_ex_states(td, dm2)
     print("am = \n", am)
     dms_rks = eval_rt_dm(td, dm2, am, td.e, t_array)
+    print(dms_rks-dm2)
 
     print("*******UKS*******")
 
@@ -362,4 +364,3 @@ if __name__ == "__main__":
     print("am = \n", am)
     dms_uks = eval_rt_dm(td, dm2, am, td.e, t_array)
 
-    print(dms_rks-dms_uks[:,0,:,:]-dms_uks[:,1,:,:])
