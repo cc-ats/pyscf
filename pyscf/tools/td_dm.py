@@ -232,7 +232,7 @@ if __name__ == "__main__":
     dm2  = mf2.make_rdm1()
 
     td = tddft.TDDFT(mf1)
-    td.nstates = 10
+    td.nstates = 20
     td.verbose = 0
     td.kernel()
     am = proj_ex_states(td, dm2)
@@ -263,7 +263,7 @@ if __name__ == "__main__":
     dm2  = mf2.make_rdm1()
 
     td = tddft.TDDFT(mf1)
-    td.nstates = 10
+    td.nstates = 20
     td.verbose = 0
     td.kernel()
     am = proj_ex_states(td, dm2)
