@@ -327,7 +327,7 @@ if __name__ == "__main__":
     am = proj_ex_states(td, dm2)
     print("am = \n", am)
     dms_rks = eval_rt_dm(td, dm2, am, td.e, t_array)
-    print(dms_rks-dm2)
+    print(dms_rks[0]-dm2)
 
     print("*******UKS*******")
 
