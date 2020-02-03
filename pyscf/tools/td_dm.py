@@ -235,6 +235,9 @@ def eval_rt_dm(tdscf, dm_ao, am, e, t_array):
         xpy_a = [(tdscf.xy[i][0][0]+tdscf.xy[i][1][0]).reshape(nocc_a,nvir_a).T for i in range(len(tdscf.xy))]
         xpy_b = [(tdscf.xy[i][0][1]+tdscf.xy[i][1][1]).reshape(nocc_b,nvir_b).T for i in range(len(tdscf.xy))]
 
+        print("tdscf.xy[0][0][0] = ", tdscf.xy[0][0][0])
+        print("tdscf.xy[0][1][0] = ", tdscf.xy[0][1][0])
+
         # print("tdscf.xy[0][0][0] = ", tdscf.xy[0][0][0])
         # print("tdscf.xy[0][1][0] = ", tdscf.xy[0][1][0])
         # print("tdscf.xy[0][0][1].shape = ", tdscf.xy[0][0][1].shape)
