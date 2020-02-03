@@ -189,7 +189,7 @@ def proj_ex_states(tdscf, dm_ao):
         xmy_b = [(tdscf.xy[i][0][1]-tdscf.xy[i][1][1]).reshape(nocc_b,nvir_b).T for i in range(len(tdscf.xy))]
 
         proj = numpy.einsum("ijk,jk->i",xmy_a, dm_mo_a_ov) + numpy.einsum("ijk,jk->i",xmy_b, dm_mo_b_ov)
-        return proj/2
+        return proj*2
 
 
 
@@ -236,6 +236,7 @@ if __name__ == "__main__":
     td.verbose = 0
     td.kernel()
     am = proj_ex_states(td, dm2)
+    print("RKS e = \n", td.e)
     print("RKS am = \n", am)
 
     mf1 = dft.UKS(mol)
@@ -266,4 +267,5 @@ if __name__ == "__main__":
     td.verbose = 0
     td.kernel()
     am = proj_ex_states(td, dm2)
+    print("UKS e = \n", td.e)
     print("UKS am = \n", am)
