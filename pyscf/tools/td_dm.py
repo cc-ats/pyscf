@@ -366,7 +366,7 @@ if __name__ == "__main__":
     td = tddft.TDDFT(mf1)
     td.nstates = 100
     td.max_cycle = 200
-    td.verbose = 0
+    td.verbose = 5
     td.kernel()
     am = proj_ex_states(td, dm2)
     print("td.e = ", td.e)
