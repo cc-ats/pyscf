@@ -382,6 +382,7 @@ if __name__ == "__main__":
     td.max_cycle = 200
     td.verbose = 5
     td.kernel()
+    print("td,con = ", td.converged)
     am = proj_ex_states(td, dm2)
     print("td.e = ", td.e)
     print("am = \n", am)
