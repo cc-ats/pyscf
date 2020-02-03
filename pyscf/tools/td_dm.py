@@ -363,7 +363,7 @@ if __name__ == "__main__":
     dm2  = mf2.make_rdm1()
 
     td = tddft.TDDFT(mf1)
-    td.nstates = 5
+    td.nstates = 20
     td.max_cycle = 200
     td.verbose = 0
     td.kernel()
@@ -371,4 +371,5 @@ if __name__ == "__main__":
     print("td.e = ", td.e)
     print("am = \n", am)
     dms_uks = eval_rt_dm(td, dm2, am, td.e, t_array)
+    print("dm2-dms_uks[0] = \n", dm2-dms_uks[0])
 
