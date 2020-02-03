@@ -270,6 +270,8 @@ def eval_rt_dm(tdscf, dm_ao, am, t_array):
         dm_mo_ov = numpy.einsum("mjk,m,mi->ikj", xpy, am, numpy.cos(wmt))
         dm_mo_vo = numpy.einsum("mjk,m,mi->ijk", xpy, am, numpy.cos(wmt))
 
+        print("dm_mo_vo.shape = ", dm_mo_vo)
+
         dm_list = numpy.array([[dm_mo] for _ in t_array])
         dm_list[:, :nocc,nocc:] = dm_mo_ov
         dm_list[:, nocc:,:nocc] = dm_mo_vo
