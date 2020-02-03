@@ -206,9 +206,36 @@ if __name__ == "__main__":
     H        -1.2256624142    0.9143693597    0.0000000000
     H        -1.2256624142   -0.9143693597    0.0000000000'''
     mol.basis = '6-31g(d)'
-    mol.charge = 1
-    mol.spin = 1
     mol.build()
+
+    mf1 = dft.RKS(mol)
+    mf1.xc = "PBE"
+    mf1.max_cycle = 100
+    mf1.conv_tol = 1e-12
+    mf1.verbose = 4
+    mf1.kernel()
+    dm1 = mf1.make_rdm1()
+    
+    mf2 = dft.RKS(mol)
+    mf2.xc = "pbe"
+    mf2.max_cycle = 200
+    mf2.conv_tol = 1e-12
+    mf2.verbose = 3
+    h1e_0 = mf2.get_hcore()
+    e  = -1e-3
+    ee = [e, 0, 0]
+    ao_dip = mf2.mol.intor_symmetric('int1e_r', comp=3)
+    ef = numpy.einsum('x,xij->ij', ee, ao_dip )
+    h1e = h1e_0 + ef
+    mf2.get_hcore = lambda *args: h1e
+    mf2.kernel(dm=dm1)
+    dm2  = mf2.make_rdm1()
+
+    td = tddft.TDDFT(mf1)
+    td.nstates = 5
+    td.kernel()
+    am = proj_ex_states(td, dm2)
+    print("RKS am = \n", am)
 
     mf1 = dft.UKS(mol)
     mf1.xc = "PBE"
@@ -237,4 +264,4 @@ if __name__ == "__main__":
     td.nstates = 5
     td.kernel()
     am = proj_ex_states(td, dm2)
-    print("am = \n", am)
+    print("UKS am = \n", am)
