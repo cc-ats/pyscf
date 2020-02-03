@@ -325,9 +325,7 @@ if __name__ == "__main__":
     print("td.e = ", td.e)
     am = proj_ex_states(td, dm2)
     print("am = \n", am)
-    dms = eval_rt_dm(td, dm2, am, td.e, t_array)
-    print(dms[0])
-    print(dms[1])
+    dms_rks = eval_rt_dm(td, dm2, am, td.e, t_array)
 
     print("*******UKS*******")
 
@@ -362,6 +360,6 @@ if __name__ == "__main__":
     am = proj_ex_states(td, dm2)
     print("td.e = ", td.e)
     print("am = \n", am)
-    dms = eval_rt_dm(td, dm2, am, td.e, t_array)
-    print(dms[0])
-    print(dms[1])
+    dms_uks = eval_rt_dm(td, dm2, am, td.e, t_array)
+
+    print(dms_rks-dms_uks[0,:,:]-dms_uks[1,:,:])
