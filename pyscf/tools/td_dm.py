@@ -149,11 +149,41 @@ def calc_diff_dm(tdscf, x_y):
     return diff_dm
 
 def proj_ex_states(tdscf, dm_ao):
+    mf  = tdscf._scf
     mol = tdscf.mol
-    mf = tdscf._scf
-    mo_coeff = mf.mo_coeff
 
-    if (dm_ao.ndim == 2):
+    if isinstance(mf, scf.uhf.UHF):
+        mf = scf.addons.convert_to_uhf(mf)
+        assert (dm_ao.ndim == 3 and dm_ao.shape[0] == 2)
+        mo_coeff_a, mo_coeff_b = mf.mo_coeff
+        mo_occ_a, mo_occ_b = mf.mo_occ
+        nao, nmo = mo_coeff_a.shape
+        nocc_a = (mo_occ_a>0).sum()
+        nocc_b = (mo_occ_b>0).sum()
+        nvir_a = nmo - nocc_a
+        nvir_b = nmo - nocc_b
+        xmy_a = [(tdscf.xy[i][0][0]-tdscf.xy[i][1][0]).reshape(nocc_a,nvir_a).T for i in range(len(tdscf.xy))]
+        xmy_b = [(tdscf.xy[i][0][1]-tdscf.xy[i][1][1]).reshape(nocc_b,nvir_b).T for i in range(len(tdscf.xy))]
+
+        x_a = mo_coeff_a
+        x_inv_a = numpy.einsum('li,ls->is', x_a, mf.get_ovlp())
+        x_t_inv_a = x_inv_a.T
+        dm_mo_a = reduce(numpy.dot, (x_inv_a, dm_ao[0], x_t_inv_a))
+        dm_mo_ov_a = dm_mo_a[:nocc_a, nocc_a:].reshape(nocc_a,nvir_a).T
+
+        x_b = mo_coeff_b
+        x_inv_b = numpy.einsum('li,ls->is', x_b, mf.get_ovlp())
+        x_t_inv_b = x_inv_b.T
+        dm_mo_b = reduce(numpy.dot, (x_inv_b, dm_ao[1], x_t_inv_b))
+        dm_mo_ov_b = dm_mo_b[:nocc_b, nocc_b:].reshape(nocc_b,nvir_b).T
+
+        proj = numpy.einsum("ijk,jk->i",xmy_a, dm_mo_ov_a) + numpy.einsum("ijk,jk->i",xmy_b, dm_mo_ov_b)
+        return 2*proj
+    
+    else:
+        mf = scf.addons.convert_to_rhf(mf)
+        assert dm_ao.ndim == 2
+        mo_coeff = mf.mo_coeff
         mo_occ = mf.mo_occ
         nao, nmo = mo_coeff.shape
         nocc = (mo_occ>0).sum()
@@ -164,39 +194,15 @@ def proj_ex_states(tdscf, dm_ao):
         x_t_inv = x_inv.T
         dm_mo = reduce(numpy.dot, (x_inv, dm_ao, x_t_inv))
         dm_mo_ov = dm_mo[:nocc, nocc:].reshape(nocc,nvir).T
+
         xmy = [(tdscf.xy[i][0]-tdscf.xy[i][1]).reshape(nocc,nvir).T for i in range(len(tdscf.xy))]
         proj = 2*numpy.einsum("ijk,jk->i",xmy, dm_mo_ov)
         return proj
 
-    elif (dm_ao.ndim == 3 and dm_ao.shape[0] == 2):
-        mo_occ_a, mo_occ_b = mf.mo_occ
-        nao, nmo = mo_coeff[0].shape
-        nocc_a = (mo_occ_a>0).sum()
-        nocc_b = (mo_occ_b>0).sum()
-        nvir_a = nmo - nocc_a
-        nvir_b = nmo - nocc_b
-
-        x = mf.mo_coeff
-        x_t = numpy.einsum('aij->aji', x)
-        x_inv = numpy.einsum('ali,ls->ais', x, mf.get_ovlp())
-        x_t_inv = numpy.einsum('aij->aji', x_inv)
-        dm_mo_a = reduce(numpy.dot, (x_inv[0], dm_ao[0], x_t_inv[0]))
-        dm_mo_b = reduce(numpy.dot, (x_inv[1], dm_ao[1], x_t_inv[1]))
-        dm_mo_a_ov = dm_mo_a[:nocc_a, nocc_a:].reshape(nocc_a,nvir_a).T
-        dm_mo_b_ov = dm_mo_b[:nocc_b, nocc_b:].reshape(nocc_b,nvir_b).T
-        
-        xmy_a = [(tdscf.xy[i][0][0]-tdscf.xy[i][1][0]).reshape(nocc_a,nvir_a).T for i in range(len(tdscf.xy))]
-        xmy_b = [(tdscf.xy[i][0][1]-tdscf.xy[i][1][1]).reshape(nocc_b,nvir_b).T for i in range(len(tdscf.xy))]
-
-        proj = numpy.einsum("ijk,jk->i",xmy_a, dm_mo_a_ov) + numpy.einsum("ijk,jk->i",xmy_b, dm_mo_b_ov)
-        return proj*2
-
-
-
-
 if __name__ == "__main__":
     from pyscf import gto, scf, dft, tddft
 
+    print("*******RKS*******")
     mol = gto.Mole()
     mol.atom = '''
     C         0.6584188440    0.0000000000    0.0000000000
@@ -217,8 +223,8 @@ if __name__ == "__main__":
     dm1 = mf1.make_rdm1()
     
     mf2 = dft.RKS(mol)
-    mf2.xc = "PBE"
-    mf2.max_cycle = 100
+    mf2.xc = "pbe"
+    mf2.max_cycle = 200
     mf2.conv_tol = 1e-12
     mf2.verbose = 0
     h1e_0 = mf2.get_hcore()
@@ -228,16 +234,19 @@ if __name__ == "__main__":
     ef = numpy.einsum('x,xij->ij', ee, ao_dip )
     h1e = h1e_0 + ef
     mf2.get_hcore = lambda *args: h1e
-    mf2.kernel(dm=dm1)
+    mf2.kernel(dm0=dm1)
     dm2  = mf2.make_rdm1()
 
     td = tddft.TDDFT(mf1)
-    td.nstates = 20
+    td.nstates = 5
+    td.max_cycle = 200
     td.verbose = 0
     td.kernel()
+    print("td.e = ", td.e)
     am = proj_ex_states(td, dm2)
-    print("RKS e = \n", td.e)
-    print("RKS am = \n", am)
+    print("am = \n", am)
+
+    print("*******UKS*******")
 
     mf1 = dft.UKS(mol)
     mf1.xc = "PBE"
@@ -248,8 +257,8 @@ if __name__ == "__main__":
     dm1 = mf1.make_rdm1()
     
     mf2 = dft.UKS(mol)
-    mf2.xc = "PBE"
-    mf2.max_cycle = 100
+    mf2.xc = "pbe"
+    mf2.max_cycle = 200
     mf2.conv_tol = 1e-12
     mf2.verbose = 0
     h1e_0 = mf2.get_hcore()
@@ -259,13 +268,14 @@ if __name__ == "__main__":
     ef = numpy.einsum('x,xij->ij', ee, ao_dip )
     h1e = h1e_0 + ef
     mf2.get_hcore = lambda *args: h1e
-    mf2.kernel(dm=dm1)
+    mf2.kernel(dm0=dm1)
     dm2  = mf2.make_rdm1()
 
     td = tddft.TDDFT(mf1)
-    td.nstates = 20
+    td.nstates = 5
+    td.max_cycle = 200
     td.verbose = 0
     td.kernel()
     am = proj_ex_states(td, dm2)
-    print("UKS e = \n", td.e)
-    print("UKS am = \n", am)
+    print("td.e = ", td.e)
+    print("am = \n", am)
