@@ -217,8 +217,8 @@ if __name__ == "__main__":
     dm1 = mf1.make_rdm1()
     
     mf2 = dft.RKS(mol)
-    mf2.xc = "pbe"
-    mf2.max_cycle = 200
+    mf2.xc = "PBE"
+    mf2.max_cycle = 100
     mf2.conv_tol = 1e-12
     mf2.verbose = 0
     h1e_0 = mf2.get_hcore()
@@ -232,7 +232,7 @@ if __name__ == "__main__":
     dm2  = mf2.make_rdm1()
 
     td = tddft.TDDFT(mf1)
-    td.nstates = 5
+    td.nstates = 10
     td.verbose = 0
     td.kernel()
     am = proj_ex_states(td, dm2)
@@ -248,8 +248,8 @@ if __name__ == "__main__":
     dm1 = mf1.make_rdm1()
     
     mf2 = dft.UKS(mol)
-    mf2.xc = "pbe"
-    mf2.max_cycle = 200
+    mf2.xc = "PBE"
+    mf2.max_cycle = 100
     mf2.conv_tol = 1e-12
     mf2.verbose = 0
     h1e_0 = mf2.get_hcore()
@@ -263,7 +263,7 @@ if __name__ == "__main__":
     dm2  = mf2.make_rdm1()
 
     td = tddft.TDDFT(mf1)
-    td.nstates = 5
+    td.nstates = 10
     td.verbose = 0
     td.kernel()
     am = proj_ex_states(td, dm2)
