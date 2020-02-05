@@ -5,7 +5,7 @@ import copy
 from functools import reduce
 import numpy
 
-from pyscf import lib
+from pyscf import lib, scf
 from pyscf.lib import logger
 from pyscf import dft
 from pyscf.dft import rks
