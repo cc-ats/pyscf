@@ -1,17 +1,20 @@
 # Author: Junjie Yang <yangjunjie0320@gmail.com> Zheng Pei and Yihan Shao
 
 import sys
-
 import numpy
 import scipy
+
+from functools     import reduce
 from scipy.fftpack import fft
+from scipy.linalg  import expm
+from numpy         import dot
+from numpy.linalg  import norm
 from pyscf import __config__
 
 write = sys.stdout.write
 
 DAMP_EXPO         = getattr(__config__, 'rt_tdscf_damp_expo',     1000)
 PRINT_MAT_NCOL    = getattr(__config__, 'rt_tdscf_print_mat_ncol',   7)
-DAMP_EXPO         = getattr(__config__, 'rt_tdscf_damp_expo',     1000)
 
 def build_absorption_spectrum(tdscf, ndipole=None, damp_expo=DAMP_EXPO):
     if ndipole is None:
@@ -70,18 +73,19 @@ def print_cx_matrix(title, cx_array_, ncols=7, fmt=' % 11.4e'):
     print_matrix(title+" Real Part ", cx_array_.real, ncols=ncols, fmt=fmt)
     print_matrix(title+" Imag Part ", cx_array_.imag, ncols=ncols, fmt=fmt)
 
-def errm(m1,m2):
+def errm(m1,m2,r=None):
     ''' check consistency '''
-    n   = numpy.linalg.norm(m1-m2)
-    r   = m1.size
+    if r is None:
+        r = m1.size
+    n   = norm(m1-m2)
     e   = n/r
-    return numpy.abs(e)
+    return e
 
-def expm(m, do_bch=False):
-    if not do_bch:
-        return scipy.linalg.expm(m)
-    else:
-        raise NotImplementedError("BCH not implemented here")
+def expia_b_exp_iat(a, b):
+    u          = expm(1j*a)
+    tmp        = reduce(dot, [u, b, u.conj().T])
+    tmp        = (tmp + tmp.conj().T)/2
+    return tmp
 
 if __name__ == "__main__":
     from pyscf import gto, scf
@@ -96,4 +100,7 @@ if __name__ == "__main__":
     mf.kernel()
 
     dm = mf.make_rdm1()
-    print_matrix("dm = ", dm[0])
+    print_matrix("dm_alpha = ", dm[0])
+
+    dm = mf.make_rdm1()
+    print_cx_matrix("dm_alpha + i * dm_beta = ", dm[0] + 1j*dm[1])

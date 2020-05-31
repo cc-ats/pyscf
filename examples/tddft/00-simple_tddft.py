@@ -12,7 +12,7 @@ from pyscf import gto, scf, dft, tddft
 mol = gto.Mole()
 mol.build(
     atom = 'H 0 0 0; F 0 0 1.1',  # in Angstrom
-    basis = '631g',
+    basis = 'cc-pvdz',
     symmetry = True,
 )
 
@@ -21,7 +21,7 @@ mf.xc = 'b3lyp'
 mf.kernel()
 
 mytd = tddft.TDDFT(mf)
-#mytd.nstates = 10
+mytd.nstates = 10
 mytd.kernel()
 mytd.analyze()
 
