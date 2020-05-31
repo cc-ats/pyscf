@@ -237,44 +237,49 @@ class TDHF(TDSCF):
         if orth_xtuple is None:
             orth_xtuple = self._orth_xtuple
         return orth2ao_covariant(fock_orth, orth_xtuple)
-    
-    # def get_hcore(self, t=None):
-    #     if (self.efield_vec is None) or (t is None):
-    #         return self.hcore_ao
-    #     else:
-    #         if self.ele_dip_ao is None:
-    #             # the interaction between the system and electric field
-    #             self.ele_dip_ao      = self._scf.mol.intor_symmetric('int1e_r', comp=3)
-            
-    #         h = self.hcore_ao + numpy.einsum(
-    #             'xij,x->ij', self.ele_dip_ao, self.efield_vec(t)
-    #             ).astype(numpy.complex128)
-    #         return h
 
     def.prop_func(self):
         pass
 
-    def get_hcore_ao(self, t, hcore_ao=None, field=None):
-        if field is None:
-            return self.hcore_ao
+    def get_hcore_ao(self, t, electric_field=None):
+        # TODO: !!!
+        if electric_field is None:
+            return self._hcore_ao
         else:
-            return self.hcore_ao + field
+            return self._hcore_ao + electric_field.get_field_ao(t)
 
-    def get_veff_ao(self, dm_orth):
-        dm_ao = self.orth2ao_dm(dm_orth, self._orth_xtuple)
+    def get_veff_ao(self, dm_orth, dm_ao=None):
+        if dm_ao is None:
+            dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=self._orth_xtuple)
         return self._scf.get_veff(dm_ao)
 
     def get_fock_ao(self, hcore_ao, dm_orth, dm_ao=None, veff_ao=None):
         if dm_ao is None:
-            dm_ao = dm_orth
+            dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=self._orth_xtuple)
         if veff_ao is None:
-            veff_ao = self.get_veff_ao(dm_ao)
+            veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao)
         return hcore_ao + veff_ao
 
-    def get_fock_orth(self, hcore_ao, dm_ao, veff_ao=None):
+    def get_fock_orth(self, hcore_ao, dm_orth, dm_ao=None, veff_ao=None):
+        if dm_ao is None:
+            dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=self._orth_xtuple)
         if veff_ao is None:
-            veff_ao = self.get_veff_ao(dm_ao)
-        return hcore_ao + veff_ao
+            veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao)
+        return self.orth2ao_dm(hcore_ao + veff_ao
+
+    def get_energy_elec(self, hcore_ao, dm_orth, dm_ao=None, veff_ao=None):
+        if dm_ao is None:
+            dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=self._orth_xtuple)
+        if veff_ao is None:
+            veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao)
+        return self._scf.energy_elec(dm=dm_ao, h1e=hcore_ao, vhf=veff_ao)
+
+    def get_energy_tot(self, hcore_ao, dm_orth, dm_ao=None, veff_ao=None):
+        if dm_ao is None:
+            dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=self._orth_xtuple)
+        if veff_ao is None:
+            veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao)
+        return self._scf.energy_tot(dm=dm_ao, h1e=hcore_ao, vhf=veff_ao)
 
         # if (self.efield_vec is None) or (t is None):
         #     return self.hcore_ao
@@ -288,42 +293,40 @@ class TDHF(TDSCF):
         #         ).astype(numpy.complex128)
         #     return h
 
-    def set_prop_func(self, key='euler'):
-        '''
-        In virtually all cases AMUT is superior in terms of stability. 
-        Others are perhaps only useful for debugging or simplicity.
-        '''
-        if (key is not None):
-            if   (key.lower() == 'euler'):
-                self.prop_func = euler_prop
-            elif (key.lower() == 'mmut'):
-                self.prop_func = mmut_prop
-            elif (key.lower() == 'amut1'):
-                self.prop_func = amut1_prop
-            elif (key.lower() == 'amut2'):
-                self.prop_func = amut2_prop
-            elif (key.lower() == 'amut3'):
-                self.prop_func = amut3_prop
-            elif (key.lower() == 'amut_pc'):
-                self.prop_func = amut_pc_prop
-            elif (key.lower() == 'ep_pc'):
-                self.prop_func = ep_pc_prop
-            elif (key.lower() == 'lflp_pc'):
-                self.prop_func = lflp_pc_prop
-            else:
-                raise RuntimeError("unknown prop method!")
-        else:
-            self.prop_func = euler_prop
+    # def set_prop_func(self, key='euler'):
+    #     '''
+    #     In virtually all cases PC methods are superior in terms of stability.
+    #     Others are perhaps only useful for debugging or simplicity.
+    #     '''
+    #     if (key is not None):
+    #         if   (key.lower() == 'euler'):
+    #             self.prop_func = euler_prop
+    #         elif (key.lower() == 'mmut'):
+    #             self.prop_func = mmut_prop
+    #         elif (key.lower() == 'amut1'):
+    #             self.prop_func = amut1_prop
+    #         elif (key.lower() == 'amut2'):
+    #             self.prop_func = amut2_prop
+    #         elif (key.lower() == 'amut3'):
+    #             self.prop_func = amut3_prop
+    #         elif (key.lower() == 'amut_pc'):
+    #             self.prop_func = amut_pc_prop
+    #         elif (key.lower() == 'ep_pc'):
+    #             self.prop_func = ep_pc_prop
+    #         elif (key.lower() == 'lflp_pc'):
+    #             self.prop_func = lflp_pc_prop
+    #         else:
+    #             raise RuntimeError("unknown prop method!")
+    #     else:
+    #         self.prop_func = euler_prop
 
     def dump_flags(self, verbose=None):
         log = logger.new_logger(self, verbose)
         log.info('\n')
         log.info('******** %s ********', self.__class__)
         log.info(
-        'This is a real time TDSCF calculation initialized with a %s SCF',
-            (
-            "converged" if self._scf.converged else "not converged"
-            )
+        'This is a Real-Time TDSCF calculation initialized with a %s SCF',
+            ("converged" if self._scf.converged else "not converged")
         )
         if self._scf.converged:
             log.info(
@@ -340,8 +343,8 @@ class TDHF(TDSCF):
 
     def _initialize(self):
         # mf information
-        self.ovlp_ao         = self._scf.get_ovlp().astype(numpy.complex128)
-        self.hcore_ao        = self._scf.get_hcore().astype(numpy.complex128)
+        self._ovlp_ao         = self._scf.get_ovlp().astype(numpy.complex128)
+        self._hcore_ao        = self._scf.get_hcore().astype(numpy.complex128)
         if self.prop_func is None:
             if self.prop_method is not None:
                 self.set_prop_func(key=self.prop_method)
@@ -349,19 +352,11 @@ class TDHF(TDSCF):
                 self.set_prop_func()
         self.dump_flags()
 
-        if self.orth_method is None:
-            x = orth_ao(self._scf, method=ORTH_METHOD)
-            x_t = x.T
-            x_inv = numpy.einsum('li,ls->is', x, self._scf.get_ovlp() )
-            x_t_inv = x_inv.T
-            self.orth_xtuple = (x, x_t, x_inv, x_t_inv)
-        else:
-            logger.info(self, 'orth method is %s.', self.orth_method)
-            x = orth_ao(self._scf, method=self.orth_method)
-            x_t = x.T
-            x_inv = numpy.einsum('li,ls->is', x, self._scf.get_ovlp() )
-            x_t_inv = x_inv.T
-            self.orth_xtuple = (x, x_t, x_inv, x_t_inv)
+        x       = orth_canonical_mo(self._scf)
+        x_t     = x.T
+        x_inv   = dot(x, self.ovlp_ao)
+        x_t_inv = x_inv.T
+        self._orth_xtuple = (x, x_t, x_inv, x_t_inv)
         
         if self.verbose >= logger.DEBUG1:
             print_matrix(
@@ -408,6 +403,16 @@ class TDHF(TDSCF):
         logger.info(self, "Propagation finished")
         self._finalize()
 
+#TODO: !!!!
+    def dump_step(self, envs):
+        # print('ndm_ao shape is ', envs['ndm_ao'].shape)
+        if self.chkfile:
+            logger.info(self, 'chkfile to save RT TDSCF result is %s', self.chkfile)
+            chkfile.dump_rt(
+                self.mol, self.chkfile,
+                envs['ntime'], envs['netot'], envs['ndm_ao'],
+                overwrite_mol=False)
+
     def dump_chk(self, envs):
         # print('ndm_ao shape is ', envs['ndm_ao'].shape)
         if self.chkfile:
@@ -434,7 +439,7 @@ if __name__ == "__main__":
     
     rttd.verbose = 5
     rttd.maxstep = 5
-    rttd.prop_method = "lflp_pc"
+    rttd.prop_method = "euler"
     rttd.dt      = 0.2
     rttd.kernel(dm_ao_init=dm)
     print(rttd.netot)
