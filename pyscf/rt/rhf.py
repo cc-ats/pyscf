@@ -12,11 +12,11 @@ from pyscf import lib, lo
 from pyscf.lib import logger
 from pyscf.rt  import chkfile
 
-from pyscf.rt.propagator import euler_prop, mmut_prop
-from pyscf.rt.propagator import ep_pc_prop, lflp_pc_prop
+# from pyscf.rt.propagator import euler_prop, mmut_prop
+# from pyscf.rt.propagator import ep_pc_prop, lflp_pc_prop
 
 from pyscf.rt.util import build_absorption_spectrum
-from pyscf.rt.util import print_matrix, print_cx_matrix, 
+from pyscf.rt.util import print_matrix, print_cx_matrix
 from pyscf.rt.util import errm, expm, expia_b_exp_iat
 
 from pyscf import __config__
@@ -31,37 +31,45 @@ THIS      = 2
 NEXT_HALF = 3
 NEXT      = 4
 
-def orth_canonical_mo(scf_obj):
-''' transform AOs '''
+def orth_canonical_mo(scf_obj, ovlp_ao=None):
+    """ transform AOs """
     logger.info(scf_obj, "the AOs are orthogonalized with canonical MO coefficients")
     if not scf_obj.converged:
-        logger.warn(self,"the SCF object must be converged")
+        logger.warn(scf_obj,"the SCF object must be converged")
+    if ovlp_ao is None:
+        ovlp_ao = scf_obj.get_ovlp()
+
     c_orth = scf_obj.mo_coeff
-    return c_orth.astype(numpy.complex128)
+    x       = c_orth.astype(numpy.complex128)
+    x_t     = x.T
+    x_inv   = dot(x_t, ovlp_ao)
+    x_t_inv = x_inv.T
+    orth_xtuple = (x, x_t, x_inv, x_t_inv)
+    return orth_xtuple
 
 def ao2orth_contravariant(contravariant_matrix_ao, orth_xtuple):
-''' transform contravariant matrix from orthogonal basis to AO basis '''
+    """ transform contravariant matrix from orthogonal basis to AO basis """
     x_inv   = orth_xtuple[2]
     x_t_inv = orth_xtuple[3]
     contravariant_matrix_orth = reduce(dot, [x_inv, contravariant_matrix_ao, x_t_inv])
     return contravariant_matrix_orth
 
 def orth2ao_contravariant(contravariant_matrix_orth, orth_xtuple):
-''' transform contravariant matrix from AO to orthogonal basis '''
+    """ transform contravariant matrix from AO to orthogonal basis """
     x   = orth_xtuple[0]
     x_t = orth_xtuple[1]
     contravariant_matrix_ao = reduce(dot, [x, contravariant_matrix_orth, x_t])
     return contravariant_matrix_ao
 
 def ao2orth_covariant(covariant_matrix_ao, orth_xtuple):
-''' transform covariant matrix from AO to orthogonal basis '''
+    """ transform covariant matrix from AO to orthogonal basis """
     x   = orth_xtuple[0]
     x_t = orth_xtuple[1]
     covariant_matrix_orth = reduce(dot, [x_t, covariant_matrix_ao, x])
     return covariant_matrix_orth
 
 def orth2ao_covariant(covariant_matrix_orth, orth_xtuple):
-''' transform covariant matrix from orthogonal basis to AO basis '''
+    """ transform covariant matrix from orthogonal basis to AO basis """
     x_inv   = orth_xtuple[2]
     x_t_inv = orth_xtuple[3]
     covariant_matrix_ao = reduce(dot, [x_t_inv, covariant_matrix_orth, x_inv])
@@ -166,9 +174,9 @@ def kernel(tdscf,              dm_ao_init= None,
         tdscf.dump_chk(locals())
         cput3 = logger.timer(tdscf, 'dump chk finished', *cput0)
 
-class TDHF(TDSCF):
-    def __init__(self, scf_obj):
-''' the class that defines the system, mol and scf_method '''
+class TDHF(lib.StreamObject):
+    def __init__(self, scf_obj, field=None):
+        """ the class that defines the system, mol and scf_method """
         self._scf           = scf_obj
         self.mol            = scf_obj.mol
         self.verbose        = scf_obj.verbose
@@ -204,7 +212,7 @@ class TDHF(TDSCF):
 # propagation method
         self.prop_method     = None # a string
 # electric field during propagation, a time-dependent electric field instance
-        self.electric_field  = None
+        self.electric_field  = field
 
 # don't modify the following attributes, they are not input options
         # self.nstep       = None
@@ -226,7 +234,7 @@ class TDHF(TDSCF):
     def orth2ao_dm(self, dm_orth, orth_xtuple=None):
         if orth_xtuple is None:
             orth_xtuple = self._orth_xtuple
-        return orth2ao_contravariant(dm_ao, orth_xtuple)
+        return orth2ao_contravariant(dm_orth, orth_xtuple)
 
     def ao2orth_fock(self, fock_ao, orth_xtuple=None):
         if orth_xtuple is None:
@@ -238,11 +246,13 @@ class TDHF(TDSCF):
             orth_xtuple = self._orth_xtuple
         return orth2ao_covariant(fock_orth, orth_xtuple)
 
-    def.prop_func(self):
+    def prop_func(self):
         pass
 
     def get_hcore_ao(self, t, electric_field=None):
-        # TODO: !!!
+        if electric_field is None:
+            electric_field = self.electric_field
+
         if electric_field is None:
             return self._hcore_ao
         else:
@@ -265,7 +275,7 @@ class TDHF(TDSCF):
             dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=self._orth_xtuple)
         if veff_ao is None:
             veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao)
-        return self.orth2ao_dm(hcore_ao + veff_ao
+        return self.ao2orth_fock(hcore_ao + veff_ao, orth_xtuple=self._orth_xtuple)
 
     def get_energy_elec(self, hcore_ao, dm_orth, dm_ao=None, veff_ao=None):
         if dm_ao is None:
@@ -345,22 +355,12 @@ class TDHF(TDSCF):
         # mf information
         self._ovlp_ao         = self._scf.get_ovlp().astype(numpy.complex128)
         self._hcore_ao        = self._scf.get_hcore().astype(numpy.complex128)
-        if self.prop_func is None:
-            if self.prop_method is not None:
-                self.set_prop_func(key=self.prop_method)
-            else:
-                self.set_prop_func()
-        self.dump_flags()
-
-        x       = orth_canonical_mo(self._scf)
-        x_t     = x.T
-        x_inv   = dot(x, self.ovlp_ao)
-        x_t_inv = x_inv.T
-        self._orth_xtuple = (x, x_t, x_inv, x_t_inv)
+        self._orth_xtuple = orth_canonical_mo(self._scf)
+        # self.dump_flags()
         
         if self.verbose >= logger.DEBUG1:
             print_matrix(
-                "XT S X", reduce(dot, (self.orth_xtuple[1], self._scf.get_ovlp(), self.orth_xtuple[0]))
+                "XT S X", reduce(dot, (self._orth_xtuple[1], self._ovlp_ao, self._orth_xtuple[0]))
                 , ncols=PRINT_MAT_NCOL)
 
     def _finalize(self):
@@ -423,23 +423,41 @@ class TDHF(TDSCF):
                 overwrite_mol=False)
 
 if __name__ == "__main__":
-    mol =   gto.Mole( atom='''
-  H    0.0000000    0.0000000    0.3540000
-  H    0.0000000    0.0000000   -0.3540000
+    from field import ClassicalElectricField, gaussian_field_vec
+    h2o =   gto.Mole( atom='''
+    O     0.00000000    -0.00001441    -0.34824012
+    H    -0.00000000     0.76001092    -0.93285191
+    H     0.00000000    -0.75999650    -0.93290797
     '''
-    , basis='cc-pvdz', symmetry=False).build()
+    , basis='sto-3g', symmetry=False).build()
 
-    mf = scf.RHF(mol)
-    mf.verbose = 5
-    mf.kernel()
+    h2o_rhf    = scf.RHF(h2o)
+    h2o_rhf.verbose = 4
+    h2o_rhf.conv_tol = 1e-12
+    h2o_rhf.kernel()
 
-    dm = mf.make_rdm1()
-    fock = mf.get_fock()
-    rttd = TDHF(mf)
+    dm = h2o_rhf.make_rdm1()
+    fock = h2o_rhf.get_fock()
+
+    orth_xtuple = orth_canonical_mo(h2o_rhf)
+    dm_orth = ao2orth_contravariant(dm, orth_xtuple)
+    print_cx_matrix("dm_orth = ", dm_orth)
+    fock_orth_0 = ao2orth_covariant(fock, orth_xtuple)
+    print_cx_matrix("fock_orth_0 = ", fock_orth_0)
     
-    rttd.verbose = 5
-    rttd.maxstep = 5
-    rttd.prop_method = "euler"
-    rttd.dt      = 0.2
-    rttd.kernel(dm_ao_init=dm)
-    print(rttd.netot)
+    gau_vec = lambda t: gaussian_field_vec(t, 1.0, 1.0, 0.0, [0.020,0.00,0.00])
+    gaussian_field = ClassicalElectricField(h2o, field_func=gau_vec, stop_time=10.0)
+
+    rttd = TDHF(h2o_rhf, field=gaussian_field)
+    rttd.verbose = 4
+    rttd._initialize()
+
+    h1e = rttd.get_hcore_ao(5.0)
+    veff_ao = rttd.get_veff_ao(dm_orth, dm_ao=dm)
+    fock_orth = rttd.get_fock_orth(h1e, dm_orth, dm_ao=dm, veff_ao=veff_ao)
+    print_cx_matrix("fock_orth - fock_orth_0 = ", fock_orth-fock_orth_0)
+
+    h1e = rttd.get_hcore_ao(12.0)
+    veff_ao = rttd.get_veff_ao(dm_orth, dm_ao=dm)
+    fock_orth = rttd.get_fock_orth(h1e, dm_orth, dm_ao=dm, veff_ao=veff_ao)
+    print_cx_matrix("fock_orth - fock_orth_0 = ", fock_orth-fock_orth_0)

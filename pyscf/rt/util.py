@@ -48,7 +48,7 @@ def build_absorption_spectrum(tdscf, ndipole=None, damp_expo=DAMP_EXPO):
 def print_matrix(title, array_, ncols=7, fmt=' % 11.4e'):
     ''' printing a real rectangular matrix, or the real part of a complex matrix, ncols columns per batch '''
     array = array_.real
-    write(title+'\n')
+    write('\n'+title+'\n')
     m = array.shape[1]
     n = array.shape[0]
     #write('m=%d n=%d\n' % (m, n))
@@ -70,8 +70,8 @@ def print_matrix(title, array_, ncols=7, fmt=' % 11.4e'):
 
 def print_cx_matrix(title, cx_array_, ncols=7, fmt=' % 11.4e'):
     ''' printing a complex rectangular matrix, ncols columns per batch '''
-    print_matrix(title+" Real Part ", cx_array_.real, ncols=ncols, fmt=fmt)
-    print_matrix(title+" Imag Part ", cx_array_.imag, ncols=ncols, fmt=fmt)
+    print_matrix(title+" \nReal Part ", cx_array_.real, ncols=ncols, fmt=fmt)
+    print_matrix(title+" \nImag Part ", cx_array_.imag, ncols=ncols, fmt=fmt)
 
 def errm(m1,m2,r=None):
     ''' check consistency '''

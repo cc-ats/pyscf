@@ -8,6 +8,7 @@ TDDFT analytical nuclear gradients.
 '''
 
 from pyscf import gto, scf, dft, tddft
+from pyscf.dft import xcfun
 
 mol = gto.M(
     atom = [
@@ -24,7 +25,7 @@ g.kernel(state=1)
 mf = dft.RKS(mol).x2c().set(xc='pbe0').run()
 # Switch to xcfun because 3rd order GGA functional derivative is not
 # available in libxc
-mf._numint.libxc = dft.xcfun
+mf._numint.libxc = xcfun
 postmf = tddft.TDDFT(mf).run()
 # PySCF-1.6.1 and newer supports the .Gradients method to create a grad
 # object after grad module was imported. It is equivalent to call the
