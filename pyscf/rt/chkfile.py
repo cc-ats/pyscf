@@ -77,7 +77,7 @@ if __name__ == "__main__":
     dump_rt_obj(tmp_chkfile, rttd)
     for it, t in enumerate(numpy.linspace(0,100,1001)):
         dump_rt_step(tmp_chkfile, it,
-        t=t, etot=10.00, dm_ao=dm, dm_orth=dm_orth, fock_ao=fock_ao, fock_orth=fock_orth)
+        t=t, etot=10.00, dm_ao=dm, dm_orth=dm_orth, fock_ao=fock, fock_orth=fock_orth)
 
     step_index = load_rt_step_index(tmp_chkfile)
 

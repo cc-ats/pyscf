@@ -76,9 +76,7 @@ def orth2ao_covariant(covariant_matrix_orth, orth_xtuple):
     covariant_matrix_ao = reduce(dot, [x_t_inv, covariant_matrix_orth, x_inv])
     return covariant_matrix_ao
 
-def kernel(tdscf, dm_ao_init= None,
-           chk_file = None,    
-           ):
+def kernel(tdscf, dm_ao_init= None, chk_file = None, calculate_dipole = None, calculate_pop =None):
     cput0 = (time.clock(), time.time())
 
     if dm_ao_init is None:  dm_ao_init = tdscf.dm_ao_init
@@ -394,8 +392,17 @@ class TDHF(lib.StreamObject):
         logger.info(self, "Propagation finished")
         self._finalize()
 
-    def dump_rt_step(self, idx, t, etot, dm_ao, dm_orth, fock_ao, fock_orth):
-        dump_rt_step( self.chkfile, idx, t, etot, dm_ao, dm_orth, fock_ao, fock_orth)
+    def dump_rt_step(self, idx, t, etot, dm_ao, dm_orth, fock_ao, fock_orth, dip=None, pop=None, field=None):
+        rt_dic = {
+            "t":t, "etot": etot, "dm_ao": dm_ao, "dm_orth": dm_orth, "fock_ao": fock_ao, "fock_orth": fock_orth
+        }
+        if dip is not None:
+            rt_dic["dip"] = dip
+        if pop is not None:
+            rt_dic["pop"] = pop
+        if field is not None:
+            rt_dic["field"] = field
+        dump_rt_step(self.chkfile, idx, **rt_dic)
 
     def load_rt_step_index(self):
         return load_rt_step_index(self.chkfile)
@@ -447,7 +454,10 @@ if __name__ == "__main__":
     dump_rt_obj(tmp_chkfile, rttd)
 
     for it, t in enumerate(numpy.linspace(0,100,1001)):
-        rttd.dump_rt_step(it, t, 10.00, dm_0, dm_orth_0, fock_0, fock_orth_0)
+        rttd.dump_rt_step(
+            it, t, 10.00, dm_0, dm_orth_0, fock_0, fock_orth_0,
+            dip=[0,0,0], pop=None, field=[0,0,0]
+            )
 
     step_index = rttd.load_rt_step_index()
 
@@ -455,6 +465,7 @@ if __name__ == "__main__":
         print("step_index = ", step)
         rtstep = rttd.load_rt_step(step)
         print("t = %f"%rtstep["t"])
+        print("field = ", rtstep["field"])
     
     rtstep = rttd.load_rt_step(range(100))
     print("step_index = ", rtstep[10])
