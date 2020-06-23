@@ -19,6 +19,9 @@ from pyscf import __config__
 
 # integration schemes
 # unitary euler propagation
+PRINT_MAT_NCOL    = getattr(__config__, 'rt_tdscf_print_mat_ncol',              7)
+PC_TOL            = getattr(__config__, 'rt_tdscf_pc_tol',                  1e-14)
+PC_MAX_ITER       = getattr(__config__, 'rt_tdscf_pc_max_iter',                20)
 
 LAST      = 0 
 LAST_HALF = 1

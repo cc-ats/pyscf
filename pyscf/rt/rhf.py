@@ -8,14 +8,15 @@ from functools import reduce
 from numpy import dot
 
 from pyscf import gto, scf
+from pyscf.scf.hf import get_jk
+
 from pyscf import lib, lo
 from pyscf.lib import logger
-from pyscf.rt  import chkfile
+from pyscf.rt.chkfile import dump_rt_obj, dump_rt_step, load_rt_step, load_rt_step_index
 
-# from pyscf.rt.propagator import euler_prop, mmut_prop
-# from pyscf.rt.propagator import ep_pc_prop, lflp_pc_prop
+from pyscf.rt.propagator import euler_prop, mmut_prop
+from pyscf.rt.propagator import ep_pc_prop, lflp_pc_prop
 
-from pyscf.rt.util import build_absorption_spectrum
 from pyscf.rt.util import print_matrix, print_cx_matrix
 from pyscf.rt.util import errm, expm, expia_b_exp_iat
 
@@ -75,10 +76,8 @@ def orth2ao_covariant(covariant_matrix_orth, orth_xtuple):
     covariant_matrix_ao = reduce(dot, [x_t_inv, covariant_matrix_orth, x_inv])
     return covariant_matrix_ao
 
-def kernel(tdscf,              dm_ao_init= None,
-           ndm_prim  = None, nfock_prim  = None, #output
-           ndm_ao    = None, nfock_ao    = None, #output
-           netot     = None, do_dump_chk = True
+def kernel(tdscf, dm_ao_init= None,
+           chk_file = None,    
            ):
     cput0 = (time.clock(), time.time())
 
@@ -117,10 +116,12 @@ def kernel(tdscf,              dm_ao_init= None,
     netot[0]       = etot_init
 
     _temp_ts         = dt*numpy.array([0.0, 0.5, 1.0, 1.5, 2.0])
-    _temp_dm_prims   = numpy.zeros([5] + shape, dtype=numpy.complex128)
-    _temp_fock_prims = numpy.zeros([5] + shape, dtype=numpy.complex128)
-    _temp_dm_aos     = numpy.zeros([5] + shape, dtype=numpy.complex128)
-    _temp_fock_aos   = numpy.zeros([5] + shape, dtype=numpy.complex128)
+    logger.info(self, 'before building matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
+    temp_dm_orth   = numpy.zeros([5] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
+    temp_dm_ao     = numpy.zeros([5] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
+    temp_fock_orth = numpy.zeros([5] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
+    temp_fock_ao   = numpy.zeros([5] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
+    logger.info(self, 'after building matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
 
     cput1 = logger.timer(tdscf, 'initialize td-scf', *cput0)
 
@@ -201,6 +202,9 @@ class TDHF(lib.StreamObject):
         self._ovlp_ao         = None
         self._hcore_ao        = None
 
+        self._scf_get_veff     = None
+        self._scf_get_fock     = None
+
 # input parameters for propagation
 # initial condtion
         self.dm_ao_init = None
@@ -208,23 +212,39 @@ class TDHF(lib.StreamObject):
 # time step and maxstep
         self.dt         = None
         self.maxstep    = None
+#
+        self.calculate_dipole = True
+        self.calculate_pop    = True
 
 # propagation method
         self.prop_method     = None # a string
+        self.prop_func       = None # a string
 # electric field during propagation, a time-dependent electric field instance
         self.electric_field  = field
+        self._get_field_ao   = None
 
-# don't modify the following attributes, they are not input options
-        # self.nstep       = None
-        # self.ntime       = None
-        # self.ndm_prim    = None
-        # self.nfock_prim  = None
-        # self.ndm_ao      = None
-        # self.nfock_ao    = None
-        # self.netot       = None
 
-    def prop_step(self, dt, fock_prim, dm_prim):
-        return expia_b_exp_iat(-dt*fock_prim, dm_prim)
+    def prop_step(self, dt, fock_orth, dm_orth):
+        return expia_b_exp_iat(-dt*fock_orth, dm_orth)
+
+    def set_prop_func(self, key='euler'):
+        '''
+        In virtually all cases PC methods are superior in terms of stability.
+        Others are perhaps only useful for debugging or simplicity.
+        '''
+        if (key is not None):
+            if   (key.lower() == 'euler'):
+                self.prop_func = euler_prop
+            elif (key.lower() == 'mmut'):
+                self.prop_func = mmut_prop
+            elif (key.lower() == 'ep_pc_prop'):
+                self.prop_func = ep_pc_prop
+            elif (key.lower() == 'lflp_pc'):
+                self.prop_func = lflp_pc_prop
+            else:
+                raise RuntimeError("unknown prop method!")
+        else:
+            self.prop_func = euler_prop
 
     def ao2orth_dm(self, dm_ao, orth_xtuple=None):
         if orth_xtuple is None:
@@ -246,42 +266,62 @@ class TDHF(lib.StreamObject):
             orth_xtuple = self._orth_xtuple
         return orth2ao_covariant(fock_orth, orth_xtuple)
 
-    def prop_func(self):
-        pass
-
-    def get_hcore_ao(self, t, electric_field=None):
-        if electric_field is None:
-            electric_field = self.electric_field
-
-        if electric_field is None:
-            return self._hcore_ao
+    def get_hcore_ao(self, t, get_field_ao=None):
+        if get_field_ao is None:
+            if self._get_field_ao is None:
+                return self._hcore_ao
+            else:
+                self._hcore_ao + self._get_field_ao(t)
         else:
-            return self._hcore_ao + electric_field.get_field_ao(t)
+            return self._hcore_ao + get_field_ao(t)
 
-    def get_veff_ao(self, dm_orth, dm_ao=None):
+    def get_veff_ao(self, dm_orth, dm_orth_last=None,  dm_ao=None, dm_ao_last=None,
+                    vhf_last=None, orth_xtuple=None):
+        if orth_xtuple is None:
+            orth_xtuple = self._orth_xtuple
         if dm_ao is None:
-            dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=self._orth_xtuple)
-        return self._scf.get_veff(dm_ao)
+            dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
+        if (dm_orth_last is not None) and (dm_ao_last is None):
+            dm_ao_last = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
 
-    def get_fock_ao(self, hcore_ao, dm_orth, dm_ao=None, veff_ao=None):
+        if dm_ao_last is not None:
+            self._scf.direct_scf = True
+            veff_ao = self._scf.get_veff(mol=self.mol, dm=dm_ao, dm_last=dm_ao_last, vhf_last=vhf_last, hermi=1)
+            self._scf.direct_scf = False
+            return veff_ao
+        else:
+            veff_ao = self._scf.get_veff(mol=self.mol, dm=dm_ao, hermi=1)
+            return veff_ao
+
+    def get_fock_ao(self, hcore_ao, dm_orth, dm_ao=None, veff_ao=None, orth_xtuple=None):
+        if orth_xtuple is None:
+            orth_xtuple = self._orth_xtuple
+        if dm_ao is None:
+            dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
+        if veff_ao is None:
+            veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao)
+        return self._scf.get_fock(hcore_ao, self._ovlp_ao, veff_ao, dm_ao)
+
+    def get_fock_orth(self, hcore_ao, dm_orth, dm_ao=None, veff_ao=None, orth_xtuple=None):
+        if orth_xtuple is None:
+            orth_xtuple = self._orth_xtuple
         if dm_ao is None:
             dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=self._orth_xtuple)
         if veff_ao is None:
             veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao)
-        return hcore_ao + veff_ao
+        return self.ao2orth_fock(
+            self._scf.get_fock(hcore_ao, self._ovlp_ao, veff_ao, dm_ao),
+            orth_xtuple=self._orth_xtuple
+            )
 
-    def get_fock_orth(self, hcore_ao, dm_orth, dm_ao=None, veff_ao=None):
+    def get_energy_elec(self, hcore_ao, dm_orth,
+                        dm_ao=None, veff_ao=None, orth_xtuple=None):
+        if orth_xtuple is None:
+            orth_xtuple = self._orth_xtuple
         if dm_ao is None:
-            dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=self._orth_xtuple)
+            dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
         if veff_ao is None:
-            veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao)
-        return self.ao2orth_fock(hcore_ao + veff_ao, orth_xtuple=self._orth_xtuple)
-
-    def get_energy_elec(self, hcore_ao, dm_orth, dm_ao=None, veff_ao=None):
-        if dm_ao is None:
-            dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=self._orth_xtuple)
-        if veff_ao is None:
-            veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao)
+            veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao, orth_xtuple=orth_xtuple)
         return self._scf.energy_elec(dm=dm_ao, h1e=hcore_ao, vhf=veff_ao)
 
     def get_energy_tot(self, hcore_ao, dm_orth, dm_ao=None, veff_ao=None):
@@ -291,89 +331,52 @@ class TDHF(lib.StreamObject):
             veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao)
         return self._scf.energy_tot(dm=dm_ao, h1e=hcore_ao, vhf=veff_ao)
 
-        # if (self.efield_vec is None) or (t is None):
-        #     return self.hcore_ao
-        # else:
-        #     if self.ele_dip_ao is None:
-        #         # the interaction between the system and electric field
-        #         self.ele_dip_ao      = self._scf.mol.intor_symmetric('int1e_r', comp=3)
-            
-        #     h = self.hcore_ao + numpy.einsum(
-        #         'xij,x->ij', self.ele_dip_ao, self.efield_vec(t)
-        #         ).astype(numpy.complex128)
-        #     return h
-
-    # def set_prop_func(self, key='euler'):
-    #     '''
-    #     In virtually all cases PC methods are superior in terms of stability.
-    #     Others are perhaps only useful for debugging or simplicity.
-    #     '''
-    #     if (key is not None):
-    #         if   (key.lower() == 'euler'):
-    #             self.prop_func = euler_prop
-    #         elif (key.lower() == 'mmut'):
-    #             self.prop_func = mmut_prop
-    #         elif (key.lower() == 'amut1'):
-    #             self.prop_func = amut1_prop
-    #         elif (key.lower() == 'amut2'):
-    #             self.prop_func = amut2_prop
-    #         elif (key.lower() == 'amut3'):
-    #             self.prop_func = amut3_prop
-    #         elif (key.lower() == 'amut_pc'):
-    #             self.prop_func = amut_pc_prop
-    #         elif (key.lower() == 'ep_pc'):
-    #             self.prop_func = ep_pc_prop
-    #         elif (key.lower() == 'lflp_pc'):
-    #             self.prop_func = lflp_pc_prop
-    #         else:
-    #             raise RuntimeError("unknown prop method!")
-    #     else:
-    #         self.prop_func = euler_prop
-
     def dump_flags(self, verbose=None):
         log = logger.new_logger(self, verbose)
         log.info('\n')
         log.info('******** %s ********', self.__class__)
         log.info(
-        'This is a Real-Time TDSCF calculation initialized with a %s SCF',
+        'This is a Real-Time TDSCF calculation initialized with a %s RHF instance',
             ("converged" if self._scf.converged else "not converged")
         )
         if self._scf.converged:
             log.info(
-                'The SCF converged tolerence is conv_tol = %g, conv_tol should be less that 1e-8'%self._scf.conv_tol
+                'The SCF converged tolerence is conv_tol = %g'%self._scf.conv_tol
                 )
-        log.info(
-            'The initial condition is a RHF instance'
-            )
+
         if self.chkfile:
             log.info('chkfile to save RT TDSCF result = %s', self.chkfile)
         log.info( 'dt = %f, maxstep = %d', self.dt, self.maxstep )
-        log.info( 'prop_method = %s', self.prop_func.__name__)
-        log.info('max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
+        # log.info( 'prop_method = %s', self.prop_func.__name__)
+        log.info('max_memory %d MB (current use %d MB)',
+                 self.max_memory, lib.current_memory()[0])
 
     def _initialize(self):
         # mf information
-        self._ovlp_ao         = self._scf.get_ovlp().astype(numpy.complex128)
-        self._hcore_ao        = self._scf.get_hcore().astype(numpy.complex128)
+        # self._scf.direct_scf   = True
+        self._ovlp_ao          = self._scf.get_ovlp().astype(numpy.complex128)
+        self._hcore_ao         = self._scf.get_hcore().astype(numpy.complex128)
         self._orth_xtuple = orth_canonical_mo(self._scf)
-        # self.dump_flags()
+
+        if self.electric_field is not None:
+            self._get_field_ao = self.electric_field.get_field_ao
+
+        self.dump_flags()
+        dump_rt_obj(self.chkfile, self)
         
-        if self.verbose >= logger.DEBUG1:
+        if self.verbose >= logger.DEBUG:
             print_matrix(
                 "XT S X", reduce(dot, (self._orth_xtuple[1], self._ovlp_ao, self._orth_xtuple[0]))
                 , ncols=PRINT_MAT_NCOL)
 
     def _finalize(self):
-        self.ndipole = numpy.zeros([self.maxstep+1,             3])
-        self.npop    = numpy.zeros([self.maxstep+1, self.mol.natm])
+        pass
+    '''
         logger.info(self, "Finalization begins here")
-        s1e = self._scf.get_ovlp()
-        for i,idm in enumerate(self.ndm_ao):
-            self.ndipole[i] = self._scf.dip_moment(dm = idm.real, unit='au', verbose=0)
-            self.npop[i]    = self._scf.mulliken_pop(dm = idm.real, s=s1e, verbose=0)[1]
         logger.info(self, "Finalization finished")
+    '''
 
-    def kernel(self, dm_ao_init=None, do_dump_chk=True):
+    def kernel(self, dm_ao_init=None, chkfile=None, save_step=None):
         self._initialize()
         if dm_ao_init is None:
             if self.dm_ao_init is not None:
@@ -384,43 +387,24 @@ class TDHF(lib.StreamObject):
         if self.verbose >= logger.DEBUG1:
             print_matrix("The initial density matrix is, ", dm_ao_init, ncols=PRINT_MAT_NCOL)
 
-        logger.info(self, 'before building matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
-        self.nstep      = numpy.linspace(0, self.maxstep, self.maxstep+1, dtype=int) # output
-        self.ntime      = self.dt*self.nstep                                      # output
-        self.ndm_prim   = numpy.zeros([self.maxstep+1] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
-        self.ndm_ao     = numpy.zeros([self.maxstep+1] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
-        self.nfock_prim = numpy.zeros([self.maxstep+1] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
-        self.nfock_ao   = numpy.zeros([self.maxstep+1] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
-        self.netot      = numpy.zeros([self.maxstep+1])                                # output
-        logger.info(self, 'after building matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
         kernel(
-           self,                      dm_ao_init  = dm_ao_init,
-           ndm_prim  = self.ndm_prim, nfock_prim  = self.nfock_prim, #output
-           ndm_ao    = self.ndm_ao,   nfock_ao    = self.nfock_ao,   #output
-           netot     = self.netot,    do_dump_chk = do_dump_chk
+           self, dm_ao_init, maxstep, 
             )
         logger.info(self, 'after propogation matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
         logger.info(self, "Propagation finished")
         self._finalize()
 
-#TODO: !!!!
-    def dump_step(self, envs):
-        # print('ndm_ao shape is ', envs['ndm_ao'].shape)
-        if self.chkfile:
-            logger.info(self, 'chkfile to save RT TDSCF result is %s', self.chkfile)
-            chkfile.dump_rt(
-                self.mol, self.chkfile,
-                envs['ntime'], envs['netot'], envs['ndm_ao'],
-                overwrite_mol=False)
+    def dump_rt_step(self, idx, t, etot, dm_ao, dm_orth, fock_ao, fock_orth):
+        dump_rt_step( self.chkfile, idx, t, etot, dm_ao, dm_orth, fock_ao, fock_orth)
 
-    def dump_chk(self, envs):
-        # print('ndm_ao shape is ', envs['ndm_ao'].shape)
-        if self.chkfile:
-            logger.info(self, 'chkfile to save RT TDSCF result is %s', self.chkfile)
-            chkfile.dump_rt(
-                self.mol, self.chkfile,
-                envs['ntime'], envs['netot'], envs['ndm_ao'],
-                overwrite_mol=False)
+    def load_rt_step_index(self):
+        return load_rt_step_index(self.chkfile)
+
+    def load_rt_step(self, step_index):
+        if hasattr(step_index, '__iter__'):
+            return [load_rt_step(self.chkfile, istep_index) for istep_index in step_index]
+        else:
+            return load_rt_step(self.chkfile, step_index)
 
 if __name__ == "__main__":
     from field import ClassicalElectricField, gaussian_field_vec
@@ -436,28 +420,42 @@ if __name__ == "__main__":
     h2o_rhf.conv_tol = 1e-12
     h2o_rhf.kernel()
 
-    dm = h2o_rhf.make_rdm1()
-    fock = h2o_rhf.get_fock()
+    dm_0   = h2o_rhf.make_rdm1()
+    fock_0 = h2o_rhf.get_fock()
 
     orth_xtuple = orth_canonical_mo(h2o_rhf)
-    dm_orth = ao2orth_contravariant(dm, orth_xtuple)
-    print_cx_matrix("dm_orth = ", dm_orth)
-    fock_orth_0 = ao2orth_covariant(fock, orth_xtuple)
-    print_cx_matrix("fock_orth_0 = ", fock_orth_0)
+    dm_orth_0   = ao2orth_contravariant(dm_0, orth_xtuple)
+    fock_orth_0 = ao2orth_covariant(fock_0, orth_xtuple)
     
     gau_vec = lambda t: gaussian_field_vec(t, 1.0, 1.0, 0.0, [0.020,0.00,0.00])
     gaussian_field = ClassicalElectricField(h2o, field_func=gau_vec, stop_time=10.0)
 
     rttd = TDHF(h2o_rhf, field=gaussian_field)
     rttd.verbose = 4
+    rttd.maxstep = 10
+    rttd.dt      = 0.02
     rttd._initialize()
-
+    
     h1e = rttd.get_hcore_ao(5.0)
-    veff_ao = rttd.get_veff_ao(dm_orth, dm_ao=dm)
-    fock_orth = rttd.get_fock_orth(h1e, dm_orth, dm_ao=dm, veff_ao=veff_ao)
-    print_cx_matrix("fock_orth - fock_orth_0 = ", fock_orth-fock_orth_0)
+    veff_ao_0   = rttd.get_veff_ao(dm_orth_0, dm_ao=dm_0)
+    veff_ao_1   = rttd.get_veff_ao(dm_orth_0, dm_ao=dm_0, dm_ao_last=dm_0)
+    fock_orth_0 = rttd.get_fock_orth(h1e, dm_orth_0, dm_ao=dm_0, veff_ao=veff_ao_0)
 
-    h1e = rttd.get_hcore_ao(12.0)
-    veff_ao = rttd.get_veff_ao(dm_orth, dm_ao=dm)
-    fock_orth = rttd.get_fock_orth(h1e, dm_orth, dm_ao=dm, veff_ao=veff_ao)
-    print_cx_matrix("fock_orth - fock_orth_0 = ", fock_orth-fock_orth_0)
+    _chkfile    = tempfile.NamedTemporaryFile(dir=lib.param.TMPDIR)
+    tmp_chkfile = _chkfile.name
+
+    dump_rt_obj(tmp_chkfile, rttd)
+
+    for it, t in enumerate(numpy.linspace(0,100,1001)):
+        rttd.dump_rt_step(it, t, 10.00, dm_0, dm_orth_0, fock_0, fock_orth_0)
+
+    step_index = rttd.load_rt_step_index()
+
+    for step in step_index:
+        print("step_index = ", step)
+        rtstep = rttd.load_rt_step(step)
+        print("t = %f"%rtstep["t"])
+    
+    rtstep = rttd.load_rt_step(range(100))
+    print("step_index = ", rtstep[10])
+    print("t = %f"%rtstep[10]["t"])
