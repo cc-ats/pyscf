@@ -81,27 +81,19 @@ def kernel(tdscf, dm_ao_init= None, chk_file = None, calculate_dipole = None, ca
 
     if dm_ao_init is None:  dm_ao_init = tdscf.dm_ao_init
 
-    dt        = tdscf.dt
-    maxstep   = tdscf.maxstep
-    prop_func = tdscf.prop_func
-
-    if ndm_prim is None:
-        ndm_prim = tdscf.ndm_prim
-    if nfock_prim is None:
-        nfock_prim = tdscf.nfock_prim
-    if ndm_ao is None:
-        ndm_ao = tdscf.ndm_ao
-    if nfock_ao is None:
-        nfock_ao = tdscf.nfock_ao
+    dt          = tdscf.dt
+    maxstep     = tdscf.maxstep
+    prop_func   = tdscf.prop_func
+    orth_xtuple = tdscf._orth_xtuple 
 
     dm_ao_init     = dm_ao_init.astype(numpy.complex128)
-    dm_prim_init   = tdscf.ao2orth_dm(dm_ao_init)
+    dm_prim_init   = tdscf.ao2orth_dm(dm_ao_init, orth_xtuple=orth_xtuple)
 
     h1e_ao_init    = tdscf.get_hcore(t=0.0)
-    vhf_ao_init    = tdscf._scf.get_veff(dm=dm_ao_init)
+    vhf_ao_init    = tdscf._scf.get_veff(dm_ao=dm_ao_init)
 
-    fock_ao_init   = tdscf._scf.get_fock(dm=dm_ao_init, h1e=h1e_ao_init, vhf=vhf_ao_init)
-    fock_prim_init = tdscf.ao2orth_fock(fock_ao_init)
+    fock_ao_init   = tdscf._scf.get_fock(h1e_ao_init, dm_ao=dm_ao_init, vhf=vhf_ao_init)
+    fock_orth_init = tdscf.ao2orth_fock(fock_ao_init)
 
     etot_init      = tdscf._scf.energy_tot(dm=dm_ao_init, h1e=h1e_ao_init, vhf=vhf_ao_init).real
 
@@ -273,11 +265,12 @@ class TDHF(lib.StreamObject):
         else:
             return self._hcore_ao + get_field_ao(t)
 
-    def get_veff_ao(self, dm_orth, dm_orth_last=None,  dm_ao=None, dm_ao_last=None,
+    def get_veff_ao(self, dm_orth=None, dm_orth_last=None, dm_ao=None, dm_ao_last=None,
                     vhf_last=None, orth_xtuple=None):
+        assert (dm_orth is not None) and (dm_ao is not None)
         if orth_xtuple is None:
             orth_xtuple = self._orth_xtuple
-        if dm_ao is None:
+        if (dm_ao is None) and (dm_orth is not None):
             dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
         if (dm_orth_last is not None) and (dm_ao_last is None):
             dm_ao_last = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
@@ -291,20 +284,22 @@ class TDHF(lib.StreamObject):
             veff_ao = self._scf.get_veff(mol=self.mol, dm=dm_ao, hermi=1)
             return veff_ao
 
-    def get_fock_ao(self, hcore_ao, dm_orth, dm_ao=None, veff_ao=None, orth_xtuple=None):
+    def get_fock_ao(self, hcore_ao, dm_orth=None, dm_ao=None, veff_ao=None, orth_xtuple=None):
+        assert (dm_orth is not None) and (dm_ao is not None)
         if orth_xtuple is None:
             orth_xtuple = self._orth_xtuple
-        if dm_ao is None:
+        if (dm_ao is None) and (dm_orth is not None):
             dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
         if veff_ao is None:
-            veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao)
+            veff_ao = self.get_veff_ao(dm_orth=dm_orth, dm_ao=dm_ao)
         return self._scf.get_fock(hcore_ao, self._ovlp_ao, veff_ao, dm_ao)
 
-    def get_fock_orth(self, hcore_ao, dm_orth, dm_ao=None, veff_ao=None, orth_xtuple=None):
+    def get_fock_orth(self, hcore_ao, dm_orth=None, dm_ao=None, veff_ao=None, orth_xtuple=None):
+        assert (dm_orth is not None) and (dm_ao is not None)
         if orth_xtuple is None:
             orth_xtuple = self._orth_xtuple
-        if dm_ao is None:
-            dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=self._orth_xtuple)
+        if (dm_ao is None) and (dm_orth is not None):
+            dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
         if veff_ao is None:
             veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao)
         return self.ao2orth_fock(
@@ -316,18 +311,18 @@ class TDHF(lib.StreamObject):
                         dm_ao=None, veff_ao=None, orth_xtuple=None):
         if orth_xtuple is None:
             orth_xtuple = self._orth_xtuple
-        if dm_ao is None:
+        if (dm_ao is None) and (dm_orth is not None):
             dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
         if veff_ao is None:
             veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao, orth_xtuple=orth_xtuple)
-        return self._scf.energy_elec(dm=dm_ao, h1e=hcore_ao, vhf=veff_ao)
+        return self._scf.energy_elec(dm=dm_ao, h1e=hcore_ao, vhf=veff_ao).real
 
     def get_energy_tot(self, hcore_ao, dm_orth, dm_ao=None, veff_ao=None):
-        if dm_ao is None:
-            dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=self._orth_xtuple)
+        if (dm_ao is None) and (dm_orth is not None):
+            dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
         if veff_ao is None:
-            veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao)
-        return self._scf.energy_tot(dm=dm_ao, h1e=hcore_ao, vhf=veff_ao)
+            veff_ao = self.get_veff_ao(dm_orth=dm_orth, dm_ao=dm_ao)
+        return self._scf.energy_tot(dm=dm_ao, h1e=hcore_ao, vhf=veff_ao).real
 
     def dump_flags(self, verbose=None):
         log = logger.new_logger(self, verbose)
