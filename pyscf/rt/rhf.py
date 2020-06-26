@@ -259,27 +259,17 @@ class TDHF(lib.StreamObject):
         else:
             return self._hcore_ao + get_field_ao(t)
 
-    def get_veff_ao(self, dm_orth=None, dm_orth_last=None, dm_ao=None, dm_ao_last=None,
-                    vhf_last=None, orth_xtuple=None):
-        assert (dm_orth is not None) and (dm_ao is not None)
+    def get_veff_ao(self, dm_orth=None, dm_ao=None, orth_xtuple=None):
+        assert (dm_orth is not None) or (dm_ao is not None)
         if orth_xtuple is None:
             orth_xtuple = self._orth_xtuple
         if (dm_ao is None) and (dm_orth is not None):
             dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
-        if (dm_orth_last is not None) and (dm_ao_last is None):
-            dm_ao_last = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
-
-        if dm_ao_last is not None:
-            self._scf.direct_scf = True
-            veff_ao = self._scf.get_veff(mol=self.mol, dm=dm_ao, dm_last=dm_ao_last, vhf_last=vhf_last, hermi=1)
-            self._scf.direct_scf = False
-            return veff_ao
-        else:
-            veff_ao = self._scf.get_veff(mol=self.mol, dm=dm_ao, hermi=1)
-            return veff_ao
+        veff_ao = self._scf.get_veff(mol=self.mol, dm=dm_ao, hermi=1)
+        return veff_ao
 
     def get_fock_ao(self, hcore_ao, dm_orth=None, dm_ao=None, veff_ao=None, orth_xtuple=None):
-        assert (dm_orth is not None) and (dm_ao is not None)
+        assert (dm_orth is not None) or (dm_ao is not None)
         if orth_xtuple is None:
             orth_xtuple = self._orth_xtuple
         if (dm_ao is None) and (dm_orth is not None):
@@ -289,7 +279,7 @@ class TDHF(lib.StreamObject):
         return self._scf.get_fock(hcore_ao, self._ovlp_ao, veff_ao, dm_ao)
 
     def get_fock_orth(self, hcore_ao, fock_ao=None, dm_orth=None, dm_ao=None, veff_ao=None, orth_xtuple=None):
-        assert (dm_orth is not None) and (dm_ao is not None)
+        assert (dm_orth is not None) or (dm_ao is not None)
         if orth_xtuple is None:
             orth_xtuple = self._orth_xtuple
         if (dm_ao is None) and (dm_orth is not None):
@@ -441,7 +431,6 @@ if __name__ == "__main__":
     
     h1e = rttd.get_hcore_ao(5.0)
     veff_ao_0   = rttd.get_veff_ao(dm_orth_0, dm_ao=dm_0)
-    veff_ao_1   = rttd.get_veff_ao(dm_orth_0, dm_ao=dm_0, dm_ao_last=dm_0)
     fock_orth_0 = rttd.get_fock_orth(h1e, dm_orth_0, dm_ao=dm_0, veff_ao=veff_ao_0)
 
     _chkfile    = tempfile.NamedTemporaryFile(dir=lib.param.TMPDIR)
