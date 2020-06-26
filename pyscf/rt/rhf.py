@@ -18,7 +18,7 @@ from pyscf.rt.propagator import euler_prop, mmut_prop
 from pyscf.rt.propagator import ep_pc_prop, lflp_pc_prop
 
 from pyscf.rt.util import print_matrix, print_cx_matrix
-from pyscf.rt.util import errm, expm, expia_b_exp_iat
+from pyscf.rt.util import errm, expm, expia_b_exp_ia
 
 from pyscf import __config__
 
@@ -76,44 +76,40 @@ def orth2ao_covariant(covariant_matrix_orth, orth_xtuple):
     covariant_matrix_ao = reduce(dot, [x_t_inv, covariant_matrix_orth, x_inv])
     return covariant_matrix_ao
 
-def kernel(tdscf, dm_ao_init= None, chk_file = None, calculate_dipole = None, calculate_pop =None):
+def kernel(rt_obj, dm_ao_init= None, prop_func = None,
+           rt_result = None, save_in_memory = None, save_in_disk = None,
+           calculate_dipole = None, calculate_pop =None):
     cput0 = (time.clock(), time.time())
 
-    if dm_ao_init is None:  dm_ao_init = tdscf.dm_ao_init
+    if dm_ao_init is None:  dm_ao_init = rt_obj.dm_ao_init
 
-    dt          = tdscf.dt
-    maxstep     = tdscf.maxstep
-    prop_func   = tdscf.prop_func
-    orth_xtuple = tdscf._orth_xtuple 
+    dt          = rt_obj.dt
+    maxstep     = rt_obj.maxstep
+    prop_func   = rt_obj.prop_func
+    orth_xtuple = rt_obj._orth_xtuple 
 
     dm_ao_init     = dm_ao_init.astype(numpy.complex128)
-    dm_prim_init   = tdscf.ao2orth_dm(dm_ao_init, orth_xtuple=orth_xtuple)
+    dm_orth_init   = rt_obj.ao2orth_dm(dm_ao_init, orth_xtuple=orth_xtuple)
 
-    h1e_ao_init    = tdscf.get_hcore(t=0.0)
-    vhf_ao_init    = tdscf._scf.get_veff(dm_ao=dm_ao_init)
+    h1e_ao_init    = rt_obj.get_hcore(t=0.0)
+    vhf_ao_init    = rt_obj.get_veff_ao(dm_orth=dm_orth_init ,dm_ao=dm_ao_init, orth_xtuple=orth_xtuple)
 
-    fock_ao_init   = tdscf._scf.get_fock(h1e_ao_init, dm_ao=dm_ao_init, vhf=vhf_ao_init)
-    fock_orth_init = tdscf.ao2orth_fock(fock_ao_init)
-
-    etot_init      = tdscf._scf.energy_tot(dm=dm_ao_init, h1e=h1e_ao_init, vhf=vhf_ao_init).real
-
-    shape = list(dm_ao_init.shape)
+    fock_ao_init   = rt_obj.get_fock_ao(hcore_ao=h1e_ao_init, dm_orth=dm_orth_init ,dm_ao=dm_ao_init, orth_xtuple=orth_xtuple)
+    fock_orth_init = rt_obj.get_fock_orth(hcore_ao=h1e_ao_init, fock_ao=fock_ao_init, 
+                                          dm_orth=dm_orth_init ,dm_ao=dm_ao_init, orth_xtuple=orth_xtuple)
     
-    ndm_prim[0]    = dm_prim_init
-    nfock_prim[0]  = fock_prim_init
-    ndm_ao[0]      = dm_ao_init
-    nfock_ao[0]    = fock_ao_init
-    netot[0]       = etot_init
 
-    _temp_ts         = dt*numpy.array([0.0, 0.5, 1.0, 1.5, 2.0])
-    logger.info(self, 'before building matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
-    temp_dm_orth   = numpy.zeros([5] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
-    temp_dm_ao     = numpy.zeros([5] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
-    temp_fock_orth = numpy.zeros([5] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
-    temp_fock_ao   = numpy.zeros([5] + list(dm_ao_init.shape), dtype=numpy.complex128) # output
-    logger.info(self, 'after building matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
+    etot_init      = rt_obj.get_energy_tot(hcore_ao=h1e_ao_init, dm_orth=dm_orth_init, dm_ao=dm_ao_init, veff_ao=vhf_ao_init)
 
-    cput1 = logger.timer(tdscf, 'initialize td-scf', *cput0)
+    temp_t, temp_dm_ao, temp_dm_orth, temp_fock_ao, temp_fock_orth = prop_func(
+        rt_obj, dt, temp_t=0.0, step_index=0,
+        temp_dm_ao=None, temp_dm_orth=None, temp_fock_ao=None, temp_fock_orth=None,
+        dm_ao_init=dm_ao_init, dm_orth_init=dm_orth_init,
+        save_this_step=True, rt_result=rt_result, is_first_step=True
+        )
+    cput1 = logger.timer(rt_obj, 'initialize td-scf', *cput0)
+
+    
 
 # propagation start here
 # TODO: the initializations should be more careful
@@ -166,7 +162,7 @@ def kernel(tdscf, dm_ao_init= None, chk_file = None, calculate_dipole = None, ca
         cput3 = logger.timer(tdscf, 'dump chk finished', *cput0)
 
 class TDHF(lib.StreamObject):
-    def __init__(self, scf_obj, field=None):
+    def __init__(self, scf_obj, field=None, propogator=None):
         """ the class that defines the system, mol and scf_method """
         self._scf           = scf_obj
         self.mol            = scf_obj.mol
@@ -186,14 +182,13 @@ class TDHF(lib.StreamObject):
         self._chkfile   = tempfile.NamedTemporaryFile(dir=lib.param.TMPDIR)
         self.chkfile    = self._chkfile.name
         self.save_step  = None
+        self.save_in_memory   = True
+        self.save_in_disk     = False
 
 # intermediate result 
         self._orth_xtuple     = None
         self._ovlp_ao         = None
         self._hcore_ao        = None
-
-        self._scf_get_veff     = None
-        self._scf_get_fock     = None
 
 # input parameters for propagation
 # initial condtion
@@ -213,9 +208,8 @@ class TDHF(lib.StreamObject):
         self.electric_field  = field
         self._get_field_ao   = None
 
-
     def prop_step(self, dt, fock_orth, dm_orth):
-        return expia_b_exp_iat(-dt*fock_orth, dm_orth)
+        return expia_b_exp_ia(-dt*fock_orth, dm_orth)
 
     def set_prop_func(self, key='euler'):
         '''
@@ -294,7 +288,7 @@ class TDHF(lib.StreamObject):
             veff_ao = self.get_veff_ao(dm_orth=dm_orth, dm_ao=dm_ao)
         return self._scf.get_fock(hcore_ao, self._ovlp_ao, veff_ao, dm_ao)
 
-    def get_fock_orth(self, hcore_ao, dm_orth=None, dm_ao=None, veff_ao=None, orth_xtuple=None):
+    def get_fock_orth(self, hcore_ao, fock_ao=None, dm_orth=None, dm_ao=None, veff_ao=None, orth_xtuple=None):
         assert (dm_orth is not None) and (dm_ao is not None)
         if orth_xtuple is None:
             orth_xtuple = self._orth_xtuple
@@ -302,12 +296,14 @@ class TDHF(lib.StreamObject):
             dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
         if veff_ao is None:
             veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao)
-        return self.ao2orth_fock(
+        if fock_ao is None:
+            fock_ao =  self.ao2orth_fock(
             self._scf.get_fock(hcore_ao, self._ovlp_ao, veff_ao, dm_ao),
-            orth_xtuple=self._orth_xtuple
+            orth_xtuple=orth_xtuple
             )
+        return fock_ao
 
-    def get_energy_elec(self, hcore_ao, dm_orth,
+    def get_energy_elec(self, hcore_ao, dm_orth=None,
                         dm_ao=None, veff_ao=None, orth_xtuple=None):
         if orth_xtuple is None:
             orth_xtuple = self._orth_xtuple
@@ -317,7 +313,7 @@ class TDHF(lib.StreamObject):
             veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao, orth_xtuple=orth_xtuple)
         return self._scf.energy_elec(dm=dm_ao, h1e=hcore_ao, vhf=veff_ao).real
 
-    def get_energy_tot(self, hcore_ao, dm_orth, dm_ao=None, veff_ao=None):
+    def get_energy_tot(self, hcore_ao, dm_orth=None, dm_ao=None, veff_ao=None):
         if (dm_ao is None) and (dm_orth is not None):
             dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
         if veff_ao is None:
@@ -387,7 +383,15 @@ class TDHF(lib.StreamObject):
         logger.info(self, "Propagation finished")
         self._finalize()
 
-    def dump_rt_step(self, idx, t, etot, dm_ao, dm_orth, fock_ao, fock_orth, dip=None, pop=None, field=None):
+    def dump_rt_step(self, idx, t, etot, dm_ao, dm_orth, fock_ao, fock_orth,
+                     dip=None, pop=None, field=None,
+                     save_in_memory=None, save_in_disk=None):
+
+        if save_in_memory is None:
+            save_in_memory = self.save_in_memory
+        if save_in_disk is None:
+            save_in_disk = self.save_in_disk
+
         rt_dic = {
             "t":t, "etot": etot, "dm_ao": dm_ao, "dm_orth": dm_orth, "fock_ao": fock_ao, "fock_orth": fock_orth
         }
@@ -397,16 +401,13 @@ class TDHF(lib.StreamObject):
             rt_dic["pop"] = pop
         if field is not None:
             rt_dic["field"] = field
-        dump_rt_step(self.chkfile, idx, **rt_dic)
 
-    def load_rt_step_index(self):
-        return load_rt_step_index(self.chkfile)
-
-    def load_rt_step(self, step_index):
-        if hasattr(step_index, '__iter__'):
-            return [load_rt_step(self.chkfile, istep_index) for istep_index in step_index]
+        if (save_in_memory is True) and (save_in_disk is False):
+            pass
         else:
-            return load_rt_step(self.chkfile, step_index)
+            pass
+
+        dump_rt_step(self.chkfile, idx, **rt_dic)
 
 if __name__ == "__main__":
     from field import ClassicalElectricField, gaussian_field_vec

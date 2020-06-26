@@ -81,7 +81,7 @@ def errm(m1,m2,r=None):
     e   = n/r
     return e
 
-def expia_b_exp_iat(a, b):
+def expia_b_exp_ia(a, b):
     u          = expm(1j*a)
     tmp        = reduce(dot, [u, b, u.conj().T])
     tmp        = (tmp + tmp.conj().T)/2
