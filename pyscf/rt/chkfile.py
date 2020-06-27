@@ -1,5 +1,4 @@
 # Author: Junjie Yang <yangjunjie0320@gmail.com> Zheng Pei and Yihan Shao
-
 import h5py
 from pyscf.lib.chkfile import load_chkfile_key, load
 from pyscf.lib.chkfile import dump_chkfile_key, dump, save

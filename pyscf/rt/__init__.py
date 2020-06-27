@@ -1,5 +1,4 @@
 # Author: Junjie Yang <yangjunjie0320@gmail.com> Zheng Pei and Yihan Shao
-
 import pyscf
 
 from pyscf import rt

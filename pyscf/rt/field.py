@@ -1,3 +1,4 @@
+# Author: Junjie Yang <yangjunjie0320@gmail.com> Zheng Pei and Yihan Shao
 import numpy
 from numpy import dot, zeros, array, asarray, complex128, einsum
 from numpy import exp, cos, sin, power

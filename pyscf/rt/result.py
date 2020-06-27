@@ -1,3 +1,4 @@
+# Author: Junjie Yang <yangjunjie0320@gmail.com> Zheng Pei and Yihan Shao
 from numpy import empty
 from numpy import dot, complex128
 
