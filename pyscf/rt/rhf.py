@@ -14,8 +14,8 @@ from pyscf import lib, lo
 from pyscf.lib import logger
 from pyscf.rt.chkfile import dump_rt_obj, dump_rt_step, load_rt_step, load_rt_step_index
 
-from pyscf.rt.propagator import euler_prop, mmut_prop
-from pyscf.rt.propagator import ep_pc_prop, lflp_pc_prop
+from pyscf.rt.propagator import EulerPropogator, MMUTPropogator
+from pyscf.rt.propagator import EPPCPropogator, LFLPPCPropogator
 
 from pyscf.rt.util import print_matrix, print_cx_matrix
 from pyscf.rt.util import errm, expm, expia_b_exp_ia
@@ -169,6 +169,7 @@ class TDHF(lib.StreamObject):
         self.verbose        = scf_obj.verbose
         self._scf.verbose   = 0
         self.mol.verbose    = 0
+        self.nao, self.nmo  = scf_obj.mo_coeff.shape
         if not scf_obj.converged:
             logger.warn(self,
             "SCF not converged, RT-TDSCF method should be initialized with a converged scf instance."
@@ -184,6 +185,8 @@ class TDHF(lib.StreamObject):
         self.save_step  = None
         self.save_in_memory   = True
         self.save_in_disk     = False
+        self.rt_result        = None
+        self.rt_step          = None
 
 # intermediate result 
         self._orth_xtuple     = None
@@ -203,32 +206,34 @@ class TDHF(lib.StreamObject):
 
 # propagation method
         self.prop_method     = None # a string
-        self.prop_func       = None # a string
-# electric field during propagation, a time-dependent electric field instance
+        self.prop_obj        = None # a Propogator object
+        self.prop_func       = None
+# electric field during propagation, a time-dependent electric field object
         self.electric_field  = field
         self._get_field_ao   = None
 
     def prop_step(self, dt, fock_orth, dm_orth):
         return expia_b_exp_ia(-dt*fock_orth, dm_orth)
 
-    def set_prop_func(self, key='euler'):
+    def set_prop_obj(self, key='euler'):
         '''
         In virtually all cases PC methods are superior in terms of stability.
         Others are perhaps only useful for debugging or simplicity.
         '''
         if (key is not None):
             if   (key.lower() == 'euler'):
-                self.prop_func = euler_prop
+                # self.prop_func = euler_prop
+                self.prop_obj = EulerPropogator(self)
             elif (key.lower() == 'mmut'):
-                self.prop_func = mmut_prop
+                self.prop_obj = MMUTPropogator(self)
             elif (key.lower() == 'ep_pc_prop'):
-                self.prop_func = ep_pc_prop
+                self.prop_obj = EPPCPropogator(self)
             elif (key.lower() == 'lflp_pc'):
-                self.prop_func = lflp_pc_prop
+                self.prop_obj = LFLPPCPropogator(self)
             else:
                 raise RuntimeError("unknown prop method!")
         else:
-            self.prop_func = euler_prop
+            self.prop_obj = EulerPropogator(self)
 
     def ao2orth_dm(self, dm_ao, orth_xtuple=None):
         if orth_xtuple is None:
@@ -326,20 +331,19 @@ class TDHF(lib.StreamObject):
         if self.chkfile:
             log.info('chkfile to save RT TDSCF result = %s', self.chkfile)
         log.info( 'dt = %f, maxstep = %d', self.dt, self.maxstep )
-        # log.info( 'prop_method = %s', self.prop_func.__name__)
+        log.info( 'prop_obj = %s', self.prop_obj.__class__.__name__)
         log.info('max_memory %d MB (current use %d MB)',
                  self.max_memory, lib.current_memory()[0])
 
     def _initialize(self):
-        # mf information
-        # self._scf.direct_scf   = True
         self._ovlp_ao          = self._scf.get_ovlp().astype(numpy.complex128)
         self._hcore_ao         = self._scf.get_hcore().astype(numpy.complex128)
-        self._orth_xtuple = orth_canonical_mo(self._scf)
+        self._orth_xtuple      = orth_canonical_mo(self._scf)
 
         if self.electric_field is not None:
             self._get_field_ao = self.electric_field.get_field_ao
 
+        self.set_prop_obj()
         self.dump_flags()
         dump_rt_obj(self.chkfile, self)
         

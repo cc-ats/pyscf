@@ -29,12 +29,10 @@ THIS      = 2
 NEXT_HALF = 3
 NEXT      = 4
 
-def prop_step(rt_obj, dt, fock_prim, dm_prim):
-    propogator = expm(-1j*dt*fock_prim)
-    dm_prim_   = reduce(dot, [propogator, dm_prim, propogator.conj().T])
-    dm_prim_   = (dm_prim_ + dm_prim_.conj().T)/2
-    dm_ao_     = rt_obj.orth2ao_dm(dm_prim_)
-    return dm_prim_, dm_ao_
+def propagate_step(rt_obj, dt, fock_orth, dm_orth):
+    dm_orth_   = rt_obj.prop_step(dt, fock_orth, dm_orth)
+    dm_ao_     = rt_obj.orth2ao_dm(dm_orth_)
+    return dm_orth_, dm_ao_
 
 
 class Propogator(lib.StreamObject):
@@ -48,24 +46,37 @@ class Propogator(lib.StreamObject):
         self.temp_fock_orth  = None
         self.temp_fock_ao    = None
 
-        self.step_dm_ao      = None
-        self.step_dm_orth    = None
-        self.step_fock_orth  = None
-        self.step_fock_ao    = None
-
     def first_step(self, dm_ao_init, dm_orth_init, fock_ao_init, fock_orth_init):
         temp_matrix_num = [1]
         shape = dm_ao_init.shape
 
         self.temp_dm_ao     = empty(temp_matrix_num+shape, dtype=complex128)
+        self.temp_dm_ao[0, :, :] = dm_ao_init
         self.temp_dm_orth   = empty(temp_matrix_num+shape, dtype=complex128)
+        self.temp_dm_orth[0, :, :] = dm_orth_init
         self.temp_fock_ao   = empty(temp_matrix_num+shape, dtype=complex128)
+        self.temp_fock_ao[0, :, :] = fock_ao_init
         self.temp_fock_orth = empty(temp_matrix_num+shape, dtype=complex128)
+        self.temp_fock_orth[0, :, :] = fock_orth_init
 
-        self.step_dm_ao     = empty(shape, dtype=complex128)
-        self.step_dm_orth   = empty(shape, dtype=complex128)
-        self.step_fock_ao   = empty(shape, dtype=complex128)
-        self.step_fock_orth = empty(shape, dtype=complex128)
+        # self.step_dm_ao     = empty(shape, dtype=complex128)
+        # self.step_dm_orth   = empty(shape, dtype=complex128)
+        # self.step_fock_ao   = empty(shape, dtype=complex128)
+        # self.step_fock_orth = empty(shape, dtype=complex128)
 
-    def propagate_step(self, save_this_step=True, rt_result=rt_result):
+        return 
+
+    def propagate_step(self, save_this_step=True, rt_result=None):
         pass
+
+class EulerPropogator(Propogator):
+    pass
+
+class MMUTPropogator(Propogator):
+    pass
+
+class EPPCPropogator(Propogator):
+    pass
+
+class LFLPPCPropogator(Propogator):
+    pass
