@@ -47,8 +47,7 @@ class RealTimeStep(object):
             hcore_ao, dm_orth=dm_orth_init, dm_ao=dm_ao_init, veff_ao=veff_ao
             )
 
-    def update_step(self, t, index, dm_ao, dm_orth, fock_ao, fock_orth,
-                          hcore_ao, veff_ao):
+    def update_step(self, t, index, dm_ao, dm_orth, fock_ao, fock_orth, hcore_ao, veff_ao):
         if (self.step_dipole is not None):
             self.step_dipole = self.rt_obj._scf.dip_moment(dm=dm_ao.real, mol=self.mol, verbose=0, unit='au')
         if (self.step_pop is not None):

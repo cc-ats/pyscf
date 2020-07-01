@@ -76,38 +76,60 @@ def orth2ao_covariant(covariant_matrix_orth, orth_xtuple):
     covariant_matrix_ao = reduce(dot, [x_t_inv, covariant_matrix_orth, x_inv])
     return covariant_matrix_ao
 
-def kernel(rt_obj, dm_ao_init= None, prop_func = None,
-           rt_result = None, save_in_memory = None, save_in_disk = None,
-           calculate_dipole = None, calculate_pop =None):
+def kernel(rt_obj, dm_ao_init= None, prop_obj = None, rt_step = None,
+                   rt_result = None, save_in_memory = None,
+                   chk_file = None,  save_in_disk = None,
+                   calculate_dipole = None, calculate_pop =None,
+                   verbose = None):
     cput0 = (time.clock(), time.time())
 
     if dm_ao_init is None:  dm_ao_init = rt_obj.dm_ao_init
+    if prop_obj   is None:  prop_obj   = rt_obj.prop_obj
+    if rt_step    is None:  rt_step    = rt_obj.rt_step
 
-    dt          = rt_obj.dt
+    if rt_result      is None:  rt_result  = rt_obj.rt_result
+    if save_in_memory is None:  save_in_memory = rt_obj.save_in_memory
+
+    if save_in_memory:
+        assert rt_result is not None
+        logger.info(rt_obj, "The results would be saved in the memory, %s", rt_result)
+
+    if chk_file       is None:  chk_file  = rt_obj.chk_file
+    if save_in_disk   is None:  save_in_disk = rt_obj.save_in_disk
+
+    if save_in_disk:
+        assert chk_file is not None
+        logger.info(rt_obj, "The results would be saved in the disk, %s", chk_file)
+
     maxstep     = rt_obj.maxstep
-    prop_func   = rt_obj.prop_func
-    orth_xtuple = rt_obj._orth_xtuple 
 
     dm_ao_init     = dm_ao_init.astype(numpy.complex128)
-    dm_orth_init   = rt_obj.ao2orth_dm(dm_ao_init, orth_xtuple=orth_xtuple)
+    dm_orth_init   = rt_obj.ao2orth_dm(dm_ao_init)
 
     h1e_ao_init    = rt_obj.get_hcore(t=0.0)
-    vhf_ao_init    = rt_obj.get_veff_ao(dm_orth=dm_orth_init ,dm_ao=dm_ao_init, orth_xtuple=orth_xtuple)
+    vhf_ao_init    = rt_obj.get_veff_ao(dm_orth=dm_orth_init ,dm_ao=dm_ao_init)
 
-    fock_ao_init   = rt_obj.get_fock_ao(hcore_ao=h1e_ao_init, dm_orth=dm_orth_init ,dm_ao=dm_ao_init, orth_xtuple=orth_xtuple)
+    fock_ao_init   = rt_obj.get_fock_ao(hcore_ao=h1e_ao_init, dm_orth=dm_orth_init ,dm_ao=dm_ao_init)
     fock_orth_init = rt_obj.get_fock_orth(hcore_ao=h1e_ao_init, fock_ao=fock_ao_init, 
-                                          dm_orth=dm_orth_init ,dm_ao=dm_ao_init, orth_xtuple=orth_xtuple)
-    
+                                          dm_orth=dm_orth_init ,dm_ao=dm_ao_init)
+# TODO: initialize the rt_step here
+    rt_step.initialize(dm_ao_init, dm_orth_init, fock_ao_init, fock_orth_init,
+                       h1e_ao_init, vhf_ao_init,
+                       calculate_dipole=calculate_dipole, calculate_pop=calculate_pop,
+                       verbose=verbose)
+# TODO: initialize the propagator here
+    iter_step = prop_obj.first_step(dm_ao_init, dm_orth_init, fock_ao_init, fock_orth_init,
+                   rt_step=rt_step, verbose=verbose)
 
-    etot_init      = rt_obj.get_energy_tot(hcore_ao=h1e_ao_init, dm_orth=dm_orth_init, dm_ao=dm_ao_init, veff_ao=vhf_ao_init)
+# TODO: initialize the rt_result here 
 
-    temp_t, temp_dm_ao, temp_dm_orth, temp_fock_ao, temp_fock_orth = prop_func(
-        rt_obj, dt, temp_t=0.0, step_index=0,
-        temp_dm_ao=None, temp_dm_orth=None, temp_fock_ao=None, temp_fock_orth=None,
-        dm_ao_init=dm_ao_init, dm_orth_init=dm_orth_init,
-        save_this_step=True, rt_result=rt_result, is_first_step=True
-        )
-    cput1 = logger.timer(rt_obj, 'initialize td-scf', *cput0)
+    # temp_t, temp_dm_ao, temp_dm_orth, temp_fock_ao, temp_fock_orth = prop_func(
+    #     rt_obj, dt, temp_t=0.0, step_index=0,
+    #     temp_dm_ao=None, temp_dm_orth=None, temp_fock_ao=None, temp_fock_orth=None,
+    #     dm_ao_init=dm_ao_init, dm_orth_init=dm_orth_init,
+    #     save_this_step=True, rt_result=rt_result, is_first_step=True
+    #     )
+    # cput1 = logger.timer(rt_obj, 'initialize td-scf', *cput0)
 
     
 
@@ -162,14 +184,14 @@ def kernel(rt_obj, dm_ao_init= None, prop_func = None,
         cput3 = logger.timer(tdscf, 'dump chk finished', *cput0)
 
 class TDHF(lib.StreamObject):
-    def __init__(self, scf_obj, field=None, propogator=None):
+    def __init__(self, scf_obj, field=None):
         """ the class that defines the system, mol and scf_method """
         self._scf           = scf_obj
         self.mol            = scf_obj.mol
         self.verbose        = scf_obj.verbose
         self._scf.verbose   = 0
         self.mol.verbose    = 0
-        self.nao, self.nmo  = scf_obj.mo_coeff.shape
+
         if not scf_obj.converged:
             logger.warn(self,
             "SCF not converged, RT-TDSCF method should be initialized with a converged scf instance."
@@ -207,13 +229,17 @@ class TDHF(lib.StreamObject):
 # propagation method
         self.prop_method     = None # a string
         self.prop_obj        = None # a Propogator object
-        self.prop_func       = None
+
 # electric field during propagation, a time-dependent electric field object
         self.electric_field  = field
         self._get_field_ao   = None
 
-    def prop_step(self, dt, fock_orth, dm_orth):
-        return expia_b_exp_ia(-dt*fock_orth, dm_orth)
+    def propagate_step(self, dt, fock_orth, dm_orth, orth_xtuple=None):
+        if orth_xtuple is None:
+            orth_xtuple = self._orth_xtuple
+        dm_orth_   = expia_b_exp_ia(-dt*fock_orth, dm_orth)
+        dm_ao_     = self.orth2ao_dm(dm_orth_, orth_xtuple=orth_xtuple)
+        return dm_orth_, dm_ao_
 
     def set_prop_obj(self, key='euler'):
         '''

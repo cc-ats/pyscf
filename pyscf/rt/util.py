@@ -16,34 +16,34 @@ write = sys.stdout.write
 DAMP_EXPO         = getattr(__config__, 'rt_tdscf_damp_expo',     1000)
 PRINT_MAT_NCOL    = getattr(__config__, 'rt_tdscf_print_mat_ncol',   7)
 
-def build_absorption_spectrum(tdscf, ndipole=None, damp_expo=DAMP_EXPO):
-    if ndipole is None:
-        ndipole = tdscf.ndipole
+# def build_absorption_spectrum(tdscf, ndipole=None, damp_expo=DAMP_EXPO):
+#     if ndipole is None:
+#         ndipole = tdscf.ndipole
 
-    ndipole_x = ndipole[:,0]
-    ndipole_y = ndipole[:,1]
-    ndipole_z = ndipole[:,2]
+#     ndipole_x = ndipole[:,0]
+#     ndipole_y = ndipole[:,1]
+#     ndipole_z = ndipole[:,2]
     
-    ndipole_x = ndipole_x-ndipole_x[0]
-    ndipole_y = ndipole_y-ndipole_y[0]
-    ndipole_z = ndipole_z-ndipole_z[0]
+#     ndipole_x = ndipole_x-ndipole_x[0]
+#     ndipole_y = ndipole_y-ndipole_y[0]
+#     ndipole_z = ndipole_z-ndipole_z[0]
     
-    mw = 2.0 * numpy.pi * numpy.fft.fftfreq(
-        tdscf.ntime.size, tdscf.dt
-    )
-    damp = numpy.exp(-tdscf.ntime/damp_expo)
-    fwx = numpy.fft.fft(ndipole_x*damp)
-    fwy = numpy.fft.fft(ndipole_y*damp)
-    fwz = numpy.fft.fft(ndipole_z*damp)
-    fw = (fwx.imag + fwy.imag + fwz.imag) / 3.0 
-    sigma = - mw * fw
-    mm = mw.size
-    m  = mm//2
+#     mw = 2.0 * numpy.pi * numpy.fft.fftfreq(
+#         tdscf.ntime.size, tdscf.dt
+#     )
+#     damp = numpy.exp(-tdscf.ntime/damp_expo)
+#     fwx = numpy.fft.fft(ndipole_x*damp)
+#     fwy = numpy.fft.fft(ndipole_y*damp)
+#     fwz = numpy.fft.fft(ndipole_z*damp)
+#     fw = (fwx.imag + fwy.imag + fwz.imag) / 3.0 
+#     sigma = - mw * fw
+#     mm = mw.size
+#     m  = mm//2
 
-    mw = mw[:m]
-    sigma = sigma[:m]
-    scale = numpy.abs(sigma.max())
-    return mw, sigma/scale
+#     mw = mw[:m]
+#     sigma = sigma[:m]
+#     scale = numpy.abs(sigma.max())
+#     return mw, sigma/scale
 
 def print_matrix(title, array_, ncols=7, fmt=' % 11.4e'):
     ''' printing a real rectangular matrix, or the real part of a complex matrix, ncols columns per batch '''
