@@ -115,8 +115,8 @@ class RealTimeResult(object):
 
         self._dm_ao_list       = [first_step_obj.step_dm_ao      ]
         self._dm_orth_list     = [first_step_obj.step_dm_orth    ]
-        self._fock_orth_list   = [first_step_obj.step_fock_ao    ]
-        self._fock_ao_list     = [first_step_obj.step_fock_orth  ]
+        self._fock_ao_list   = [first_step_obj.step_fock_ao    ]
+        self._fock_orth_list     = [first_step_obj.step_fock_orth  ]
 
         self.save_iter = 0
         return 0
@@ -134,8 +134,8 @@ class RealTimeResult(object):
         self._step_iter_list.append(   step_obj.step_iter       )
         self._dm_ao_list.append(       step_obj.step_dm_ao      )
         self._dm_orth_list.append(     step_obj.step_dm_orth    )
-        self._fock_orth_list.append(   step_obj.step_fock_ao    )
-        self._fock_ao_list.append(     step_obj.step_fock_orth  )
+        self._fock_orth_list.append(   step_obj.step_fock_orth  )
+        self._fock_ao_list.append(     step_obj.step_fock_ao    )
 
         self.save_iter = self.save_iter + 1
         self._save_iter_list.append(self.save_iter)

@@ -131,12 +131,13 @@ def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None,
 
     assert save_in_disk or save_in_memory
 
-    h1e_ao_init    = rt_obj.get_hcore_ao(t=0.0)
+    h1e_ao_init    = rt_obj.get_hcore_ao(0.0)
     vhf_ao_init    = rt_obj.get_veff_ao(dm_orth=dm_orth_init ,dm_ao=dm_ao_init)
 
     fock_ao_init   = rt_obj.get_fock_ao(hcore_ao=h1e_ao_init, dm_orth=dm_orth_init ,dm_ao=dm_ao_init)
     fock_orth_init = rt_obj.get_fock_orth(hcore_ao=h1e_ao_init, fock_ao=fock_ao_init, 
                                           dm_orth=dm_orth_init ,dm_ao=dm_ao_init)
+
 # TODO: initialize the step_obj here
     step_obj._initialize(dm_ao_init, dm_orth_init, fock_ao_init, fock_orth_init,
                        h1e_ao_init, vhf_ao_init,
@@ -148,7 +149,6 @@ def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None,
                    step_obj=step_obj, verbose=verbose)
 # TODO: initialize the result_obj here
     save_iter = result_obj._initialize(step_obj)
-
     cput1 = logger.timer(rt_obj, 'initialize rt_obj', *cput0)
 
     while step_iter <= total_step:
@@ -279,8 +279,10 @@ class TDHF(lib.StreamObject):
     def get_hcore_ao(self, t, get_field_ao=None):
         if get_field_ao is None:
             if self._get_field_ao is None:
+                # print(self._hcore_ao)
                 return self._hcore_ao
             else:
+                # print(self._get_field_ao(t))
                 self._hcore_ao + self._get_field_ao(t)
         else:
             return self._hcore_ao + get_field_ao(t)
@@ -302,22 +304,24 @@ class TDHF(lib.StreamObject):
             dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
         if veff_ao is None:
             veff_ao = self.get_veff_ao(dm_orth=dm_orth, dm_ao=dm_ao)
-        return self._scf.get_fock(hcore_ao, self._ovlp_ao, veff_ao, dm_ao)
+        fock_ao = self._scf.get_fock(hcore_ao, self._ovlp_ao, veff_ao, dm_ao)
+        return (fock_ao + fock_ao.conj().T)/2
 
     def get_fock_orth(self, hcore_ao, fock_ao=None, dm_orth=None, dm_ao=None, veff_ao=None, orth_xtuple=None):
-        assert (dm_orth is not None) or (dm_ao is not None)
-        if orth_xtuple is None:
-            orth_xtuple = self._orth_xtuple
-        if (dm_ao is None) and (dm_orth is not None):
-            dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
-        if veff_ao is None:
-            veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao)
         if fock_ao is None:
+            assert (dm_orth is not None) or (dm_ao is not None)
+            if orth_xtuple is None:
+                orth_xtuple = self._orth_xtuple
+            if (dm_ao is None) and (dm_orth is not None):
+                dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
+            if veff_ao is None:
+                veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao)
             fock_ao =  self.ao2orth_fock(
             self._scf.get_fock(hcore_ao, self._ovlp_ao, veff_ao, dm_ao),
             orth_xtuple=orth_xtuple
             )
-        return fock_ao
+        fock_orth = self.ao2orth_fock(fock_ao, orth_xtuple=orth_xtuple)
+        return (fock_orth + fock_orth.conj().T)/2
 
     def get_energy_elec(self, hcore_ao, dm_orth=None,
                         dm_ao=None, veff_ao=None, orth_xtuple=None):
@@ -452,21 +456,25 @@ if __name__ == "__main__":
     orth_xtuple = orth_canonical_mo(h2o_rhf)
     dm_orth_0   = ao2orth_contravariant(dm_0, orth_xtuple)
     fock_orth_0 = ao2orth_covariant(fock_0, orth_xtuple)
-    
-    gau_vec = lambda t: [0.0, 0.0, 0.0]
-    print("gau_vec(0) = ", gau_vec(0))
-    gaussian_field = ClassicalElectricField(h2o, field_func=gau_vec, stop_time=10.0)
 
-    rttd = TDHF(h2o_rhf, field=gaussian_field)
+    # gau_vec = lambda t: [0.0, 0.0, 0.0]
+    # print("gau_vec(0) = ", gau_vec(0))
+    # gaussian_field = ClassicalElectricField(h2o, field_func=gau_vec, stop_time=10.0)
+
+    rttd = TDHF(h2o_rhf, field=None)
     rttd.verbose        = 4
     rttd.total_step     = 10
-    rttd.step_size      = 0.002
+    rttd.step_size      = 0.02
     rttd._initialize()
     kernel(rttd, dm_ao_init=dm_0)
 
-    for i, dm_orth in enumerate(rttd.result_obj._dm_orth_list):
+    print_cx_matrix("fock_orth_0 = ", fock_orth_0)
+    print_cx_matrix("rttd.ao2orth(fock_0) = ", rttd.ao2orth_fock(fock_0))
+
+    for i in range(10):
         print("")
         print("#####################################")
         print("t = %f"%rttd.result_obj._time_list[i])
-        print_cx_matrix("dm_orth = ", dm_orth)
+        print_cx_matrix("dm_orth = ", rttd.result_obj._dm_orth_list[i])
         print_cx_matrix("fock_orth = ", rttd.result_obj._fock_orth_list[i])
+        # print_cx_matrix("fock_ao   = ", rttd.result_obj._fock_ao_list[i])
