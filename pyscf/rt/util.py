@@ -16,7 +16,8 @@ write = sys.stdout.write
 DAMP_EXPO         = getattr(__config__, 'rt_tdscf_damp_expo',     1000)
 PRINT_MAT_NCOL    = getattr(__config__, 'rt_tdscf_print_mat_ncol',   7)
 
-# def build_absorption_spectrum(tdscf, ndipole=None, damp_expo=DAMP_EXPO):
+def build_absorption_spectrum(tdscf, ndipole=None, damp_expo=DAMP_EXPO):
+    pass
 #     if ndipole is None:
 #         ndipole = tdscf.ndipole
 

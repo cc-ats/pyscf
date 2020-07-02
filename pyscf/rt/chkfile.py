@@ -1,5 +1,6 @@
 # Author: Junjie Yang <yangjunjie0320@gmail.com> Zheng Pei and Yihan Shao
 import h5py
+from numpy import asarray, sort
 from pyscf.lib.chkfile import load_chkfile_key, load
 from pyscf.lib.chkfile import dump_chkfile_key, dump, save
 from pyscf.lib.chkfile import load_mol, save_mol
@@ -9,12 +10,17 @@ from pyscf.lib.chkfile import load_mol, save_mol
 #     load(chkfile, 'rt_obj/mol', rt_obj.mol.dumps())
 
 def load_rt_step_index(chkfile):
+    index_list = []
     with h5py.File(chkfile, 'r') as hf:
-        step_index = list(hf['rt_step'].keys())
-    return range(len(step_index))
+        indexes = list(hf['rt_step'].keys())
+    for index in indexes:
+        i = int(index)
+        index_list.append(i)
+    index_array = asarray(index_list)
+    return sort(index_array)
 
 def load_rt_step(chkfile, index):
-    return load(chkfile, 'rt_step/%s'%index)
+    return load(chkfile, 'rt_step/%d'%index)
 
 def dump_rt_obj(chkfile, rt_obj):
     '''save step results'''
@@ -23,6 +29,7 @@ def dump_rt_obj(chkfile, rt_obj):
 def dump_rt_step(chkfile, idx, **kwargs):
     '''save step results'''
     rt_dic  =   kwargs
+    rt_dic["index"] = idx
     save(chkfile, 'rt_step/%d'%idx, rt_dic)
 
 if __name__ == "__main__":
@@ -62,8 +69,8 @@ if __name__ == "__main__":
 
     rttd = TDHF(h2o_rhf, field=gaussian_field)
     rttd.verbose = 4
-    rttd.maxstep = 10
-    rttd.dt      = 0.02
+    rttd.total_step = 10
+    rttd.step_size  = 0.02
     rttd._initialize()
     
     h1e = rttd.get_hcore_ao(5.0)
@@ -79,7 +86,7 @@ if __name__ == "__main__":
         t=t, etot=10.00, dm_ao=dm, dm_orth=dm_orth, fock_ao=fock, fock_orth=fock_orth)
 
     step_index = load_rt_step_index(tmp_chkfile)
-
+    
     for step in step_index:
         print("step_index = ", step)
         rtstep = load_rt_step(tmp_chkfile, step)

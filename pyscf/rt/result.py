@@ -3,6 +3,9 @@ import numpy
 from numpy import empty, arange
 from numpy import dot, complex128
 
+from chkfile import load_rt_step_index, load_rt_step
+from chkfile import dump_rt_obj, dump_rt_step
+
 
 class RealTimeStep(object):
     def __init__(self, rt_obj):
@@ -10,7 +13,7 @@ class RealTimeStep(object):
         self.mol    = rt_obj.mol
 
         self.t         = None
-        self.iter_step = None
+        self.step_iter = None
 
         self.step_energy_elec = None
         self.step_energy_tot  = None
@@ -22,8 +25,9 @@ class RealTimeStep(object):
         self.step_fock_orth   = None
         self.step_fock_ao     = None
 
-    def initialize(self, dm_ao_init, dm_orth_init, fock_ao_init, fock_orth_init,
-                         hcore_ao, veff_ao, calculate_dipole=None, calculate_pop=None):
+    def _initialize(self, dm_ao_init, dm_orth_init, fock_ao_init, fock_orth_init,
+                         hcore_ao, veff_ao,
+                         calculate_dipole=None, calculate_pop=None, calculate_energy=None):
         if (calculate_dipole is None):
             calculate_dipole = self.rt_obj.calculate_dipole
         if calculate_dipole:
@@ -33,56 +37,57 @@ class RealTimeStep(object):
         if calculate_pop:
             self.step_pop = self.rt_obj._scf.mulliken_pop(dm=dm_ao_init.real, mol=self.mol, verbose=0)
 
-        self.t     = 0.0
-        self.iter_step = 0
+        self.t         = 0.0
+        self.step_iter = 0
 
         self.step_dm_ao         = dm_ao_init
         self.step_dm_orth       = dm_orth_init
         self.step_fock_ao       = fock_ao_init
         self.step_fock_orth     = fock_orth_init
 
-        self.step_energy_elec = self.rt_obj.get_energy_elec(
-            hcore_ao, dm_orth=dm_orth_init, dm_ao=dm_ao_init, veff_ao=veff_ao
-            )
-        self.step_energy_tot = self.rt_obj.get_energy_tot(
-            hcore_ao, dm_orth=dm_orth_init, dm_ao=dm_ao_init, veff_ao=veff_ao
-            )
+        if calculate_energy is None:
+            calculate_energy = self.rt_obj.calculate_energy
+        if calculate_energy:
+            self.step_energy_elec = self.rt_obj.get_energy_elec(
+                hcore_ao, dm_orth=dm_orth_init, dm_ao=dm_ao_init, veff_ao=veff_ao
+                )
+            self.step_energy_tot = self.rt_obj.get_energy_tot(
+                hcore_ao, dm_orth=dm_orth_init, dm_ao=dm_ao_init, veff_ao=veff_ao
+                )
 
-    def update_step(self, t, iter_step, dm_ao, dm_orth, fock_ao, fock_orth, hcore_ao, veff_ao):
+    def _update(self, t, step_iter, dm_ao, dm_orth, fock_ao, fock_orth, hcore_ao, veff_ao):
         if (self.step_dipole is not None):
             self.step_dipole = self.rt_obj._scf.dip_moment(dm=dm_ao.real, mol=self.mol, verbose=0, unit='au')
         if (self.step_pop is not None):
             self.step_pop = self.rt_obj._scf.mulliken_pop(dm=dm_ao.real, mol=self.mol, verbose=0)
 
         self.t = t
-        self.iter_step = iter_step
+        self.step_iter = step_iter
 
         self.step_dm_ao     =     dm_ao
         self.step_dm_orth   =   dm_orth
         self.step_fock_ao   =   fock_ao
         self.step_fock_orth = fock_orth
 
-        self.step_energy_elec = self.rt_obj.get_energy_elec(
-            hcore_ao, dm_orth=dm_orth, dm_ao=dm_ao, veff_ao=veff_ao
-            )
-        self.step_energy_tot = self.rt_obj.get_energy_tot(
-            hcore_ao, dm_orth=dm_orth, dm_ao=dm_ao, veff_ao=veff_ao
-            )
-
-    def save_step_to_result(self):
-        pass
-
-    def save_step_to_chk(self):
-        pass
-
+        if (self.step_energy_elec is not None) and (self.step_energy_tot is not None):
+            self.step_energy_elec = self.rt_obj.get_energy_elec(
+                hcore_ao, dm_orth=dm_orth, dm_ao=dm_ao, veff_ao=veff_ao
+                )
+            self.step_energy_tot = self.rt_obj.get_energy_tot(
+                hcore_ao, dm_orth=dm_orth, dm_ao=dm_ao, veff_ao=veff_ao
+                )
 
 class RealTimeResult(object):
     def __init__(self, rt_obj):
         self.rt_obj = rt_obj
         self.mol    = rt_obj.mol
 
-        self._time_list     = None
-        self._iter_step_list    = None
+        self.chk_file           = None
+
+        self.save_iter          = None
+        self._time_list         = None
+        self._step_iter_list    = None
+        self._save_iter_list    = None
 
         self._energy_elec_list = None
         self._energy_tot_list  = None
@@ -94,39 +99,50 @@ class RealTimeResult(object):
         self._fock_orth_list   = None
         self._fock_ao_list     = None
 
-    def initialize(self, first_rt_step):
-        if (first_rt_step.step_dipole is not None):
-            self._dipole_list   = [first_rt_step.step_dipole]
-        if (first_rt_step.step_pop is not None):
-            self._pop_list      = [first_rt_step.step_pop]
+    def _initialize(self, first_step_obj):
+        if (first_step_obj.step_dipole is not None):
+            self._dipole_list   = [first_step_obj.step_dipole]
+        if (first_step_obj.step_pop is not None):
+            self._pop_list      = [first_step_obj.step_pop]
+        if (first_step_obj.step_energy_elec is not None) and (first_step_obj.step_energy_tot is not None):
+            self._energy_elec_list = [first_step_obj.step_energy_elec]
+            self._energy_tot_list  = [first_step_obj.step_energy_tot ]
 
-        matrix_shape = list(first_rt_step.step_dm_ao.shape)
+        self._save_iter_list   = [0]
 
-        self._time_list        = [first_rt_step.t               ]
-        self._iter_step_list       = [first_rt_step.iter_step           ]
-        self._energy_elec_list = [first_rt_step.step_energy_elec]
-        self._energy_tot_list  = [first_rt_step.step_energy_tot ]
-        self._dm_ao_list       = [first_rt_step.step_dm_ao      ]
-        self._dm_orth_list     = [first_rt_step.step_dm_orth    ]
-        self._fock_orth_list   = [first_rt_step.step_fock_ao    ]
-        self._fock_ao_list     = [first_rt_step.step_fock_orth  ]
+        self._time_list        = [first_step_obj.t               ]
+        self._step_iter_list   = [first_step_obj.step_iter       ]
 
-    def update_step(self, rt_step):
-        if (rt_step.step_dipole is not None):
-            self._dipole_list.append(rt_step.step_dipole)
-        if (rt_step.step_pop is not None):
-            self._pop_list.append(rt_step.step_pop)
+        self._dm_ao_list       = [first_step_obj.step_dm_ao      ]
+        self._dm_orth_list     = [first_step_obj.step_dm_orth    ]
+        self._fock_orth_list   = [first_step_obj.step_fock_ao    ]
+        self._fock_ao_list     = [first_step_obj.step_fock_orth  ]
 
-        self._time_list.append(        rt_step.t               )
-        self._iter_step_list.append(   rt_step.iter_step       )
-        self._energy_elec_list.append( rt_step.step_energy_elec)
-        self._energy_tot_list.append(  rt_step.step_energy_tot )
-        self._dm_ao_list.append(       rt_step.step_dm_ao      )
-        self._dm_orth_list.append(     rt_step.step_dm_orth    )
-        self._fock_orth_list.append(   rt_step.step_fock_ao    )
-        self._fock_ao_list.append(     rt_step.step_fock_orth  )
+        self.save_iter = 0
+        return 0
 
-    def get_step_dict(self, iter_step=None, t=None):
+    def _update(self, step_obj):
+        if (step_obj.step_dipole is not None):
+            self._dipole_list.append(step_obj.step_dipole)
+        if (step_obj.step_pop is not None):
+            self._pop_list.append(step_obj.step_pop)
+        if (step_obj.step_energy_elec is not None) and (step_obj.step_energy_tot is not None):
+            self._energy_elec_list.append( step_obj.step_energy_elec)
+            self._energy_tot_list.append(  step_obj.step_energy_tot )
+
+        self._time_list.append(        step_obj.t               )
+        self._step_iter_list.append(   step_obj.step_iter       )
+        self._dm_ao_list.append(       step_obj.step_dm_ao      )
+        self._dm_orth_list.append(     step_obj.step_dm_orth    )
+        self._fock_orth_list.append(   step_obj.step_fock_ao    )
+        self._fock_ao_list.append(     step_obj.step_fock_orth  )
+
+        self.save_iter = self.save_iter + 1
+        self._save_iter_list.append(self.save_iter)
+
+        return self.save_iter
+
+    def get_step_dict(self, step_iter=None, save_iter=None, t=None):
         pass
 
 
@@ -138,3 +154,7 @@ class RealTimeResult(object):
     #         return [load_rt_step(self.chkfile, istep_index) for istep_index in step_index]
     #     else:
     #         return load_rt_step(self.chkfile, step_index)
+
+def save_step(step_obj, result_obj = None, save_in_memory = None,
+                   chk_file = None,  save_in_disk = None):
+    pass
