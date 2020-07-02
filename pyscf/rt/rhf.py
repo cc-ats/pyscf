@@ -282,8 +282,7 @@ class TDHF(lib.StreamObject):
                 # print(self._hcore_ao)
                 return self._hcore_ao
             else:
-                # print(self._get_field_ao(t))
-                self._hcore_ao + self._get_field_ao(t)
+                return self._hcore_ao + self._get_field_ao(t)
         else:
             return self._hcore_ao + get_field_ao(t)
 
@@ -437,7 +436,7 @@ class TDHF(lib.StreamObject):
     #     dump_rt_step(self.chk_file, idx, **rt_dic)
 
 if __name__ == "__main__":
-    from field import ClassicalElectricField, gaussian_field_vec
+    from field import ClassicalElectricField, constant_field_vec
     h2o =   gto.Mole( atom='''
     O     0.00000000    -0.00001441    -0.34824012
     H    -0.00000000     0.76001092    -0.93285191
@@ -457,19 +456,15 @@ if __name__ == "__main__":
     dm_orth_0   = ao2orth_contravariant(dm_0, orth_xtuple)
     fock_orth_0 = ao2orth_covariant(fock_0, orth_xtuple)
 
-    # gau_vec = lambda t: [0.0, 0.0, 0.0]
-    # print("gau_vec(0) = ", gau_vec(0))
-    # gaussian_field = ClassicalElectricField(h2o, field_func=gau_vec, stop_time=10.0)
+    const_vec = lambda t: constant_field_vec(t,[1.0, 1.0, 1.0])
+    const_field = ClassicalElectricField(h2o, field_func=const_vec, stop_time=10.0)
 
-    rttd = TDHF(h2o_rhf, field=None)
+    rttd = TDHF(h2o_rhf, field=const_field)
     rttd.verbose        = 4
     rttd.total_step     = 10
     rttd.step_size      = 0.02
     rttd._initialize()
     kernel(rttd, dm_ao_init=dm_0)
-
-    print_cx_matrix("fock_orth_0 = ", fock_orth_0)
-    print_cx_matrix("rttd.ao2orth(fock_0) = ", rttd.ao2orth_fock(fock_0))
 
     for i in range(10):
         print("")
@@ -477,4 +472,4 @@ if __name__ == "__main__":
         print("t = %f"%rttd.result_obj._time_list[i])
         print_cx_matrix("dm_orth = ", rttd.result_obj._dm_orth_list[i])
         print_cx_matrix("fock_orth = ", rttd.result_obj._fock_orth_list[i])
-        # print_cx_matrix("fock_ao   = ", rttd.result_obj._fock_ao_list[i])
+

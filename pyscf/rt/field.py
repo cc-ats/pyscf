@@ -9,8 +9,8 @@ x_base_vec = array([1,0,0])
 y_base_vec = array([0,1,0])
 z_base_vec = array([0,1,0])
 
-def zero_field_vec(t):
-    return [0.0, 0.0, 0.0]
+def constant_field_vec(t, constant_vec=[0.0, 0.0, 0.0]):
+    return constant_vec
 
 def gaussian_field_vec(t, freq, sigma, mu, strength_vec):
     amplitude = exp(-power(t - mu, 2) / (2 * power(sigma, 2))) * cos(freq*t)
@@ -30,7 +30,7 @@ class ClassicalElectricField(Field):
     """
     A class which manages classical electric field perturbations.
     """
-    def __init__(self, mol, field_func=zero_field_vec, stop_time=None):
+    def __init__(self, mol, field_func=constant_field_vec, stop_time=None):
         self.mol        = mol
         self.field_func = field_func
         self.stop_time  = stop_time
