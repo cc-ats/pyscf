@@ -26,6 +26,7 @@ class Propogator(lib.StreamObject):
     def __init__(self, rt_obj, verbose=None):
         if verbose is None:
             verbose = rt_obj.verbose
+        self.verbose = verbose 
         
         self.rt_obj          = rt_obj
         self.step_size       = rt_obj.step_size

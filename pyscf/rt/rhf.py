@@ -367,9 +367,10 @@ class TDHF(lib.StreamObject):
         if self.electric_field is not None:
             self._get_field_ao = self.electric_field.get_field_ao
 
-        self.set_prop_obj(key=self.prop_method)
-        self.step_obj   = RealTimeStep(self)
-        self.result_obj = RealTimeResult(self)
+        if self.prop_obj is None:   self.set_prop_obj(key=self.prop_method)
+        if self.step_obj is None:   self.step_obj   = RealTimeStep(self)
+        if self.result_obj is None: self.result_obj   = RealTimeResult(self)
+
         self.dump_flags()
         # dump_rt_obj(self.chk_file, self)
         
@@ -456,13 +457,16 @@ if __name__ == "__main__":
     dm_orth_0   = ao2orth_contravariant(dm_0, orth_xtuple)
     fock_orth_0 = ao2orth_covariant(fock_0, orth_xtuple)
 
-    const_vec = lambda t: constant_field_vec(t,[1.0, 1.0, 1.0])
+    const_vec = lambda t: constant_field_vec(t,[0.0, 0.0, 0.0])
     const_field = ClassicalElectricField(h2o, field_func=const_vec, stop_time=10.0)
 
     rttd = TDHF(h2o_rhf, field=const_field)
     rttd.verbose        = 4
     rttd.total_step     = 10
     rttd.step_size      = 0.02
+    rttd.prop_obj       = EulerPropogator(rttd, verbose=5)
+    rttd.step_obj       = RealTimeStep(rttd, verbose=5)
+    rttd.result_obj     = RealTimeResult(rttd, verbose=5)
     rttd._initialize()
     kernel(rttd, dm_ao_init=dm_0)
 
