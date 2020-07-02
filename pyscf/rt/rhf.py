@@ -76,7 +76,8 @@ def orth2ao_covariant(covariant_matrix_orth, orth_xtuple):
     covariant_matrix_ao = reduce(dot, [x_t_inv, covariant_matrix_orth, x_inv])
     return covariant_matrix_ao
 
-def kernel(rt_obj, dm_ao_init= None, prop_obj = None, rt_step = None,
+def kernel(rt_obj, dm_ao_init= None, step_size = None, total_step = None,
+                   prop_obj = None, rt_step = None, save_frequency = None,
                    rt_result = None, save_in_memory = None,
                    chk_file = None,  save_in_disk = None,
                    calculate_dipole = None, calculate_pop =None,
@@ -87,6 +88,14 @@ def kernel(rt_obj, dm_ao_init= None, prop_obj = None, rt_step = None,
     if prop_obj   is None:  prop_obj   = rt_obj.prop_obj
     if rt_step    is None:  rt_step    = rt_obj.rt_step
 
+    if total_step is None:
+        total_step     = rt_obj.total_step
+    if save_frequency is not None:
+        total_save_step = total_step//save_frequency
+    else:
+        total_save_step = total_step
+
+    if save_frequency is None:  save_frequency = rt_obj.save_frequency
     if rt_result      is None:  rt_result  = rt_obj.rt_result
     if save_in_memory is None:  save_in_memory = rt_obj.save_in_memory
 
@@ -100,8 +109,7 @@ def kernel(rt_obj, dm_ao_init= None, prop_obj = None, rt_step = None,
     if save_in_disk:
         assert chk_file is not None
         logger.info(rt_obj, "The results would be saved in the disk, %s", chk_file)
-
-    maxstep     = rt_obj.maxstep
+    
 
     dm_ao_init     = dm_ao_init.astype(numpy.complex128)
     dm_orth_init   = rt_obj.ao2orth_dm(dm_ao_init)
@@ -124,64 +132,44 @@ def kernel(rt_obj, dm_ao_init= None, prop_obj = None, rt_step = None,
 # TODO: initialize the rt_result here 
 
     # temp_t, temp_dm_ao, temp_dm_orth, temp_fock_ao, temp_fock_orth = prop_func(
-    #     rt_obj, dt, temp_t=0.0, step_index=0,
+    #     rt_obj, step_size, temp_t=0.0, step_index=0,
     #     temp_dm_ao=None, temp_dm_orth=None, temp_fock_ao=None, temp_fock_orth=None,
     #     dm_ao_init=dm_ao_init, dm_orth_init=dm_orth_init,
     #     save_this_step=True, rt_result=rt_result, is_first_step=True
     #     )
     # cput1 = logger.timer(rt_obj, 'initialize td-scf', *cput0)
 
-    
+    # while iter_step <= total_step:
+    #     if iter_step%100 ==1:
+    #         logger.note(tdscf, 'istep=%d, time=%f, delta e=%e',
+    #         istep-1, tdscf.ntime[istep-1], tdscf.netot[istep-1]-tdscf.netot[0])
+    #     # propagation step
+    #     netot[istep] = tdscf.prop_func(tdscf,  _temp_ts,
+    #            _temp_dm_prims,   _temp_dm_aos,
+    #            _temp_fock_prims, _temp_fock_aos)
+    #     ndm_prim[istep]   =   _temp_dm_prims[THIS]
+    #     ndm_ao[istep]     =     _temp_dm_aos[THIS]
+    #     nfock_prim[istep] = _temp_fock_prims[THIS]
+    #     nfock_ao[istep]   =   _temp_fock_aos[THIS]
+    #     _temp_ts = _temp_ts + step_size
+    #     istep += 1
 
-# propagation start here
-# TODO: the initializations should be more careful
-    _temp_dm_prims[LAST]   = ndm_prim[0]
-    _temp_fock_prims[LAST] = nfock_prim[0]
-    _temp_dm_aos[LAST]     = ndm_ao[0]
-    _temp_fock_aos[LAST]   = nfock_ao[0]
+    # cput2 = logger.timer(tdscf, 'propagation %d time steps'%(istep-1), *cput0)
 
-    _temp_dm_prims[LAST_HALF]   = ndm_prim[0]
-    _temp_fock_prims[LAST_HALF] = nfock_prim[0]
-    _temp_dm_aos[LAST_HALF]     = ndm_ao[0]
-    _temp_fock_aos[LAST_HALF]   = nfock_ao[0]
-
-    _temp_dm_prims[THIS]   = ndm_prim[0]
-    _temp_fock_prims[THIS] = nfock_prim[0]
-    _temp_dm_aos[THIS]     = ndm_ao[0]
-    _temp_fock_aos[THIS]   = nfock_ao[0]
-
-    istep = 1
-    while istep <= maxstep:
-        if istep%100 ==1:
-            logger.note(tdscf, 'istep=%d, time=%f, delta e=%e',
-            istep-1, tdscf.ntime[istep-1], tdscf.netot[istep-1]-tdscf.netot[0])
-        # propagation step
-        netot[istep] = tdscf.prop_func(tdscf,  _temp_ts,
-               _temp_dm_prims,   _temp_dm_aos,
-               _temp_fock_prims, _temp_fock_aos)
-        ndm_prim[istep]   =   _temp_dm_prims[THIS]
-        ndm_ao[istep]     =     _temp_dm_aos[THIS]
-        nfock_prim[istep] = _temp_fock_prims[THIS]
-        nfock_ao[istep]   =   _temp_fock_aos[THIS]
-        _temp_ts = _temp_ts + dt
-        istep += 1
-
-    cput2 = logger.timer(tdscf, 'propagation %d time steps'%(istep-1), *cput0)
-
-    if (do_dump_chk) and (tdscf.chkfile) and (tdscf.save_step is None):
-        ntime      = tdscf.ntime
-        netot      = tdscf.netot
-        ndm_ao     = tdscf.ndm_ao
-        tdscf.dump_chk(locals())
-        cput3 = logger.timer(tdscf, 'dump chk finished', *cput0)
-    elif (do_dump_chk) and (tdscf.chkfile) and (tdscf.save_step is not None):
-        logger.note(tdscf, 'The results are saved in every %d steps.', tdscf.save_step)
-        ntime      = tdscf.ntime[::tdscf.save_step]
-        netot      = tdscf.netot[::tdscf.save_step]
-        ndm_ao     = tdscf.ndm_ao[::tdscf.save_step]
-        # print(locals())
-        tdscf.dump_chk(locals())
-        cput3 = logger.timer(tdscf, 'dump chk finished', *cput0)
+    # if (do_dump_chk) and (tdscf.chkfile) and (tdscf.save_frequency is None):
+    #     ntime      = tdscf.ntime
+    #     netot      = tdscf.netot
+    #     ndm_ao     = tdscf.ndm_ao
+    #     tdscf.dump_chk(locals())
+    #     cput3 = logger.timer(tdscf, 'dump chk finished', *cput0)
+    # elif (do_dump_chk) and (tdscf.chkfile) and (tdscf.save_frequency is not None):
+    #     logger.note(tdscf, 'The results are saved in every %d steps.', tdscf.save_frequency)
+    #     ntime      = tdscf.ntime[::tdscf.save_frequency]
+    #     netot      = tdscf.netot[::tdscf.save_frequency]
+    #     ndm_ao     = tdscf.ndm_ao[::tdscf.save_frequency]
+    #     # print(locals())
+    #     tdscf.dump_chk(locals())
+    #     cput3 = logger.timer(tdscf, 'dump chk finished', *cput0)
 
 class TDHF(lib.StreamObject):
     def __init__(self, scf_obj, field=None):
@@ -204,7 +192,8 @@ class TDHF(lib.StreamObject):
 # filename to self.chkfile
         self._chkfile   = tempfile.NamedTemporaryFile(dir=lib.param.TMPDIR)
         self.chkfile    = self._chkfile.name
-        self.save_step  = None
+
+        self.save_frequency   = None
         self.save_in_memory   = True
         self.save_in_disk     = False
         self.rt_result        = None
@@ -216,12 +205,12 @@ class TDHF(lib.StreamObject):
         self._hcore_ao        = None
 
 # input parameters for propagation
-# initial condtion
+# initial condition
         self.dm_ao_init = None
 
-# time step and maxstep
-        self.dt         = None
-        self.maxstep    = None
+# time step and total_step
+        self.step_size            = None
+        self.total_step    = None
 #
         self.calculate_dipole = True
         self.calculate_pop    = True
@@ -234,10 +223,10 @@ class TDHF(lib.StreamObject):
         self.electric_field  = field
         self._get_field_ao   = None
 
-    def propagate_step(self, dt, fock_orth, dm_orth, orth_xtuple=None):
+    def propagate_step(self, step_size, fock_orth, dm_orth, orth_xtuple=None):
         if orth_xtuple is None:
             orth_xtuple = self._orth_xtuple
-        dm_orth_   = expia_b_exp_ia(-dt*fock_orth, dm_orth)
+        dm_orth_   = expia_b_exp_ia(-step_size*fock_orth, dm_orth)
         dm_ao_     = self.orth2ao_dm(dm_orth_, orth_xtuple=orth_xtuple)
         return dm_orth_, dm_ao_
 
@@ -252,9 +241,9 @@ class TDHF(lib.StreamObject):
                 self.prop_obj = EulerPropogator(self)
             elif (key.lower() == 'mmut'):
                 self.prop_obj = MMUTPropogator(self)
-            elif (key.lower() == 'ep_pc_prop'):
+            elif (key.lower() == 'ep-pc'):
                 self.prop_obj = EPPCPropogator(self)
-            elif (key.lower() == 'lflp_pc'):
+            elif (key.lower() == 'lflp-pc'):
                 self.prop_obj = LFLPPCPropogator(self)
             else:
                 raise RuntimeError("unknown prop method!")
@@ -356,7 +345,7 @@ class TDHF(lib.StreamObject):
 
         if self.chkfile:
             log.info('chkfile to save RT TDSCF result = %s', self.chkfile)
-        log.info( 'dt = %f, maxstep = %d', self.dt, self.maxstep )
+        log.info( 'step_size = %f, total_step = %d', self.step_size, self.total_step )
         log.info( 'prop_obj = %s', self.prop_obj.__class__.__name__)
         log.info('max_memory %d MB (current use %d MB)',
                  self.max_memory, lib.current_memory()[0])
@@ -385,7 +374,7 @@ class TDHF(lib.StreamObject):
         logger.info(self, "Finalization finished")
     '''
 
-    def kernel(self, dm_ao_init=None, chkfile=None, save_step=None):
+    def kernel(self, dm_ao_init=None, chkfile=None, save_frequency=None):
         self._initialize()
         if dm_ao_init is None:
             if self.dm_ao_init is not None:
@@ -397,7 +386,7 @@ class TDHF(lib.StreamObject):
             print_matrix("The initial density matrix is, ", dm_ao_init, ncols=PRINT_MAT_NCOL)
 
         kernel(
-           self, dm_ao_init, maxstep, 
+           self, dm_ao_init, total_step, 
             )
         logger.info(self, 'after propogation matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
         logger.info(self, "Propagation finished")
@@ -454,9 +443,9 @@ if __name__ == "__main__":
     gaussian_field = ClassicalElectricField(h2o, field_func=gau_vec, stop_time=10.0)
 
     rttd = TDHF(h2o_rhf, field=gaussian_field)
-    rttd.verbose = 4
-    rttd.maxstep = 10
-    rttd.dt      = 0.02
+    rttd.verbose        = 4
+    rttd.total_step     = 10
+    rttd.step_size      = 0.02
     rttd._initialize()
     
     h1e = rttd.get_hcore_ao(5.0)
