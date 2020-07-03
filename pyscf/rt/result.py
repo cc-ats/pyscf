@@ -67,7 +67,7 @@ class RealTimeStep(StreamObject):
         if (self.step_dipole is not None):
             self.step_dipole = self.rt_obj._scf.dip_moment(dm=dm_ao.real, mol=self.mol, verbose=0, unit='au')
         if (self.step_pop is not None):
-            self.step_pop = self.rt_obj._scf.mulliken_pop(dm=dm_ao.real, mol=self.mol, verbose=0)
+            self.step_pop = self.rt_obj._scf.mulliken_pop(dm=dm_ao.real, mol=self.mol, verbose=0)[1]
 
         self.t = t
         self.step_iter = step_iter
@@ -116,7 +116,7 @@ class RealTimeResult(object):
         if (first_step_obj.step_dipole is not None):
             self._dipole_list   = [first_step_obj.step_dipole]
         if (first_step_obj.step_pop is not None):
-            self._pop_list      = [first_step_obj.step_pop]
+            self._pop_list      = [first_step_obj.step_pop[1]]
         if (first_step_obj.step_energy_elec is not None) and (first_step_obj.step_energy_tot is not None):
             self._energy_elec_list = [first_step_obj.step_energy_elec]
             self._energy_tot_list  = [first_step_obj.step_energy_tot ]

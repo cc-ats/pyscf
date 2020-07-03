@@ -4,6 +4,8 @@ import tempfile
 import numpy
 import scipy
 
+from sys import getsizeof
+
 from functools import reduce
 from numpy import dot
 
@@ -156,7 +158,6 @@ def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None,
         step_iter = prop_obj.propagate_step(step_obj=step_obj, verbose=verbose)
         if step_iter%save_frequency == 0:
             result_obj._update(step_obj)
-        
 
     # cput2 = logger.timer(tdscf, 'propagation %d time steps'%(istep-1), *cput0)
 
@@ -437,13 +438,13 @@ class TDHF(lib.StreamObject):
     #     dump_rt_step(self.chk_file, idx, **rt_dic)
 
 if __name__ == "__main__":
-    from field import ClassicalElectricField, constant_field_vec
+    from field import ClassicalElectricField, constant_field_vec, gaussian_field_vec
     h2o =   gto.Mole( atom='''
     O     0.00000000    -0.00001441    -0.34824012
     H    -0.00000000     0.76001092    -0.93285191
     H     0.00000000    -0.75999650    -0.93290797
     '''
-    , basis='sto-3g', symmetry=False).build()
+    , basis='sto-3g', symmetry=False).build() # water
 
     h2o_rhf    = scf.RHF(h2o)
     h2o_rhf.verbose = 4
@@ -457,11 +458,11 @@ if __name__ == "__main__":
     dm_orth_0   = ao2orth_contravariant(dm_0, orth_xtuple)
     fock_orth_0 = ao2orth_covariant(fock_0, orth_xtuple)
 
-    const_vec = lambda t: constant_field_vec(t,[0.0, 0.0, 0.0])
-    const_field = ClassicalElectricField(h2o, field_func=const_vec, stop_time=10.0)
+    gaussian_vec = lambda t: gaussian_field_vec(t,1.0, 1.0, 0.0, [1e-2, 0.0, 0.0])
+    gaussian_field = ClassicalElectricField(h2o, field_func=gaussian_vec, stop_time=10.0)
 
-    rttd = TDHF(h2o_rhf, field=const_field)
-    rttd.verbose        = 4
+    rttd = TDHF(h2o_rhf, field=gaussian_field)
+    rttd.verbose        = 5
     rttd.total_step     = 10
     rttd.step_size      = 0.02
     rttd.prop_obj       = EulerPropogator(rttd, verbose=5)
@@ -474,6 +475,7 @@ if __name__ == "__main__":
         print("")
         print("#####################################")
         print("t = %f"%rttd.result_obj._time_list[i])
-        print_cx_matrix("dm_orth = ", rttd.result_obj._dm_orth_list[i])
-        print_cx_matrix("fock_orth = ", rttd.result_obj._fock_orth_list[i])
+        print("pop_list     = ", rttd.result_obj._pop_list[i])
+        print("_dipole_list = ", rttd.result_obj._dipole_list[i])
+
 
