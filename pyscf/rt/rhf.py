@@ -283,6 +283,7 @@ class TDHF(lib.StreamObject):
                 # print(self._hcore_ao)
                 return self._hcore_ao
             else:
+                # print_matrix("t = %f, hcore = "%t, self._hcore_ao.real + self._get_field_ao(t).real)
                 return self._hcore_ao + self._get_field_ao(t)
         else:
             return self._hcore_ao + get_field_ao(t)
@@ -458,16 +459,16 @@ if __name__ == "__main__":
     dm_orth_0   = ao2orth_contravariant(dm_0, orth_xtuple)
     fock_orth_0 = ao2orth_covariant(fock_0, orth_xtuple)
 
-    gaussian_vec = lambda t: gaussian_field_vec(t,1.0, 1.0, 0.0, [1e-2, 0.0, 0.0])
+    gaussian_vec = lambda t: gaussian_field_vec(t, 0.5329, 1.0, 0.0, [1e-2, 0.0, 0.0])
     gaussian_field = ClassicalElectricField(h2o, field_func=gaussian_vec, stop_time=10.0)
 
     rttd = TDHF(h2o_rhf, field=gaussian_field)
-    rttd.verbose        = 5
+    rttd.verbose        = 3
     rttd.total_step     = 10
     rttd.step_size      = 0.02
-    rttd.prop_obj       = EulerPropogator(rttd, verbose=5)
-    rttd.step_obj       = RealTimeStep(rttd, verbose=5)
-    rttd.result_obj     = RealTimeResult(rttd, verbose=5)
+    rttd.prop_obj       = EulerPropogator(rttd, verbose=3)
+    rttd.step_obj       = RealTimeStep(rttd, verbose=3)
+    rttd.result_obj     = RealTimeResult(rttd, verbose=3)
     rttd._initialize()
     kernel(rttd, dm_ao_init=dm_0)
 
@@ -475,7 +476,10 @@ if __name__ == "__main__":
         print("")
         print("#####################################")
         print("t = %f"%rttd.result_obj._time_list[i])
-        print("pop_list     = ", rttd.result_obj._pop_list[i])
-        print("_dipole_list = ", rttd.result_obj._dipole_list[i])
+        print("field = ", gaussian_vec(rttd.result_obj._time_list[i]))
+        print_cx_matrix("dm_orth = ", rttd.result_obj._dm_orth_list[i])
+        print_cx_matrix("fock_orth = ", rttd.result_obj._fock_orth_list[i])
+    #     print("pop_list     = ", rttd.result_obj._pop_list[i])
+    #     print("_dipole_list = ", rttd.result_obj._dipole_list[i])
 
 

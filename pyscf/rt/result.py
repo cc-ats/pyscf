@@ -3,11 +3,10 @@ import numpy
 from numpy import empty, arange
 from numpy import dot, complex128
 
-from chkfile import load_rt_step_index, load_rt_step
-from chkfile import dump_rt_obj, dump_rt_step
+from pyscf.rt.chkfile import load_rt_step_index, load_rt_step
+from pyscf.rt.chkfile import dump_rt_obj, dump_rt_step
 from pyscf.lib import StreamObject
 from pyscf.lib import logger
-
 
 class RealTimeStep(StreamObject):
     def __init__(self, rt_obj, verbose=None):
