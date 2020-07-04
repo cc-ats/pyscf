@@ -97,6 +97,8 @@ class RealTimeResult(object):
         self.chk_file           = None
 
         self.save_iter          = None
+        self.save_iter_list     = None
+
         self._time_list         = None
         self._step_iter_list    = None
         self._save_iter_list    = None
@@ -127,8 +129,8 @@ class RealTimeResult(object):
 
         self._dm_ao_list       = [first_step_obj.step_dm_ao      ]
         self._dm_orth_list     = [first_step_obj.step_dm_orth    ]
-        self._fock_ao_list   = [first_step_obj.step_fock_ao    ]
-        self._fock_orth_list     = [first_step_obj.step_fock_orth  ]
+        self._fock_ao_list     = [first_step_obj.step_fock_ao    ]
+        self._fock_orth_list   = [first_step_obj.step_fock_orth  ]
 
         self.save_iter = 0
         return 0
@@ -153,6 +155,9 @@ class RealTimeResult(object):
         self._save_iter_list.append(self.save_iter)
 
         return self.save_iter
+
+    def _finalize(self):
+        pass
 
     def get_step_dict(self, step_iter=None, save_iter=None, t=None):
         pass

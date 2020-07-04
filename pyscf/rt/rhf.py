@@ -388,25 +388,11 @@ class TDHF(lib.StreamObject):
         logger.info(self, "Finalization finished")
     '''
 
-    def kernel(self, dm_ao_init= None, dm_orth_init= None,
-                   step_size = None, total_step = None,
-                   prop_obj = None, step_obj = None, save_frequency = None,
-                   result_obj = None, save_in_memory = None,
-                   chk_file = None,  save_in_disk = None,
-                   calculate_dipole = None, calculate_pop =None, calculate_energy=None,
-                   verbose = None):
+    def kernel(self, **kwargs):
         self._initialize()
-        if dm_ao_init is None:
-            if self.dm_ao_init is not None:
-                dm_ao_init = self.dm_ao_init
-            else:
-                dm_ao_init = self._scf.make_rdm1()
-        logger.info(self, "Propagation begins here")
-        if self.verbose >= logger.DEBUG1:
-            print_matrix("The initial density matrix is, ", dm_ao_init, ncols=PRINT_MAT_NCOL)
 
         kernel(
-           self, dm_ao_init, total_step, 
+           self, **kwargs
             )
         logger.info(self, 'after propogation matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
         logger.info(self, "Propagation finished")
