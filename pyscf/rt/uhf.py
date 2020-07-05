@@ -6,6 +6,8 @@ import tempfile
 from functools import reduce
 
 import numpy
+from numpy import asarray, complex128, dot
+
 import scipy
 
 from pyscf import gto, scf
@@ -14,8 +16,14 @@ from pyscf.lib import logger
 from pyscf.rt import chkfile
 
 from pyscf.rt import rhf as rhf_tdscf
-from pyscf.rt.util import build_absorption_spectrum
-from pyscf.rt.util import print_matrix, print_cx_matrix, errm, expm
+from pyscf.rt.propagator import Propogator, PCPropogator
+from pyscf.rt.propagator import EulerPropogator, MMUTPropogator
+from pyscf.rt.propagator import EPPCPropogator, LFLPPCPropogator
+
+from pyscf.rt.result import RealTimeStep, RealTimeResult
+
+from pyscf.rt.util import print_matrix, print_cx_matrix
+from pyscf.rt.util import expia_b_exp_ia
 
 from pyscf import __config__
 
@@ -25,95 +33,54 @@ PRINT_MAT_NCOL    = getattr(__config__, 'rt_tdscf_print_mat_ncol',    7         
 ORTH_METHOD       = getattr(__config__, 'rt_tdscf_orth_ao_method',    'canonical')
 
 # re-define Orthogonalize AOs for UHF
-def orth_ao(mf_or_mol, method=ORTH_METHOD, pre_orth_ao=None, scf_method=None,
-            s=None):
-    '''Orthogonalize AOs
-    Kwargs:
-        method : str
-            One of
-            | lowdin : Symmetric orthogonalization
-            | meta-lowdin : Lowdin orth within core, valence, virtual space separately (JCTC, 10, 3784)
-            | canonical MO
-            | NAO
-    '''
-    from pyscf.lo import nao
-    mf = scf_method
-    if isinstance(mf_or_mol, gto.Mole):
-        mol = mf_or_mol
-    else:
-        mol = mf_or_mol.mol
-        if mf is None:
-            mf = mf_or_mol
+def orth_canonical_mo(scf_obj, ovlp_ao=None):
+    """ transform AOs """
+    assert isinstance(scf_obj, scf.uhf.UHF)
+    logger.info(scf_obj, "the AOs are orthogonalized with unrestricted canonical MO coefficients")
+    if not scf_obj.converged:
+        logger.warn(scf_obj,"the SCF object must be converged")
+    if ovlp_ao is None:
+        ovlp_ao = scf_obj.get_ovlp()
+        ovlp_ao = asarray(ovlp_ao, dtype=complex128)
 
-    if s is None:
-        if hasattr(mol, 'pbc_intor'):  # whether mol object is a cell
-            s = mol.pbc_intor('int1e_ovlp', hermi=1)
-        else:
-            s = mol.intor_symmetric('int1e_ovlp')
+    x       = asarray(scf_obj.mo_coeff, dtype=complex128)
+    x_t     = x.transpose(0,2,1)
+    x_inv   = dot(x_t, ovlp_ao)
+    x_t_inv = x_inv.transpose(0,2,1)
+    orth_xtuple = (x, x_t, x_inv, x_t_inv)
+    return orth_xtuple
+    
+def ao2orth_contravariant(contravariant_matrix_ao, orth_xtuple):
+    """ transform contravariant matrix from orthogonal basis to AO basis """
+    x_inv   = orth_xtuple[2]
+    x_t_inv = orth_xtuple[3]
+    contravariant_matrix_orth_a = reduce(dot, [x_inv[0], contravariant_matrix_ao[0], x_t_inv[0]])
+    contravariant_matrix_orth_b = reduce(dot, [x_inv[1], contravariant_matrix_ao[0], x_t_inv[1]])
+    return asarray([contravariant_matrix_orth_a, contravariant_matrix_orth_b])
 
-    if pre_orth_ao is None:
-#        pre_orth_ao = numpy.eye(mol.nao_nr())
-        from pyscf.lo.orth import project_to_atomic_orbitals
-        pre_orth_ao = project_to_atomic_orbitals(mol, REF_BASIS)
+def orth2ao_contravariant(contravariant_matrix_orth, orth_xtuple):
+    """ transform contravariant matrix from AO to orthogonal basis """
+    x   = orth_xtuple[0]
+    x_t = orth_xtuple[1]
+    contravariant_matrix_ao_a = reduce(dot, [x[0], contravariant_matrix_orth[0], x_t[0]])
+    contravariant_matrix_ao_b = reduce(dot, [x[1], contravariant_matrix_orth[1], x_t[1]])
+    return asarray([contravariant_matrix_ao_a, contravariant_matrix_ao_b])
 
-    if method.lower() == 'lowdin':
-        from pyscf.lo import lowdin
-        logger.info(mf, "the AOs are orthogonalized with Lowdin")
-        s1 = reduce(numpy.dot, (pre_orth_ao.conj().T, s, pre_orth_ao))
-        c_orth_a = numpy.dot(pre_orth_ao, lowdin(s1))
-        c_orth_b = numpy.dot(pre_orth_ao, lowdin(s1))
+def ao2orth_covariant(covariant_matrix_ao, orth_xtuple):
+    """ transform covariant matrix from AO to orthogonal basis """
+    x   = orth_xtuple[0]
+    x_t = orth_xtuple[1]
+    covariant_matrix_orth_a = reduce(dot, [x_t[0], covariant_matrix_ao[0], x[0]])
+    covariant_matrix_orth_b = reduce(dot, [x_t[1], covariant_matrix_ao[1], x[1]])
+    return asarray([covariant_matrix_orth_a, covariant_matrix_orth_b])
 
-    elif method.lower() == 'nao':
-        from pyscf.lo import nao
-        assert(mf is not None)
-        logger.info(mf, "the AOs are orthogonalized with NAO")
-        c_orth_a = nao.nao(mol, mf, s)
-        c_orth_b = nao.nao(mol, mf, s)
-
-    elif method.lower() == 'canonical':
-        assert(mf is not None)
-        logger.info(mf, "the AOs are orthogonalized with canonical MO coefficients")
-        if not mf.converged:
-            raise RuntimeError("the MF must be converged")
-        c_orth_a = mf.mo_coeff[0]
-        c_orth_b = mf.mo_coeff[1]
-
-    else: # meta_lowdin: divide ao into core, valence and Rydberg sets,
-          # orthogonalizing within each set
-        weight = numpy.ones(pre_orth_ao.shape[0])
-        c_orth_a = nao._nao_sub(mol, weight, pre_orth_ao, s)
-        c_orth_b = nao._nao_sub(mol, weight, pre_orth_ao, s)
-    # adjust phase
-    for i in range(c_orth_a.shape[1]):
-        if c_orth_a[i,i] < 0:
-            c_orth_a[:,i] *= -1
-        if c_orth_b[i,i] < 0:
-            c_orth_b[:,i] *= -1
-    return numpy.array((c_orth_a, c_orth_b)).astype(numpy.complex128)
-
-def ao2orth_dm(tdscf, dm_ao):
-    x, x_t, x_inv, x_t_inv = tdscf.orth_xtuple
-    dm_prim_a = reduce(numpy.dot, (x_inv[0], dm_ao[0], x_t_inv[0]))
-    dm_prim_b = reduce(numpy.dot, (x_inv[1], dm_ao[1], x_t_inv[1]))
-    return numpy.array((dm_prim_a, dm_prim_b))
-
-def orth2ao_dm(tdscf, dm_prim):
-    x, x_t, x_inv, x_t_inv = tdscf.orth_xtuple
-    dm_ao_a = reduce(numpy.dot, (x[0], dm_prim[0], x_t[0]))
-    dm_ao_b = reduce(numpy.dot, (x[1], dm_prim[1], x_t[1]))
-    return numpy.array((dm_ao_a, dm_ao_b))# (dm_ao + dm_ao.conj().T)/2
-
-def ao2orth_fock(tdscf, fock_ao):
-    x, x_t, x_inv, x_t_inv = tdscf.orth_xtuple
-    fock_prim_a = reduce(numpy.dot, (x_t[0], fock_ao[0], x[0]))
-    fock_prim_b = reduce(numpy.dot, (x_t[1], fock_ao[1], x[1]))
-    return numpy.array((fock_prim_a, fock_prim_b))
-
-def orth2ao_fock(tdscf, fock_prim):
-    x, x_t, x_inv, x_t_inv = tdscf.orth_xtuple
-    fock_ao_a = reduce(numpy.dot, (x_t_inv[0], fock_prim[0], x_inv[0]))
-    fock_ao_b = reduce(numpy.dot, (x_t_inv[1], fock_prim[1], x_inv[1]))
-    return numpy.array((fock_ao_a, fock_ao_b)) # (fock_ao + fock_ao.conj().T)/2
+def orth2ao_covariant(covariant_matrix_orth, orth_xtuple):
+    """ transform covariant matrix from orthogonal basis to AO basis """
+    x_inv   = orth_xtuple[2]
+    x_t_inv = orth_xtuple[3]
+    covariant_matrix_ao_a = reduce(dot, [x_t_inv[0], covariant_matrix_orth[0], x_inv[0]])
+    covariant_matrix_ao_b = reduce(dot, [x_t_inv[1], covariant_matrix_orth[1], x_inv[1]])
+    return asarray([covariant_matrix_ao_a, covariant_matrix_ao_b])
 
 # propagate step
 def prop_step(tdscf, dt, fock_prim, dm_prim):
@@ -131,95 +98,115 @@ def prop_step(tdscf, dt, fock_prim, dm_prim):
     return dm_prim_, dm_ao_
    
 class TDHF(rhf_tdscf.TDHF):
-    prop_step = prop_step
-    ao2orth_dm = ao2orth_dm
-    orth2ao_dm = orth2ao_dm
-    ao2orth_fock = ao2orth_fock
-    orth2ao_fock = orth2ao_fock
+    def propagate_step(self, step_size, fock_orth, dm_orth, orth_xtuple=None):
+        if orth_xtuple is None:
+            orth_xtuple = self._orth_xtuple
+        dm_orth_   = asarray(
+            [expia_b_exp_ia(-step_size*fock_orth[0], dm_orth[0]), expia_b_exp_ia(-step_size*fock_orth[1], dm_orth[1])]
+            )
+        dm_ao_     = self.orth2ao_dm(dm_orth_, orth_xtuple=orth_xtuple)
+        return dm_orth_, dm_ao_
+
+    def ao2orth_dm(self, dm_ao, orth_xtuple=None):
+        if orth_xtuple is None:
+            orth_xtuple = self._orth_xtuple
+        return ao2orth_contravariant(dm_ao, orth_xtuple)
+
+    def orth2ao_dm(self, dm_orth, orth_xtuple=None):
+        if orth_xtuple is None:
+            orth_xtuple = self._orth_xtuple
+        return orth2ao_contravariant(dm_orth, orth_xtuple)
+
+    def ao2orth_fock(self, fock_ao, orth_xtuple=None):
+        if orth_xtuple is None:
+            orth_xtuple = self._orth_xtuple
+        return ao2orth_covariant(fock_ao, orth_xtuple)
+
+    def orth2ao_fock(self, fock_orth, orth_xtuple=None):
+        if orth_xtuple is None:
+            orth_xtuple = self._orth_xtuple
+        return orth2ao_covariant(fock_orth, orth_xtuple)
 
     def dump_flags(self, verbose=None):
         log = logger.new_logger(self, verbose)
         log.info('\n')
         log.info('******** %s ********', self.__class__)
         log.info(
-        'This is a real time TDSCF calculation initialized with a %s SCF',
-            (
-            "converged" if self._scf.converged else "not converged"
-            )
+        'This is a Real-Time TDSCF calculation initialized with a %s UHF instance',
+            ("converged" if self._scf.converged else "not converged")
         )
         if self._scf.converged:
             log.info(
-                'The SCF converged tolerence is conv_tol = %g, conv_tol should be less that 1e-8'%self._scf.conv_tol
+                'The SCF converged tolerence is conv_tol = %g'%self._scf.conv_tol
                 )
-        log.info(
-            'The initial condition is a UHF instance'
-            )
-        if self.chkfile:
-            log.info('chkfile to save RT TDSCF result = %s', self.chkfile)
-        log.info( 'dt = %f, maxstep = %d', self.dt, self.maxstep )
-        log.info( 'prop_method = %s', self.prop_func.__name__)
-        log.info('max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
+
+        if self.chk_file:
+            log.info('chkfile to save RT TDSCF result = %s', self.chk_file)
+        log.info( 'step_size = %f, total_step = %d', self.step_size, self.total_step )
+        log.info( 'prop_obj = %s', self.prop_obj.__class__.__name__)
+        log.info('max_memory %d MB (current use %d MB)',
+                 self.max_memory, lib.current_memory()[0])
 
     def _initialize(self):
-        if self.prop_func is None:
-            if self.prop_method is not None:
-                self.set_prop_func(key=self.prop_method)
-            else:
-                self.set_prop_func()
+        self._ovlp_ao          = self._scf.get_ovlp().astype(numpy.complex128)
+        self._hcore_ao         = self._scf.get_hcore().astype(numpy.complex128)
+        self._orth_xtuple      = orth_canonical_mo(self._scf)
+
+        if self.electric_field is not None:
+            self._get_field_ao = self.electric_field.get_field_ao
+
+        if self.prop_obj is None:   self.set_prop_obj(key=self.prop_method)
+        if self.step_obj is None:   self.step_obj   = RealTimeStep(self)
+        if self.result_obj is None: self.result_obj   = RealTimeResult(self)
+
         self.dump_flags()
 
-        if self.orth_method is None:
-            x = orth_ao(self._scf, method=ORTH_METHOD)
-            x_t = numpy.einsum('aij->aji', x)
-            x_inv = numpy.einsum('ali,ls->ais', x, self._scf.get_ovlp())
-            x_t_inv = numpy.einsum('aij->aji', x_inv)
-            self.orth_xtuple = (x, x_t, x_inv, x_t_inv)
-        else:
-            logger.info(self, 'orth method is %s.', self.orth_method)
-            x = orth_ao(self._scf, method=self.orth_method)
-            x_t = numpy.einsum('aij->aji', x)
-            x_inv = numpy.einsum('ali,ls->ais', x, self._scf.get_ovlp())
-            x_t_inv = numpy.einsum('aij->aji', x_inv)
-            self.orth_xtuple = (x, x_t, x_inv, x_t_inv)
-        
-        if self.verbose >= logger.DEBUG1:
-            print_matrix(
-                "alpha XT S X", reduce(numpy.dot, (self.orth_xtuple[1][0], self._scf.get_ovlp(), self.orth_xtuple[0][0]))
-                , ncols=PRINT_MAT_NCOL)
-            print_matrix(
-                "beta  XT S X", reduce(numpy.dot, (self.orth_xtuple[1][1], self._scf.get_ovlp(), self.orth_xtuple[0][1]))
-                , ncols=PRINT_MAT_NCOL)
-
-    def _finalize(self):
-        self.ndipole = numpy.zeros([self.maxstep+1,             3])
-        self.npop    = numpy.zeros([self.maxstep+1, self.mol.natm])
-        logger.info(self, "Finalization begins here")
-        s1e = self._scf.get_ovlp()
-        for i,idm in enumerate(self.ndm_ao):
-            self.ndipole[i] = self._scf.dip_moment(dm = idm.real, unit='au', verbose=0)
-            self.npop[i]    = self._scf.mulliken_pop(dm = idm.real, s=s1e, verbose=0)[1]
-        logger.info(self, "Finalization finished")
-
 if __name__ == "__main__":
-    mol =   gto.Mole( atom='''
-    O    0.0000000    0.0000000    0.5754646
-    O    0.0000000    0.0000000   -0.5754646
+    from pyscf import gto, scf
+    from field import ClassicalElectricField, constant_field_vec, gaussian_field_vec
+    h2o =   gto.Mole( atom='''
+    O     0.00000000    -0.00001441    -0.34824012
+    H    -0.00000000     0.76001092    -0.93285191
+    H     0.00000000    -0.75999650    -0.93290797
     '''
-    , basis='cc-pvdz', spin=2, symmetry=False).build()
+    , basis='sto-3g', symmetry=False).build()
 
-    mf = scf.UHF(mol)
-    mf.verbose = 5
-    mf.kernel()
+    h2o_uhf    = scf.UHF(h2o)
+    h2o_uhf.verbose = 4
+    h2o_uhf.conv_tol = 1e-20
+    h2o_uhf.max_cycle = 200
+    h2o_uhf.kernel()
 
-    dm = mf.make_rdm1()
-    fock = mf.get_fock()
+    dm_0   = h2o_uhf.make_rdm1()
+    fock_0 = h2o_uhf.get_fock()
 
-    rttd = TDHF(mf)
-    rttd.verbose = 5
-    rttd.maxstep = 5
-    rttd.prop_method = "lflp_pc"
-    rttd.dt      = 0.2
-    rttd.kernel(dm_ao_init=dm)
-    print(rttd.netot)
+    orth_xtuple = orth_canonical_mo(h2o_uhf)
+    dm_orth_0   = ao2orth_contravariant(dm_0, orth_xtuple)
+    fock_orth_0 = ao2orth_covariant(fock_0, orth_xtuple)
 
-    
+    print_cx_matrix("dm_orth_0_alpha   = ", dm_orth_0[0])
+    print_cx_matrix("fock_orth_0_alpha = ", fock_orth_0[0])
+
+    print_cx_matrix("dm_orth_0_beta    = ", dm_orth_0[1])
+    print_cx_matrix("fock_orth_0_beta  = ", fock_orth_0[1])
+
+    gaussian_vec = lambda t: gaussian_field_vec(t, 0.5329, 1.0, 0.0, [1e-2, 0.0, 0.0])
+    gaussian_field = ClassicalElectricField(h2o, field_func=gaussian_vec, stop_time=10.0)
+
+    rttd = TDHF(h2o_uhf, field=gaussian_field)
+    rttd.verbose        = 3
+    rttd.total_step     = 10
+    rttd.step_size      = 0.02
+    rttd.prop_method    = "lflp-pc"
+    rttd.save_frequency = 5
+    rttd.kernel(dm_ao_init=dm_0)
+
+    for i in range(3):
+        print("")
+        print("#####################################")
+        print("t = %f"%rttd.result_obj._time_list[i])
+        print("field = ", gaussian_vec(rttd.result_obj._time_list[i]))
+        print_cx_matrix("dm_orth_alpha   = ", rttd.result_obj._dm_orth_list[i][0])
+        # print_cx_matrix("fock_orth_alpha = ", rttd.result_obj._fock_orth_list[i][0])
+        print_cx_matrix("dm_orth_beta    = ", rttd.result_obj._dm_orth_list[i][1])
+        # print_cx_matrix("fock_orth_beta  = ", rttd.result_obj._fock_orth_list[i][1])

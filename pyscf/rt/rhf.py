@@ -4,41 +4,26 @@ import tempfile
 import numpy
 import scipy
 
-from sys import getsizeof
-
 from functools import reduce
 from numpy import dot
 
-from pyscf import gto, scf
-from pyscf.scf.hf import get_jk
-
 from pyscf import lib, lo
 from pyscf.lib import logger
-from pyscf.rt.chkfile import dump_rt_obj, dump_rt_step, load_rt_step, load_rt_step_index
 
+from pyscf.rt.propagator import Propogator, PCPropogator
 from pyscf.rt.propagator import EulerPropogator, MMUTPropogator
 from pyscf.rt.propagator import EPPCPropogator, LFLPPCPropogator
 
 from pyscf.rt.result import RealTimeStep, RealTimeResult
 
 from pyscf.rt.util import print_matrix, print_cx_matrix
-from pyscf.rt.util import errm, expm, expia_b_exp_ia
+from pyscf.rt.util import expia_b_exp_ia
 
 from pyscf import __config__
 
-PRINT_MAT_NCOL    = getattr(__config__, 'rt_tdscf_print_mat_ncol',              7)
-PC_TOL            = getattr(__config__, 'rt_tdscf_pc_tol',                  1e-14)
-PC_MAX_ITER       = getattr(__config__, 'rt_tdscf_pc_max_iter',                20)
-
-LAST      = 0 
-LAST_HALF = 1
-THIS      = 2
-NEXT_HALF = 3
-NEXT      = 4
-
 def orth_canonical_mo(scf_obj, ovlp_ao=None):
     """ transform AOs """
-    logger.info(scf_obj, "the AOs are orthogonalized with canonical MO coefficients")
+    logger.info(scf_obj, "the AOs are orthogonalized with restricted canonical MO coefficients")
     if not scf_obj.converged:
         logger.warn(scf_obj,"the SCF object must be converged")
     if ovlp_ao is None:
@@ -108,15 +93,12 @@ def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None,
 
     if total_step is None:
         total_step     = rt_obj.total_step
-    if save_frequency is not None:
-        total_save_step = total_step//save_frequency
-    else:
-        total_save_step = total_step
 
     if save_frequency is None and rt_obj.save_frequency is not None:
         save_frequency = rt_obj.save_frequency
     else:
         save_frequency = 1
+
     if result_obj     is None:  result_obj  = rt_obj.result_obj
     if save_in_memory is None:  save_in_memory = rt_obj.save_in_memory
 
@@ -146,9 +128,12 @@ def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None,
                        calculate_dipole=calculate_dipole, calculate_pop=calculate_pop,
                        calculate_energy=calculate_energy
                        )
+
 # TODO: initialize the propagator here
     step_iter = prop_obj.first_step(dm_ao_init, dm_orth_init, fock_ao_init, fock_orth_init,
                    step_obj=step_obj, verbose=verbose)
+    if isinstance(prop_obj, PCPropogator):
+        logger.info(rt_obj, "The results would be saved in the memory, %s", result_obj)
 # TODO: initialize the result_obj here
     save_iter = result_obj._initialize(step_obj)
     cput1 = logger.timer(rt_obj, 'initialize rt_obj', *cput0)
@@ -159,22 +144,6 @@ def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None,
         if step_iter%save_frequency == 0:
             result_obj._update(step_obj)
 
-    # cput2 = logger.timer(tdscf, 'propagation %d time steps'%(istep-1), *cput0)
-
-    # if (do_dump_chk) and (tdscf.chkfile) and (tdscf.save_frequency is None):
-    #     ntime      = tdscf.ntime
-    #     netot      = tdscf.netot
-    #     ndm_ao     = tdscf.ndm_ao
-    #     tdscf.dump_chk(locals())
-    #     cput3 = logger.timer(tdscf, 'dump chk finished', *cput0)
-    # elif (do_dump_chk) and (tdscf.chkfile) and (tdscf.save_frequency is not None):
-    #     logger.note(tdscf, 'The results are saved in every %d steps.', tdscf.save_frequency)
-    #     ntime      = tdscf.ntime[::tdscf.save_frequency]
-    #     netot      = tdscf.netot[::tdscf.save_frequency]
-    #     ndm_ao     = tdscf.ndm_ao[::tdscf.save_frequency]
-    #     # print(locals())
-    #     tdscf.dump_chk(locals())
-    #     cput3 = logger.timer(tdscf, 'dump chk finished', *cput0)
 
 class TDHF(lib.StreamObject):
     def __init__(self, scf_obj, field=None):
@@ -248,9 +217,9 @@ class TDHF(lib.StreamObject):
                 self.prop_obj = EulerPropogator(self)
             elif (key.lower() == 'mmut'):
                 self.prop_obj = MMUTPropogator(self)
-            elif (key.lower() == 'ep-pc'):
+            elif (key.lower() == 'ep-pc' or key.lower() == 'eppc'):
                 self.prop_obj = EPPCPropogator(self)
-            elif (key.lower() == 'lflp-pc'):
+            elif (key.lower() == 'lflp-pc' or key.lower() == 'lflp'):
                 self.prop_obj = LFLPPCPropogator(self)
             else:
                 raise RuntimeError("unknown prop method!")
@@ -306,7 +275,7 @@ class TDHF(lib.StreamObject):
         if veff_ao is None:
             veff_ao = self.get_veff_ao(dm_orth=dm_orth, dm_ao=dm_ao)
         fock_ao = self._scf.get_fock(hcore_ao, self._ovlp_ao, veff_ao, dm_ao)
-        return (fock_ao + fock_ao.conj().T)/2
+        return fock_ao
 
     def get_fock_orth(self, hcore_ao, fock_ao=None, dm_orth=None, dm_ao=None, veff_ao=None, orth_xtuple=None):
         if fock_ao is None:
@@ -322,7 +291,7 @@ class TDHF(lib.StreamObject):
             orth_xtuple=orth_xtuple
             )
         fock_orth = self.ao2orth_fock(fock_ao, orth_xtuple=orth_xtuple)
-        return (fock_orth + fock_orth.conj().T)/2
+        return fock_orth
 
     def get_energy_elec(self, hcore_ao, dm_orth=None,
                         dm_ao=None, veff_ao=None, orth_xtuple=None):
@@ -374,12 +343,6 @@ class TDHF(lib.StreamObject):
         if self.result_obj is None: self.result_obj   = RealTimeResult(self)
 
         self.dump_flags()
-        # dump_rt_obj(self.chk_file, self)
-        
-        if self.verbose >= logger.DEBUG:
-            print_matrix(
-                "XT S X", reduce(dot, (self._orth_xtuple[1], self._ovlp_ao, self._orth_xtuple[0]))
-                , ncols=PRINT_MAT_NCOL)
 
     def _finalize(self):
         pass
@@ -425,6 +388,7 @@ class TDHF(lib.StreamObject):
     #     dump_rt_step(self.chk_file, idx, **rt_dic)
 
 if __name__ == "__main__":
+    from pyscf import gto, scf
     from field import ClassicalElectricField, constant_field_vec, gaussian_field_vec
     h2o =   gto.Mole( atom='''
     O     0.00000000    -0.00001441    -0.34824012
@@ -445,6 +409,9 @@ if __name__ == "__main__":
     dm_orth_0   = ao2orth_contravariant(dm_0, orth_xtuple)
     fock_orth_0 = ao2orth_covariant(fock_0, orth_xtuple)
 
+    print_cx_matrix("dm_orth_0 = ", dm_orth_0)
+    print_cx_matrix("fock_orth_0 = ", fock_orth_0)
+
     gaussian_vec = lambda t: gaussian_field_vec(t, 0.5329, 1.0, 0.0, [1e-2, 0.0, 0.0])
     gaussian_field = ClassicalElectricField(h2o, field_func=gaussian_vec, stop_time=10.0)
 
@@ -452,20 +419,14 @@ if __name__ == "__main__":
     rttd.verbose        = 3
     rttd.total_step     = 10
     rttd.step_size      = 0.02
-    rttd.prop_obj       = EulerPropogator(rttd, verbose=3)
-    rttd.step_obj       = RealTimeStep(rttd, verbose=3)
-    rttd.result_obj     = RealTimeResult(rttd, verbose=3)
-    rttd._initialize()
-    kernel(rttd, dm_ao_init=dm_0)
+    rttd.prop_method    = "lflp-pc"
+    rttd.save_frequency = 5
+    rttd.kernel(dm_ao_init=dm_0)
 
-    for i in range(10):
+    for i in range(3):
         print("")
         print("#####################################")
         print("t = %f"%rttd.result_obj._time_list[i])
         print("field = ", gaussian_vec(rttd.result_obj._time_list[i]))
         print_cx_matrix("dm_orth = ", rttd.result_obj._dm_orth_list[i])
         print_cx_matrix("fock_orth = ", rttd.result_obj._fock_orth_list[i])
-    #     print("pop_list     = ", rttd.result_obj._pop_list[i])
-    #     print("_dipole_list = ", rttd.result_obj._dipole_list[i])
-
-

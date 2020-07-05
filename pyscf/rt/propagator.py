@@ -14,6 +14,8 @@ from pyscf.rt      import chkfile
 from pyscf.rt.util import errm
 
 from pyscf.rt.util import print_matrix, print_cx_matrix, errm, expm
+from pyscf.rt.util import expia_b_exp_ia
+
 
 from pyscf import __config__
 
@@ -40,6 +42,8 @@ class Propogator(lib.StreamObject):
         self.temp_fock_orths  = None
         self.temp_fock_aos    = None
 
+        logger.info( self, '\nInitializing Propagator: %s', self.__class__)
+
     def first_step(self, dm_ao_init, dm_orth_init, fock_ao_init, fock_orth_init,
                    step_obj=None, verbose=None):
         if step_obj is None:
@@ -53,7 +57,6 @@ class Propogator(lib.StreamObject):
         self.temp_fock_aos      = [fock_ao_init]
         self.temp_fock_orths    = [fock_orth_init]
         self.step_iter = 0
-        logger.info( self, '\nInitializing Propagator: %s', self.__class__)
         logger.debug(self, 'step_size = %f', self.step_size)
         logger.debug(self, 'step_iter=%d, t=%f', 0, 0.0)
         logger.info(self, '\n')
@@ -131,7 +134,6 @@ class MMUTPropogator(Propogator):
         self.temp_fock_orths       = [fock_orth_init , next_half_fock_orth]
 
         self.step_iter = 0
-        logger.info( self, '\nInitializing Propagator: %s', self.__class__)
         logger.debug(self, 'step_size = %f', self.step_size)
         logger.debug(self, 'step_iter=%d, t=%f', 0, 0.0)
         logger.info(self, '\n')
@@ -190,7 +192,7 @@ class MMUTPropogator(Propogator):
 
         return self.step_iter
 
-class EPPCPropogator(Propogator):
+class PCPropogator(Propogator):
     def __init__(self, rt_obj, verbose=None, tol=None, max_iter=None):
         if verbose is None:
             verbose = rt_obj.verbose
@@ -216,6 +218,12 @@ class EPPCPropogator(Propogator):
         self.temp_dm_orths    = None
         self.temp_fock_orths  = None
         self.temp_fock_aos    = None
+
+        logger.info( self, '\nPC-Propagator: %s', self.__class__)
+        logger.info( self, '\ninner_max_iter = %d', self.max_iter)
+        logger.info( self, '\ninner_tol = %e', self.tol)
+
+class EPPCPropogator(PCPropogator):
 
     def propagate_step(self, step_obj=None, verbose=None):
         if step_obj is None:
@@ -274,32 +282,7 @@ class EPPCPropogator(Propogator):
 
         return self.step_iter
 
-class LFLPPCPropogator(Propogator):
-    def __init__(self, rt_obj, verbose=None, tol=None, max_iter=None):
-        if verbose is None:
-            verbose = rt_obj.verbose
-        self.verbose = verbose 
-        
-        self.rt_obj          = rt_obj
-        self.step_size       = rt_obj.step_size
-
-        if tol is None:
-            self.tol = PC_TOL
-        else:
-            self.tol = tol
-
-        if max_iter is None:
-            self.max_iter = PC_MAX_ITER
-        else:
-            self.max_iter = max_iter
-
-        self.step_obj         = None
-        self.step_iter        = None
-        self.temp_ts          = None
-        self.temp_dm_aos      = None
-        self.temp_dm_orths    = None
-        self.temp_fock_orths  = None
-        self.temp_fock_aos    = None
+class LFLPPCPropogator(PCPropogator):
 
     def first_step(self, dm_ao_init, dm_orth_init, fock_ao_init, fock_orth_init,
                    step_obj=None, verbose=None):
@@ -329,7 +312,6 @@ class LFLPPCPropogator(Propogator):
         self.temp_fock_orths       = [fock_orth_init , next_half_fock_orth]
 
         self.step_iter = 0
-        logger.info( self, '\nInitializing Propagator: %s', self.__class__)
         logger.debug(self, 'step_size = %f', self.step_size)
         logger.debug(self, 'step_iter=%d, t=%f', 0, 0.0)
         logger.info(self, '\n')
