@@ -67,10 +67,9 @@ def orth2ao_covariant(covariant_matrix_orth, orth_xtuple):
 
 def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None,
                    step_size = None, total_step = None,
-                   prop_obj = None, step_obj = None, save_frequency = None,
-                   result_obj = None, save_in_memory = None,
-                   chk_file = None,  save_in_disk = None,
-                   calculate_dipole = None, calculate_pop =None, calculate_energy=None,
+                   prop_obj = None, step_obj = None, result_obj = None, chk_file = None,
+                   save_frequency = 1, save_in_memory = True, save_in_disk   = False,
+                   calculate_dipole = True, calculate_pop =True, calculate_energy=True,
                    verbose = None):
 
     cput0 = (time.clock(), time.time())
@@ -83,37 +82,28 @@ def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None,
             dm_orth_init = rt_obj.ao2orth_dm(dm_ao_init)
     else:
         dm_orth_init = rt_obj.ao2orth_dm(dm_ao_init)
-
-    if prop_obj   is None:  prop_obj   = rt_obj.prop_obj
+    
+    if prop_obj    is None:  prop_obj    = rt_obj.prop_obj
     if step_obj    is None:  step_obj    = rt_obj.step_obj
-
-    if calculate_dipole is None:  calculate_dipole = rt_obj.calculate_dipole
-    if calculate_pop    is None:  calculate_pop   = rt_obj.calculate_pop
-    if calculate_energy is None:  calculate_energy    = rt_obj.calculate_energy
 
     if total_step is None:
         total_step     = rt_obj.total_step
 
-    if save_frequency is None and rt_obj.save_frequency is not None:
-        save_frequency = rt_obj.save_frequency
-    else:
-        save_frequency = 1
-
-    if result_obj     is None:  result_obj  = rt_obj.result_obj
+    if result_obj     is None:  result_obj     = rt_obj.result_obj
     if save_in_memory is None:  save_in_memory = rt_obj.save_in_memory
 
     if save_in_memory:
         assert result_obj is not None
         logger.info(rt_obj, "The results would be saved in the memory, %s", result_obj)
 
-    if chk_file       is None:  chk_file  = rt_obj.chk_file
-    if save_in_disk   is None:  save_in_disk = rt_obj.save_in_disk
+    if chk_file       is None:  chk_file     = rt_obj.chk_file
 
     if save_in_disk:
         assert chk_file is not None
         logger.info(rt_obj, "The results would be saved in the disk, %s", chk_file)
 
     assert save_in_disk or save_in_memory
+
 
     h1e_ao_init    = rt_obj.get_hcore_ao(0.0)
     vhf_ao_init    = rt_obj.get_veff_ao(dm_orth=dm_orth_init ,dm_ao=dm_ao_init)
@@ -138,7 +128,7 @@ def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None,
     save_iter = result_obj._initialize(step_obj)
     cput1 = logger.timer(rt_obj, 'initialize rt_obj', *cput0)
 
-    while step_iter <= total_step:
+    while step_iter < total_step:
         # propagation step
         step_iter = prop_obj.propagate_step(step_obj=step_obj, verbose=verbose)
         if step_iter%save_frequency == 0:
@@ -214,13 +204,13 @@ class TDHF(lib.StreamObject):
         if (key is not None):
             if   (key.lower() == 'euler'):
                 # self.prop_func = euler_prop
-                self.prop_obj = EulerPropogator(self)
+                self.prop_obj = EulerPropogator(self, verbose=self.verbose)
             elif (key.lower() == 'mmut'):
-                self.prop_obj = MMUTPropogator(self)
+                self.prop_obj = MMUTPropogator(self, verbose=self.verbose)
             elif (key.lower() == 'ep-pc' or key.lower() == 'eppc'):
-                self.prop_obj = EPPCPropogator(self)
+                self.prop_obj = EPPCPropogator(self, verbose=self.verbose)
             elif (key.lower() == 'lflp-pc' or key.lower() == 'lflp'):
-                self.prop_obj = LFLPPCPropogator(self)
+                self.prop_obj = LFLPPCPropogator(self, verbose=self.verbose)
             else:
                 raise RuntimeError("unknown prop method!")
         else:
@@ -249,10 +239,8 @@ class TDHF(lib.StreamObject):
     def get_hcore_ao(self, t, get_field_ao=None):
         if get_field_ao is None:
             if self._get_field_ao is None:
-                # print(self._hcore_ao)
                 return self._hcore_ao
             else:
-                # print_matrix("t = %f, hcore = "%t, self._hcore_ao.real + self._get_field_ao(t).real)
                 return self._hcore_ao + self._get_field_ao(t)
         else:
             return self._hcore_ao + get_field_ao(t)
@@ -338,10 +326,6 @@ class TDHF(lib.StreamObject):
         if self.electric_field is not None:
             self._get_field_ao = self.electric_field.get_field_ao
 
-        if self.prop_obj is None:   self.set_prop_obj(key=self.prop_method)
-        if self.step_obj is None:   self.step_obj   = RealTimeStep(self)
-        if self.result_obj is None: self.result_obj   = RealTimeResult(self)
-
         self.dump_flags()
 
     def _finalize(self):
@@ -351,13 +335,69 @@ class TDHF(lib.StreamObject):
         logger.info(self, "Finalization finished")
     '''
 
-    def kernel(self, **kwargs):
+    def kernel(self, dm_ao_init= None, dm_orth_init=None,
+                   step_size = None, total_step = None,
+                   prop_obj = None, step_obj = None, save_frequency = None,
+                   result_obj = None, save_in_memory = None,
+                   chk_file = None,  save_in_disk = None,
+                   calculate_dipole = None, calculate_pop =None,
+                   calculate_energy=None,
+                   verbose = None):
         self._initialize()
 
+        if dm_ao_init is None:
+            if dm_orth_init is not None:
+                dm_ao_init = self.orth2ao_dm(dm_orth_init)
+            else:
+                dm_ao_init   = self.dm_ao_init
+                dm_orth_init = self.ao2orth_dm(dm_ao_init)
+        else:
+            dm_orth_init = self.ao2orth_dm(dm_ao_init)
+
+        if prop_obj    is None:
+            if self.prop_obj is None:
+                self.set_prop_obj(key=self.prop_method)
+            prop_obj    = self.prop_obj
+
+        if step_obj    is None:
+            if self.step_obj is None:
+                self.step_obj   = RealTimeStep(self, verbose=self.verbose)
+            step_obj    = self.step_obj
+
+        if calculate_dipole is None:  calculate_dipole    = self.calculate_dipole
+        if calculate_pop    is None:  calculate_pop       = self.calculate_pop
+        if calculate_energy is None:  calculate_energy    = self.calculate_energy
+
+        if total_step is None:
+            total_step     = self.total_step
+
+        if save_frequency is None and self.save_frequency is not None:
+            save_frequency = self.save_frequency
+        else:
+            save_frequency = 1
+
+        if result_obj     is None:
+            if self.result_obj is None:
+                self.result_obj   = RealTimeResult(self, verbose=self.verbose)
+            result_obj     = self.result_obj
+        if save_in_memory is None:  save_in_memory = self.save_in_memory
+
+        if chk_file       is None:  chk_file     = self.chk_file
+        if save_in_disk   is None:  save_in_disk = self.save_in_disk
+
         kernel(
-           self, **kwargs
+           self, dm_ao_init= dm_ao_init, dm_orth_init=dm_orth_init,
+                 step_size = step_size, total_step = total_step,
+                 prop_obj = prop_obj, step_obj = step_obj, save_frequency = save_frequency,
+                 result_obj = result_obj, save_in_memory = save_in_memory,
+                 chk_file = chk_file,  save_in_disk = save_in_disk,
+                 calculate_dipole = calculate_dipole,
+                 calculate_pop =calculate_pop,
+                 calculate_energy=calculate_energy,
+                 verbose = verbose
             )
-        logger.info(self, 'after propogation matrices, max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
+        logger.info(self, 'after propogation matrices, max_memory %d MB (current use %d MB)',
+                    self.max_memory, lib.current_memory()[0])
         logger.info(self, "Propagation finished")
         self._finalize()
 

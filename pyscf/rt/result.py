@@ -49,7 +49,7 @@ class RealTimeStep(StreamObject):
         self.step_fock_ao       = fock_ao_init
         self.step_fock_orth     = fock_orth_init
 
-        logger.debug(self, 'step_iter=%d, t=%f', 0, 0.0)
+        logger.debug1(self, 'step_iter=%d, t=%f', 0, 0.0)
         if calculate_energy is None:
             calculate_energy = self.rt_obj.calculate_energy
         if calculate_energy:
@@ -59,7 +59,7 @@ class RealTimeStep(StreamObject):
             self.step_energy_tot = self.rt_obj.get_energy_tot(
                 hcore_ao, dm_orth=dm_orth_init, dm_ao=dm_ao_init, veff_ao=veff_ao
                 )
-            logger.debug(self, 'step_energy_elec = %f, step_energy_tot = %f', self.step_energy_elec, self.step_energy_tot)
+            logger.debug1(self, 'step_energy_elec = %f, step_energy_tot = %f', self.step_energy_elec, self.step_energy_tot)
         
 
     def _update(self, t, step_iter, dm_ao, dm_orth, fock_ao, fock_orth, hcore_ao, veff_ao):
@@ -76,7 +76,7 @@ class RealTimeStep(StreamObject):
         self.step_fock_ao   =   fock_ao
         self.step_fock_orth = fock_orth
 
-        logger.debug(self, 'step_iter=%d, t=%f', step_iter, t)
+        logger.debug1(self, 'step_iter=%d, t=%f', step_iter, t)
         if (self.step_energy_elec is not None) and (self.step_energy_tot is not None):
             self.step_energy_elec = self.rt_obj.get_energy_elec(
                 hcore_ao, dm_orth=dm_orth, dm_ao=dm_ao, veff_ao=veff_ao
@@ -84,7 +84,7 @@ class RealTimeStep(StreamObject):
             self.step_energy_tot = self.rt_obj.get_energy_tot(
                 hcore_ao, dm_orth=dm_orth, dm_ao=dm_ao, veff_ao=veff_ao
                 )
-            logger.debug(self, 'step_energy_elec = %f, step_energy_tot = %f', self.step_energy_elec, self.step_energy_tot)
+            logger.debug1(self, 'step_energy_elec = %f, step_energy_tot = %f', self.step_energy_elec, self.step_energy_tot)
 
 class RealTimeResult(object):
     def __init__(self, rt_obj, verbose=None):

@@ -26,6 +26,9 @@ PC_TOL            = getattr(__config__, 'rt_tdscf_pc_tol',                  1e-1
 PC_MAX_ITER       = getattr(__config__, 'rt_tdscf_pc_max_iter',                20)
 
 class Propogator(lib.StreamObject):
+    pass
+
+class EulerPropogator(Propogator):
     def __init__(self, rt_obj, verbose=None):
         if verbose is None:
             verbose = rt_obj.verbose
@@ -73,6 +76,7 @@ class Propogator(lib.StreamObject):
         next_dm_orth, next_dm_ao = self.rt_obj.propagate_step(
             self.step_size, self.temp_fock_orths[0], self.temp_dm_orths[0]
         )
+        cput1 = logger.timer(self, '%20s'%"propagate", *cput_time)
         next_t         = self.temp_ts[0] + self.step_size
         next_iter_step = self.step_iter + 1
 
@@ -84,6 +88,7 @@ class Propogator(lib.StreamObject):
         next_fock_orth = self.rt_obj.get_fock_orth(
             next_hcore_ao, fock_ao=next_fock_ao, dm_orth=next_dm_orth, dm_ao=next_dm_ao, veff_ao=next_veff_ao
             )
+        cput2 = logger.timer(self, '%20s'%'build fock', *cput1)
         
         step_obj._update(
             next_t, next_iter_step, next_dm_ao, next_dm_orth,
@@ -97,15 +102,30 @@ class Propogator(lib.StreamObject):
 
         self.step_iter  += 1
         self.temp_ts    += self.step_size
+        cput3 = logger.timer(self, '%20s'%'step finished', *cput_time)
         logger.debug(self, 'step_iter=%d, t=%f au', next_iter_step, next_t)
-        cput1 = logger.timer(self, 'propagate_step', *cput_time)
-
+        logger.info(self, '\n')
         return self.step_iter
 
-class EulerPropogator(Propogator):
-    pass
-
 class MMUTPropogator(Propogator):
+    def __init__(self, rt_obj, verbose=None):
+        if verbose is None:
+            verbose = rt_obj.verbose
+        self.verbose = verbose 
+        
+        self.rt_obj          = rt_obj
+        self.step_size       = rt_obj.step_size
+
+        self.step_obj         = None
+        self.step_iter        = None
+        self.temp_ts          = None
+        self.temp_dm_aos      = None
+        self.temp_dm_orths    = None
+        self.temp_fock_orths  = None
+        self.temp_fock_aos    = None
+
+        logger.info( self, '\nInitializing Propagator: %s', self.__class__)
+
     def first_step(self, dm_ao_init, dm_orth_init, fock_ao_init, fock_orth_init,
                    step_obj=None, verbose=None):
         if step_obj is None:
@@ -152,6 +172,7 @@ class MMUTPropogator(Propogator):
         next_half_dm_orth, next_half_dm_ao = self.rt_obj.propagate_step(
             self.step_size, self.temp_fock_orths[0], self.temp_dm_orths[1]
         )
+        cput1 = logger.timer(self, '%20s'%"first propagate", *cput_time)
         next_half_hcore_ao  = self.rt_obj.get_hcore_ao(next_half_t)
         next_half_veff_ao   = self.rt_obj.get_veff_ao(dm_orth=next_half_dm_orth, dm_ao=next_half_dm_ao)
         next_half_fock_ao   = self.rt_obj.get_fock_ao(
@@ -160,11 +181,12 @@ class MMUTPropogator(Propogator):
         next_half_fock_orth = self.rt_obj.get_fock_orth(
             next_half_hcore_ao, fock_ao=next_half_fock_ao, dm_orth=next_half_dm_orth, dm_ao=next_half_dm_ao, veff_ao=next_half_veff_ao
             )
-
+        cput2 = logger.timer(self, '%20s'%"first fock build", *cput1)
         next_t = self.temp_ts[0] + self.step_size
         next_dm_orth, next_dm_ao = self.rt_obj.propagate_step(
             self.step_size, next_half_fock_orth, self.temp_dm_orths[0]
         )
+        cput3 = logger.timer(self, '%20s'%"second propagate", *cput2)
         next_hcore_ao  = self.rt_obj.get_hcore_ao(next_t)
         next_veff_ao   = self.rt_obj.get_veff_ao(dm_orth=next_dm_orth, dm_ao=next_dm_ao)
         next_fock_ao   = self.rt_obj.get_fock_ao(
@@ -172,7 +194,8 @@ class MMUTPropogator(Propogator):
             )
         next_fock_orth = self.rt_obj.get_fock_orth(
             next_hcore_ao, fock_ao=next_fock_ao, dm_orth=next_dm_orth, dm_ao=next_dm_ao, veff_ao=next_veff_ao
-            )            
+            )
+        cput3 = logger.timer(self, '%20s'%"second fock build", *cput2)
 
         next_iter_step = self.step_iter + 1
         step_obj._update(
@@ -187,12 +210,16 @@ class MMUTPropogator(Propogator):
 
         self.step_iter  += 1
         self.temp_ts    += self.step_size
-        logger.debug(self, 'step_iter=%d, t=%f au', next_iter_step, next_t)
-        cput1 = logger.timer(self, 'propagate_step', *cput_time)
 
+        cput4 = logger.timer(self, '%20s'%'step finished', *cput_time)
+        logger.debug(self, 'step_iter=%d, t=%f au', next_iter_step, next_t)
+        logger.info(self, '\n')
         return self.step_iter
 
 class PCPropogator(Propogator):
+    pass
+
+class EPPCPropogator(PCPropogator):
     def __init__(self, rt_obj, verbose=None, tol=None, max_iter=None):
         if verbose is None:
             verbose = rt_obj.verbose
@@ -220,10 +247,27 @@ class PCPropogator(Propogator):
         self.temp_fock_aos    = None
 
         logger.info( self, '\nPC-Propagator: %s', self.__class__)
-        logger.info( self, '\ninner_max_iter = %d', self.max_iter)
-        logger.info( self, '\ninner_tol = %e', self.tol)
+        logger.info( self, 'inner_max_iter = %d', self.max_iter)
+        logger.info( self, 'inner_tol = %e', self.tol)
 
-class EPPCPropogator(PCPropogator):
+    def first_step(self, dm_ao_init, dm_orth_init, fock_ao_init, fock_orth_init,
+                   step_obj=None, verbose=None):
+        if step_obj is None:
+            step_obj = self.step_obj
+        if verbose is None:
+            verbose = self.verbose
+
+        self.temp_ts            =  numpy.array([0.0])
+        self.temp_dm_aos        = [dm_ao_init]
+        self.temp_dm_orths      = [dm_orth_init]
+        self.temp_fock_aos      = [fock_ao_init]
+        self.temp_fock_orths    = [fock_orth_init]
+        self.step_iter = 0
+        logger.debug(self, 'step_size = %f', self.step_size)
+        logger.debug(self, 'step_iter=%d, t=%f', 0, 0.0)
+        logger.info(self, '\n')
+
+        return self.step_iter
 
     def propagate_step(self, step_obj=None, verbose=None):
         if step_obj is None:
@@ -283,6 +327,35 @@ class EPPCPropogator(PCPropogator):
         return self.step_iter
 
 class LFLPPCPropogator(PCPropogator):
+    def __init__(self, rt_obj, verbose=None, tol=None, max_iter=None):
+        if verbose is None:
+            verbose = rt_obj.verbose
+        self.verbose = verbose 
+        
+        self.rt_obj          = rt_obj
+        self.step_size       = rt_obj.step_size
+
+        if tol is None:
+            self.tol = PC_TOL
+        else:
+            self.tol = tol
+
+        if max_iter is None:
+            self.max_iter = PC_MAX_ITER
+        else:
+            self.max_iter = max_iter
+
+        self.step_obj         = None
+        self.step_iter        = None
+        self.temp_ts          = None
+        self.temp_dm_aos      = None
+        self.temp_dm_orths    = None
+        self.temp_fock_orths  = None
+        self.temp_fock_aos    = None
+
+        logger.info( self, '\nPC-Propagator: %s', self.__class__)
+        logger.info( self, 'inner_max_iter = %d', self.max_iter)
+        logger.info( self, 'inner_tol = %e', self.tol)
 
     def first_step(self, dm_ao_init, dm_orth_init, fock_ao_init, fock_orth_init,
                    step_obj=None, verbose=None):
