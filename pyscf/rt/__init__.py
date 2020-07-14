@@ -1,4 +1,8 @@
 # Author: Junjie Yang <yangjunjie0320@gmail.com> Zheng Pei and Yihan Shao
+'''
+Real-Time TD-DFT calculation
+======================================
+'''
 import pyscf
 
 from pyscf import rt

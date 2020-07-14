@@ -10,50 +10,61 @@ class TDDFT(uhf_tdscf.TDHF):
         log.info('\n')
         log.info('******** %s ********', self.__class__)
         log.info(
-        'This is a real time TDSCF calculation initialized with a %s SCF',
-            (
-            "converged" if self._scf.converged else "not converged"
-            )
+        'This is a Real-Time TDDFT calculation initialized with a %s UKS instance',
+            ("converged" if self._scf.converged else "not converged")
         )
         if self._scf.converged:
             log.info(
-                'The SCF converged tolerence is conv_tol = %g, conv_tol should be less that 1e-8'%self._scf.conv_tol
+                'The SCF converged tolerence is conv_tol = %g'%self._scf.conv_tol
                 )
-        log.info(
-            'The initial condition is a UKS instance'
-            )
-        log.info(
-            'The xc functional is %s'%self._scf.xc
-            )
-        if self.chkfile:
-            log.info('chkfile to save RT TDSCF result = %s', self.chkfile)
-        log.info( 'dt = %f, maxstep = %d', self.dt, self.maxstep )
-        log.info( 'prop_method = %s', self.prop_func.__name__)
-        log.info('max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
+
+        if self.chk_file:
+            log.info('chkfile to save RT TDSCF result = %s', self.chk_file)
+        log.info( 'xc = %s', self._scf.xc )
+        log.info( 'step_size = %f, total_step = %d', self.step_size, self.total_step )
+        log.info( 'prop_method = %s', self.prop_method)
+        log.info('max_memory %d MB (current use %d MB)',
+                 self.max_memory, lib.current_memory()[0])
 
 if __name__ == "__main__":
-    from pyscf import dft, gto
+    ''' This is a short test.'''
+    from pyscf import gto, scf
+    from result import read_step_dict
+    from field import ClassicalElectricField, constant_field_vec, gaussian_field_vec
     import numpy
-    
-    mol =   gto.Mole( atom='''
-    O    0.0000000    0.0000000    0.5754646
-    O    0.0000000    0.0000000   -0.5754646
+
+    h2o =   gto.Mole( atom='''
+    O     0.00000000    -0.00001441    -0.34824012
+    H    -0.00000000     0.76001092    -0.93285191
+    H     0.00000000    -0.75999650    -0.93290797
     '''
-    , basis='sto-3g', spin=2, symmetry=False).build()
+    , basis='sto-3g', symmetry=False).build() # water
 
-    mf = dft.UKS(mol)
-    mf.verbose = 5
-    mf.xc = "b3lyp"
-    mf.kernel()
+    h2o_rks    = scf.UKS(h2o)
+    h2o_rks.xc = "B3LYP"
+    h2o_rks.verbose = 0
+    h2o_rks.conv_tol = 1e-12
+    h2o_rks.kernel()
+    dm_init = h2o_rks.make_rdm1()
 
-    dm = mf.make_rdm1()
-    fock = mf.get_fock()
+    gaussian_vec = lambda t: gaussian_field_vec(t, 0.5329, 1.0, 0.0, [1e-2, 0.0, 0.0])
+    gaussian_field = ClassicalElectricField(h2o, field_func=gaussian_vec, stop_time=10.0)
 
-    rttd = TDDFT(mf)
-    
-    rttd.verbose = 5
-    rttd.maxstep = 5
-    rttd.prop_method = "lflp_pc"
-    rttd.dt      = 0.2
-    rttd.kernel(dm_ao_init=dm)
-    print(rttd.netot)
+    rttd = TDDFT(h2o_rks, field=gaussian_field)
+    rttd.verbose        = 5
+    rttd.total_step     = 10
+    rttd.step_size      = 0.02
+    rttd.chk_file       = "./test/h2o_rt.chk"
+    rttd.prop_method    = "eppc"
+    rttd.save_frequency = 5
+    rttd.kernel(dm_ao_init=dm_init, save_in_disk = True, save_in_memory = True,
+                calculate_energy=True, calculate_dipole=True)
+
+    for i in rttd.save_index_list:
+        print("t = %f"%rttd.result_obj._time_list[i])
+        temp_dict = read_step_dict(i, result_obj = None, chk_file = "./test/h2o_rt.chk" )
+        assert numpy.allclose(temp_dict["dm_orth"], rttd.result_obj._dm_orth_list[i])
+        temp_dict = read_step_dict(i, result_obj = rttd.result_obj, chk_file = None )
+        assert numpy.allclose(temp_dict["dm_orth"], rttd.result_obj._dm_orth_list[i])
+        temp_dict = rttd.read_step_dict(i)
+        assert numpy.allclose(temp_dict["dm_orth"], rttd.result_obj._dm_orth_list[i])

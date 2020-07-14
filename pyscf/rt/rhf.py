@@ -5,16 +5,17 @@ import numpy
 import scipy
 
 from functools import reduce
-from numpy import dot
+from numpy import dot, complex128
 
-from pyscf import lib, lo
+from pyscf import lib
 from pyscf.lib import logger
 
-from pyscf.rt.propagator import Propogator, PCPropogator
+from pyscf.rt.propagator import Propogator,      PCPropogator
 from pyscf.rt.propagator import EulerPropogator, MMUTPropogator
-from pyscf.rt.propagator import EPPCPropogator, LFLPPCPropogator
+from pyscf.rt.propagator import EPPCPropogator,  LFLPPCPropogator
 
-from pyscf.rt.result import RealTimeStep, RealTimeResult
+from pyscf.rt.result import RealTimeStep,    RealTimeResult
+from pyscf.rt.result import read_index_list, read_step_dict         
 
 from pyscf.rt.util import print_matrix, print_cx_matrix
 from pyscf.rt.util import expia_b_exp_ia
@@ -22,7 +23,7 @@ from pyscf.rt.util import expia_b_exp_ia
 from pyscf import __config__
 
 def orth_canonical_mo(scf_obj, ovlp_ao=None):
-    """ transform AOs """
+    """ get transformation matrices """
     logger.info(scf_obj, "the AOs are orthogonalized with restricted canonical MO coefficients")
     if not scf_obj.converged:
         logger.warn(scf_obj,"the SCF object must be converged")
@@ -30,7 +31,7 @@ def orth_canonical_mo(scf_obj, ovlp_ao=None):
         ovlp_ao = scf_obj.get_ovlp()
 
     c_orth = scf_obj.mo_coeff
-    x       = c_orth.astype(numpy.complex128)
+    x       = c_orth.astype(complex128)
     x_t     = x.T
     x_inv   = dot(x_t, ovlp_ao)
     x_t_inv = x_inv.T
@@ -65,11 +66,8 @@ def orth2ao_covariant(covariant_matrix_orth, orth_xtuple):
     covariant_matrix_ao = reduce(dot, [x_t_inv, covariant_matrix_orth, x_inv])
     return covariant_matrix_ao
 
-def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None,
-                   step_size = None, total_step = None,
-                   prop_obj = None, step_obj = None, result_obj = None, chk_file = None,
-                   save_frequency = 1, save_in_memory = True, save_in_disk   = False,
-                   calculate_dipole = True, calculate_pop =True, calculate_energy=True,
+def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None, step_size = None, total_step = None,
+                   prop_obj = None, step_obj = None, result_obj = None, save_frequency = None,
                    verbose = None):
 
     cput0 = (time.clock(), time.time())
@@ -82,28 +80,16 @@ def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None,
             dm_orth_init = rt_obj.ao2orth_dm(dm_ao_init)
     else:
         dm_orth_init = rt_obj.ao2orth_dm(dm_ao_init)
-    
-    if prop_obj    is None:  prop_obj    = rt_obj.prop_obj
-    if step_obj    is None:  step_obj    = rt_obj.step_obj
 
     if total_step is None:
         total_step     = rt_obj.total_step
 
-    if result_obj     is None:  result_obj     = rt_obj.result_obj
-    if save_in_memory is None:  save_in_memory = rt_obj.save_in_memory
-
-    if save_in_memory:
-        assert result_obj is not None
-        logger.info(rt_obj, "The results would be saved in the memory, %s", result_obj)
-
-    if chk_file       is None:  chk_file     = rt_obj.chk_file
-
-    if save_in_disk:
-        assert chk_file is not None
-        logger.info(rt_obj, "The results would be saved in the disk, %s", chk_file)
-
-    assert save_in_disk or save_in_memory
-
+    if step_size is None:
+        step_size      = rt_obj.step_size
+    
+    if prop_obj    is None:  prop_obj    = rt_obj.prop_obj
+    if step_obj    is None:  step_obj    = rt_obj.step_obj
+    if result_obj  is None:  result_obj     = rt_obj.result_obj
 
     h1e_ao_init    = rt_obj.get_hcore_ao(0.0)
     vhf_ao_init    = rt_obj.get_veff_ao(dm_orth=dm_orth_init ,dm_ao=dm_ao_init)
@@ -112,27 +98,21 @@ def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None,
     fock_orth_init = rt_obj.get_fock_orth(hcore_ao=h1e_ao_init, fock_ao=fock_ao_init, 
                                           dm_orth=dm_orth_init ,dm_ao=dm_ao_init)
 
-# TODO: initialize the step_obj here
     step_obj._initialize(dm_ao_init, dm_orth_init, fock_ao_init, fock_orth_init,
-                       h1e_ao_init, vhf_ao_init,
-                       calculate_dipole=calculate_dipole, calculate_pop=calculate_pop,
-                       calculate_energy=calculate_energy
-                       )
+                       h1e_ao_init, vhf_ao_init)
 
-# TODO: initialize the propagator here
     step_iter = prop_obj.first_step(dm_ao_init, dm_orth_init, fock_ao_init, fock_orth_init,
                    step_obj=step_obj, verbose=verbose)
-    if isinstance(prop_obj, PCPropogator):
-        logger.info(rt_obj, "The results would be saved in the memory, %s", result_obj)
-# TODO: initialize the result_obj here
     save_iter = result_obj._initialize(step_obj)
-    cput1 = logger.timer(rt_obj, 'initialize rt_obj', *cput0)
+    cput1 = logger.timer(rt_obj, 'Initialize rt_obj', *cput0)
 
     while step_iter < total_step:
         # propagation step
         step_iter = prop_obj.propagate_step(step_obj=step_obj, verbose=verbose)
         if step_iter%save_frequency == 0:
             result_obj._update(step_obj)
+    result_obj._finalize()
+    cput2 = logger.timer(rt_obj, 'Finish rt_obj', *cput0)
 
 
 class TDHF(lib.StreamObject):
@@ -156,13 +136,11 @@ class TDHF(lib.StreamObject):
 # filename to self.chk_file
         self._chkfile   = tempfile.NamedTemporaryFile(dir=lib.param.TMPDIR)
         self.chk_file   = self._chkfile.name
+        self.step_obj   = None
 
-        self.save_frequency   = None
-        self.save_in_memory   = True
-        self.save_in_disk     = False
-
-        self.result_obj        = None
-        self.step_obj          = None
+# propagation method
+        self.prop_method     = None # a string
+        self.prop_obj        = None # a Propogator object
 
 # intermediate result 
         self._orth_xtuple     = None
@@ -172,7 +150,6 @@ class TDHF(lib.StreamObject):
 # input parameters for propagation
 # initial condition
         self.dm_ao_init = None
-
 # time step and total_step
         self.step_size     = None
         self.total_step    = None
@@ -180,14 +157,16 @@ class TDHF(lib.StreamObject):
         self.calculate_dipole  = True
         self.calculate_pop     = True
         self.calculate_energy  = True
-
-# propagation method
-        self.prop_method     = None # a string
-        self.prop_obj        = None # a Propogator object
+        self.save_frequency   = None
+        self.save_in_memory   = True
+        self.save_in_disk     = False
 
 # electric field during propagation, a time-dependent electric field object
         self.electric_field  = field
-        self._get_field_ao   = None
+
+# result
+        self.result_obj        = None
+        self.save_index_list   = None
 
     def propagate_step(self, step_size, fock_orth, dm_orth, orth_xtuple=None):
         if orth_xtuple is None:
@@ -217,6 +196,9 @@ class TDHF(lib.StreamObject):
             self.prop_obj = EulerPropogator(self)
 
     def ao2orth_dm(self, dm_ao, orth_xtuple=None):
+        '''
+        Transfrom density matrix from AO basis to orthogonal basis
+        '''
         if orth_xtuple is None:
             orth_xtuple = self._orth_xtuple
         return ao2orth_contravariant(dm_ao, orth_xtuple)
@@ -236,14 +218,11 @@ class TDHF(lib.StreamObject):
             orth_xtuple = self._orth_xtuple
         return orth2ao_covariant(fock_orth, orth_xtuple)
 
-    def get_hcore_ao(self, t, get_field_ao=None):
-        if get_field_ao is None:
-            if self._get_field_ao is None:
-                return self._hcore_ao
-            else:
-                return self._hcore_ao + self._get_field_ao(t)
+    def get_hcore_ao(self, t):
+        if self.electric_field is None:
+            return self._hcore_ao
         else:
-            return self._hcore_ao + get_field_ao(t)
+            return self._hcore_ao + self.electric_field.get_field_ao(t)
 
     def get_veff_ao(self, dm_orth=None, dm_ao=None, orth_xtuple=None):
         assert (dm_orth is not None) or (dm_ao is not None)
@@ -291,7 +270,9 @@ class TDHF(lib.StreamObject):
             veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao, orth_xtuple=orth_xtuple)
         return self._scf.energy_elec(dm=dm_ao, h1e=hcore_ao, vhf=veff_ao)[0].real
 
-    def get_energy_tot(self, hcore_ao, dm_orth=None, dm_ao=None, veff_ao=None):
+    def get_energy_tot(self, hcore_ao, dm_orth=None, dm_ao=None, veff_ao=None, orth_xtuple=None):
+        if orth_xtuple is None:
+            orth_xtuple = self._orth_xtuple
         if (dm_ao is None) and (dm_orth is not None):
             dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
         if veff_ao is None:
@@ -313,37 +294,29 @@ class TDHF(lib.StreamObject):
 
         if self.chk_file:
             log.info('chkfile to save RT TDSCF result = %s', self.chk_file)
-        log.info( 'step_size = %f, total_step = %d', self.step_size, self.total_step )
-        log.info( 'prop_obj = %s', self.prop_obj.__class__.__name__)
+        log.info('step_size = %f, total_step = %d', self.step_size, self.total_step)
+        log.info('prop_method = %s', self.prop_method)
         log.info('max_memory %d MB (current use %d MB)',
                  self.max_memory, lib.current_memory()[0])
 
     def _initialize(self):
-        self._ovlp_ao          = self._scf.get_ovlp().astype(numpy.complex128)
-        self._hcore_ao         = self._scf.get_hcore().astype(numpy.complex128)
+        self._ovlp_ao          = self._scf.get_ovlp().astype(complex128)
+        self._hcore_ao         = self._scf.get_hcore().astype(complex128)
         self._orth_xtuple      = orth_canonical_mo(self._scf)
-
-        if self.electric_field is not None:
-            self._get_field_ao = self.electric_field.get_field_ao
-
         self.dump_flags()
 
     def _finalize(self):
-        pass
-    '''
-        logger.info(self, "Finalization begins here")
-        logger.info(self, "Finalization finished")
-    '''
+        self.save_index_list = read_index_list(result_obj=self.result_obj , chk_file=self.chk_file)
 
-    def kernel(self, dm_ao_init= None, dm_orth_init=None,
-                   step_size = None, total_step = None,
-                   prop_obj = None, step_obj = None, save_frequency = None,
-                   result_obj = None, save_in_memory = None,
-                   chk_file = None,  save_in_disk = None,
-                   calculate_dipole = None, calculate_pop =None,
-                   calculate_energy=None,
+    def kernel(self, dm_ao_init= None, dm_orth_init=None, step_size = None, total_step = None,
+                   save_frequency = None, prop_method = None,
+                   save_in_disk = None, save_in_memory = None, chk_file = None,
+                   calculate_dipole = None, calculate_pop =None, calculate_energy=None,
                    verbose = None):
         self._initialize()
+
+        if verbose is None:
+            verbose = self.verbose
 
         if dm_ao_init is None:
             if dm_orth_init is not None:
@@ -354,19 +327,32 @@ class TDHF(lib.StreamObject):
         else:
             dm_orth_init = self.ao2orth_dm(dm_ao_init)
 
-        if prop_obj    is None:
-            if self.prop_obj is None:
-                self.set_prop_obj(key=self.prop_method)
-            prop_obj    = self.prop_obj
-
-        if step_obj    is None:
-            if self.step_obj is None:
-                self.step_obj   = RealTimeStep(self, verbose=self.verbose)
-            step_obj    = self.step_obj
+        if prop_method is None:
+            prop_method = self.prop_method
+        self.set_prop_obj(key=prop_method)
+        prop_obj    = self.prop_obj
 
         if calculate_dipole is None:  calculate_dipole    = self.calculate_dipole
         if calculate_pop    is None:  calculate_pop       = self.calculate_pop
         if calculate_energy is None:  calculate_energy    = self.calculate_energy
+
+        if self.step_obj is None:
+            self.step_obj   = RealTimeStep(self, verbose=verbose)
+            self.step_obj.calculate_dipole = calculate_dipole
+            self.step_obj.calculate_pop    = calculate_pop
+            self.step_obj.calculate_energy = calculate_energy
+        step_obj    = self.step_obj
+
+        if save_in_memory is None:  save_in_memory = self.save_in_memory
+        if chk_file       is None:  chk_file     = self.chk_file
+        if save_in_disk   is None:  save_in_disk = self.save_in_disk
+
+        if self.result_obj is None:
+            self.result_obj   = RealTimeResult(self, verbose=verbose)
+            self.result_obj._save_in_disk   = save_in_disk
+            self.result_obj._chk_file       = chk_file
+            self.result_obj._save_in_memory = save_in_memory
+        result_obj    = self.result_obj
 
         if total_step is None:
             total_step     = self.total_step
@@ -376,24 +362,10 @@ class TDHF(lib.StreamObject):
         else:
             save_frequency = 1
 
-        if result_obj     is None:
-            if self.result_obj is None:
-                self.result_obj   = RealTimeResult(self, verbose=self.verbose)
-            result_obj     = self.result_obj
-        if save_in_memory is None:  save_in_memory = self.save_in_memory
-
-        if chk_file       is None:  chk_file     = self.chk_file
-        if save_in_disk   is None:  save_in_disk = self.save_in_disk
-
         kernel(
            self, dm_ao_init= dm_ao_init, dm_orth_init=dm_orth_init,
-                 step_size = step_size, total_step = total_step,
-                 prop_obj = prop_obj, step_obj = step_obj, save_frequency = save_frequency,
-                 result_obj = result_obj, save_in_memory = save_in_memory,
-                 chk_file = chk_file,  save_in_disk = save_in_disk,
-                 calculate_dipole = calculate_dipole,
-                 calculate_pop =calculate_pop,
-                 calculate_energy=calculate_energy,
+                 step_size = step_size, total_step = total_step, save_frequency = save_frequency,
+                 prop_obj = prop_obj, step_obj = step_obj, result_obj = result_obj,
                  verbose = verbose
             )
         logger.info(self, 'after propogation matrices, max_memory %d MB (current use %d MB)',
@@ -401,35 +373,17 @@ class TDHF(lib.StreamObject):
         logger.info(self, "Propagation finished")
         self._finalize()
 
-    # def dump_rt_step(self, idx, t, etot, dm_ao, dm_orth, fock_ao, fock_orth,
-    #                  dip=None, pop=None, field=None,
-    #                  save_in_memory=None, save_in_disk=None):
-
-    #     if save_in_memory is None:
-    #         save_in_memory = self.save_in_memory
-    #     if save_in_disk is None:
-    #         save_in_disk = self.save_in_disk
-
-    #     rt_dic = {
-    #         "t":t, "etot": etot, "dm_ao": dm_ao, "dm_orth": dm_orth, "fock_ao": fock_ao, "fock_orth": fock_orth
-    #     }
-    #     if dip is not None:
-    #         rt_dic["dip"] = dip
-    #     if pop is not None:
-    #         rt_dic["pop"] = pop
-    #     if field is not None:
-    #         rt_dic["field"] = field
-
-    #     if (save_in_memory is True) and (save_in_disk is False):
-    #         pass
-    #     else:
-    #         pass
-
-    #     dump_rt_step(self.chk_file, idx, **rt_dic)
+    def read_step_dict(self, index, chk_file=None):
+        if chk_file is None:
+            chk_file = self.chk_file
+        return read_step_dict(index, result_obj=self.result_obj, chk_file=chk_file)
 
 if __name__ == "__main__":
+    ''' This is a short test.'''
     from pyscf import gto, scf
+    from result import read_step_dict
     from field import ClassicalElectricField, constant_field_vec, gaussian_field_vec
+
     h2o =   gto.Mole( atom='''
     O     0.00000000    -0.00001441    -0.34824012
     H    -0.00000000     0.76001092    -0.93285191
@@ -438,35 +392,29 @@ if __name__ == "__main__":
     , basis='sto-3g', symmetry=False).build() # water
 
     h2o_rhf    = scf.RHF(h2o)
-    h2o_rhf.verbose = 4
+    h2o_rhf.verbose = 0
     h2o_rhf.conv_tol = 1e-12
     h2o_rhf.kernel()
-
-    dm_0   = h2o_rhf.make_rdm1()
-    fock_0 = h2o_rhf.get_fock()
-
-    orth_xtuple = orth_canonical_mo(h2o_rhf)
-    dm_orth_0   = ao2orth_contravariant(dm_0, orth_xtuple)
-    fock_orth_0 = ao2orth_covariant(fock_0, orth_xtuple)
-
-    print_cx_matrix("dm_orth_0 = ", dm_orth_0)
-    print_cx_matrix("fock_orth_0 = ", fock_orth_0)
+    dm_init = h2o_rhf.make_rdm1()
 
     gaussian_vec = lambda t: gaussian_field_vec(t, 0.5329, 1.0, 0.0, [1e-2, 0.0, 0.0])
     gaussian_field = ClassicalElectricField(h2o, field_func=gaussian_vec, stop_time=10.0)
 
     rttd = TDHF(h2o_rhf, field=gaussian_field)
-    rttd.verbose        = 3
+    rttd.verbose        = 5
     rttd.total_step     = 10
     rttd.step_size      = 0.02
-    rttd.prop_method    = "lflp-pc"
+    rttd.chk_file       = "./test/h2o_rt.chk"
+    rttd.prop_method    = "eppc"
     rttd.save_frequency = 5
-    rttd.kernel(dm_ao_init=dm_0)
+    rttd.kernel(dm_ao_init=dm_init, save_in_disk = True, save_in_memory = True,
+                calculate_energy=True, calculate_dipole=True)
 
-    for i in range(3):
-        print("")
-        print("#####################################")
+    for i in rttd.save_index_list:
         print("t = %f"%rttd.result_obj._time_list[i])
-        print("field = ", gaussian_vec(rttd.result_obj._time_list[i]))
-        print_cx_matrix("dm_orth = ", rttd.result_obj._dm_orth_list[i])
-        print_cx_matrix("fock_orth = ", rttd.result_obj._fock_orth_list[i])
+        temp_dict = read_step_dict(i, result_obj = None, chk_file = "./test/h2o_rt.chk" )
+        assert numpy.allclose(temp_dict["dm_orth"], rttd.result_obj._dm_orth_list[i])
+        temp_dict = read_step_dict(i, result_obj = rttd.result_obj, chk_file = None )
+        assert numpy.allclose(temp_dict["dm_orth"], rttd.result_obj._dm_orth_list[i])
+        temp_dict = rttd.read_step_dict(i)
+        assert numpy.allclose(temp_dict["dm_orth"], rttd.result_obj._dm_orth_list[i])

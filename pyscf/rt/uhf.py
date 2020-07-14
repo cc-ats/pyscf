@@ -1,36 +1,28 @@
 # Author: Junjie Yang <yangjunjie0320@gmail.com> Zheng Pei and Yihan Shao
-
 import time
 import tempfile
-
-from functools import reduce
-
 import numpy
-from numpy import asarray, complex128, dot
-
 import scipy
 
-from pyscf import gto, scf
-from pyscf import lib, lo
+from functools import reduce
+from numpy import dot, asarray, complex128
+
+from pyscf import lib, scf
 from pyscf.lib import logger
-from pyscf.rt import chkfile
 
-from pyscf.rt import rhf as rhf_tdscf
-from pyscf.rt.propagator import Propogator, PCPropogator
+from pyscf.rt  import rhf as rhf_tdscf
+
+from pyscf.rt.propagator import Propogator,      PCPropogator
 from pyscf.rt.propagator import EulerPropogator, MMUTPropogator
-from pyscf.rt.propagator import EPPCPropogator, LFLPPCPropogator
+from pyscf.rt.propagator import EPPCPropogator,  LFLPPCPropogator
 
-from pyscf.rt.result import RealTimeStep, RealTimeResult
+from pyscf.rt.result import RealTimeStep,    RealTimeResult
+from pyscf.rt.result import read_index_list, read_step_dict         
 
 from pyscf.rt.util import print_matrix, print_cx_matrix
 from pyscf.rt.util import expia_b_exp_ia
 
 from pyscf import __config__
-
-REF_BASIS         = getattr(__config__, 'lo_orth_pre_orth_ao_method', 'ANO'      )
-MUTE_CHKFILE      = getattr(__config__, 'rt_tdscf_mute_chkfile',      False      )
-PRINT_MAT_NCOL    = getattr(__config__, 'rt_tdscf_print_mat_ncol',    7          )
-ORTH_METHOD       = getattr(__config__, 'rt_tdscf_orth_ao_method',    'canonical')
 
 # re-define Orthogonalize AOs for UHF
 def orth_canonical_mo(scf_obj, ovlp_ao=None):
@@ -82,27 +74,14 @@ def orth2ao_covariant(covariant_matrix_orth, orth_xtuple):
     covariant_matrix_ao_b = reduce(dot, [x_t_inv[1], covariant_matrix_orth[1], x_inv[1]])
     return asarray([covariant_matrix_ao_a, covariant_matrix_ao_b])
 
-# propagate step
-def prop_step(tdscf, dt, fock_prim, dm_prim):
-    propogator_a = expm(-1j*dt*fock_prim[0])
-    propogator_b = expm(-1j*dt*fock_prim[1])
-
-    dm_prim_a_   = reduce(numpy.dot, [propogator_a, dm_prim[0], propogator_a.conj().T])
-    # dm_prim_a_   = (dm_prim_a_ + dm_prim_a_.conj().T)/2
-    dm_prim_b_   = reduce(numpy.dot, [propogator_b, dm_prim[1], propogator_b.conj().T])
-    # dm_prim_b_   = (dm_prim_b_ + dm_prim_b_.conj().T)/2
-
-    dm_prim_     = numpy.array((dm_prim_a_, dm_prim_b_))
-    dm_ao_       = tdscf.orth2ao_dm(  dm_prim_)
-    
-    return dm_prim_, dm_ao_
    
 class TDHF(rhf_tdscf.TDHF):
     def propagate_step(self, step_size, fock_orth, dm_orth, orth_xtuple=None):
         if orth_xtuple is None:
             orth_xtuple = self._orth_xtuple
         dm_orth_   = asarray(
-            [expia_b_exp_ia(-step_size*fock_orth[0], dm_orth[0]), expia_b_exp_ia(-step_size*fock_orth[1], dm_orth[1])]
+            [expia_b_exp_ia(-step_size*fock_orth[0], dm_orth[0]),
+            expia_b_exp_ia(-step_size*fock_orth[1], dm_orth[1])]
             )
         dm_ao_     = self.orth2ao_dm(dm_orth_, orth_xtuple=orth_xtuple)
         return dm_orth_, dm_ao_
@@ -143,7 +122,7 @@ class TDHF(rhf_tdscf.TDHF):
         if self.chk_file:
             log.info('chkfile to save RT TDSCF result = %s', self.chk_file)
         log.info( 'step_size = %f, total_step = %d', self.step_size, self.total_step )
-        log.info( 'prop_obj = %s', self.prop_obj.__class__.__name__)
+        log.info( 'prop_method = %s', self.prop_method)
         log.info('max_memory %d MB (current use %d MB)',
                  self.max_memory, lib.current_memory()[0])
 
@@ -151,62 +130,44 @@ class TDHF(rhf_tdscf.TDHF):
         self._ovlp_ao          = self._scf.get_ovlp().astype(numpy.complex128)
         self._hcore_ao         = self._scf.get_hcore().astype(numpy.complex128)
         self._orth_xtuple      = orth_canonical_mo(self._scf)
-
-        if self.electric_field is not None:
-            self._get_field_ao = self.electric_field.get_field_ao
-
-        if self.prop_obj is None:   self.set_prop_obj(key=self.prop_method)
-        if self.step_obj is None:   self.step_obj   = RealTimeStep(self)
-        if self.result_obj is None: self.result_obj   = RealTimeResult(self)
-
         self.dump_flags()
 
 if __name__ == "__main__":
+    ''' This is a short test.'''
     from pyscf import gto, scf
+    from result import read_step_dict
     from field import ClassicalElectricField, constant_field_vec, gaussian_field_vec
     h2o =   gto.Mole( atom='''
     O     0.00000000    -0.00001441    -0.34824012
     H    -0.00000000     0.76001092    -0.93285191
     H     0.00000000    -0.75999650    -0.93290797
     '''
-    , basis='sto-3g', symmetry=False).build()
+    , basis='sto-3g', symmetry=False).build() # water
 
     h2o_uhf    = scf.UHF(h2o)
-    h2o_uhf.verbose = 4
-    h2o_uhf.conv_tol = 1e-20
-    h2o_uhf.max_cycle = 200
+    h2o_uhf.verbose = 0
+    h2o_uhf.conv_tol = 1e-12
     h2o_uhf.kernel()
-
-    dm_0   = h2o_uhf.make_rdm1()
-    fock_0 = h2o_uhf.get_fock()
-
-    orth_xtuple = orth_canonical_mo(h2o_uhf)
-    dm_orth_0   = ao2orth_contravariant(dm_0, orth_xtuple)
-    fock_orth_0 = ao2orth_covariant(fock_0, orth_xtuple)
-
-    print_cx_matrix("dm_orth_0_alpha   = ", dm_orth_0[0])
-    print_cx_matrix("fock_orth_0_alpha = ", fock_orth_0[0])
-
-    print_cx_matrix("dm_orth_0_beta    = ", dm_orth_0[1])
-    print_cx_matrix("fock_orth_0_beta  = ", fock_orth_0[1])
+    dm_init = h2o_uhf.make_rdm1()
 
     gaussian_vec = lambda t: gaussian_field_vec(t, 0.5329, 1.0, 0.0, [1e-2, 0.0, 0.0])
     gaussian_field = ClassicalElectricField(h2o, field_func=gaussian_vec, stop_time=10.0)
 
     rttd = TDHF(h2o_uhf, field=gaussian_field)
-    rttd.verbose        = 3
+    rttd.verbose        = 5
     rttd.total_step     = 10
     rttd.step_size      = 0.02
-    rttd.prop_method    = "lflp-pc"
+    rttd.chk_file       = "./test/h2o_rt.chk"
+    rttd.prop_method    = "eppc"
     rttd.save_frequency = 5
-    rttd.kernel(dm_ao_init=dm_0)
+    rttd.kernel(dm_ao_init=dm_init, save_in_disk = True, save_in_memory = True,
+                calculate_energy=True, calculate_dipole=True)
 
-    for i in range(3):
-        print("")
-        print("#####################################")
+    for i in rttd.save_index_list:
         print("t = %f"%rttd.result_obj._time_list[i])
-        print("field = ", gaussian_vec(rttd.result_obj._time_list[i]))
-        print_cx_matrix("dm_orth_alpha   = ", rttd.result_obj._dm_orth_list[i][0])
-        # print_cx_matrix("fock_orth_alpha = ", rttd.result_obj._fock_orth_list[i][0])
-        print_cx_matrix("dm_orth_beta    = ", rttd.result_obj._dm_orth_list[i][1])
-        # print_cx_matrix("fock_orth_beta  = ", rttd.result_obj._fock_orth_list[i][1])
+        temp_dict = read_step_dict(i, result_obj = None, chk_file = "./test/h2o_rt.chk" )
+        assert numpy.allclose(temp_dict["dm_orth"], rttd.result_obj._dm_orth_list[i])
+        temp_dict = read_step_dict(i, result_obj = rttd.result_obj, chk_file = None )
+        assert numpy.allclose(temp_dict["dm_orth"], rttd.result_obj._dm_orth_list[i])
+        temp_dict = rttd.read_step_dict(i)
+        assert numpy.allclose(temp_dict["dm_orth"], rttd.result_obj._dm_orth_list[i])
