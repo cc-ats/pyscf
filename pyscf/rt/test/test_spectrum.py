@@ -14,9 +14,6 @@ from pyscf.rt.util   import build_absorption_spectrum
 from pyscf.rt.field  import ClassicalElectricField, constant_field_vec, gaussian_field_vec
 from pyscf.rt.result import read_index_list, read_step_dict, read_keyword_value
 
-def delta_efield(t):
-    return 0.0001*numpy.exp(-10*t**2/0.2**2)
-
 h2o =   gto.Mole( atom='''
   O     0.00000000    -0.00001441    -0.34824012
   H    -0.00000000     0.76001092    -0.93285191
@@ -41,7 +38,7 @@ gaussian_vec_z   = lambda t: gaussian_field_vec(t, 0.0, 0.02, 0.0, [0.0, 0.0, 1e
 gaussian_field_z = ClassicalElectricField(h2o, field_func=gaussian_vec_z, stop_time=0.5)
 
 rttd = rt.TDSCF(h2o_rks)
-rttd.total_step     = 5000
+rttd.total_step     = 8000
 rttd.step_size      = 0.2
 rttd.verbose        = 4
 rttd.dm_ao_init     = dm_init
@@ -60,13 +57,13 @@ rttd.chk_file       = "h2o_y.chk"
 rttd.electric_field = gaussian_field_y
 rttd.kernel()
 dip2 = read_keyword_value("dipole", chk_file="h2o_y.chk")
-dyy  = dip2[:,0] - dip2[0,0]
+dyy  = dip2[:,1] - dip2[0,1]
 
 rttd.chk_file       = "h2o_z.chk"
 rttd.electric_field = gaussian_field_z
 rttd.kernel()
 dip3 = read_keyword_value("dipole", chk_file="h2o_z.chk")
-dzz  = dip3[:,0] - dip3[0,0]
+dzz  = dip3[:,2] - dip3[0,2]
 
 dipole_fig, (dipole_axes1, dipole_axes2, dipole_axes3) = plt.subplots(3, 1, sharex=True, figsize=(20,20))
 dipole_axes1.set_ylabel('XX-Dipole (au)', fontsize=20)
