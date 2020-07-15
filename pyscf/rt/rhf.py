@@ -114,7 +114,8 @@ def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None, step_size = None, total_
         step_iter = prop_obj.propagate_step(step_obj=step_obj, verbose=verbose)
         if step_iter%save_frequency == 0:
             result_obj._update(step_obj)
-    result_obj._finalize(result_obj=result_obj, chk_file=chk_file)
+    result_obj._finalize()
+    rt_obj._finalize(result_obj=result_obj)
     cput2 = logger.timer(rt_obj, 'Finish kernel', *cput1)
 
 
@@ -323,8 +324,8 @@ class TDHF(lib.StreamObject):
         if self._orth_xtuple is None: self._orth_xtuple      = orth_canonical_mo(self._scf)
         
 
-    def _finalize(self, result_obj=None, chk_file=None):
-        self.save_index_list = read_index_list(result_obj=result_obj , chk_file=chk_file)
+    def _finalize(self, result_obj=None):
+        self.save_index_list = read_index_list(result_obj=result_obj)
 
     def kernel(self, dm_ao_init= None, dm_orth_init=None, step_size = None, total_step = None,
                    save_frequency = None, prop_method = None,
@@ -359,9 +360,9 @@ class TDHF(lib.StreamObject):
 
         if self.step_obj is None:
             self.step_obj   = RealTimeStep(self, verbose=verbose)
-            self.step_obj.calculate_dipole = calculate_dipole
-            self.step_obj.calculate_pop    = calculate_pop
-            self.step_obj.calculate_energy = calculate_energy
+        self.step_obj.calculate_dipole = calculate_dipole
+        self.step_obj.calculate_pop    = calculate_pop
+        self.step_obj.calculate_energy = calculate_energy
         step_obj    = self.step_obj
 
         if save_in_memory is None:  save_in_memory = self.save_in_memory
@@ -370,9 +371,9 @@ class TDHF(lib.StreamObject):
 
         if self.result_obj is None:
             self.result_obj   = RealTimeResult(self, verbose=verbose)
-            self.result_obj._save_in_disk   = save_in_disk
-            self.result_obj._chk_file       = chk_file
-            self.result_obj._save_in_memory = save_in_memory
+        self.result_obj._save_in_disk   = save_in_disk
+        self.result_obj._chk_file       = chk_file
+        self.result_obj._save_in_memory = save_in_memory
         result_obj    = self.result_obj
 
         if total_step is None:
@@ -392,7 +393,6 @@ class TDHF(lib.StreamObject):
         logger.info(self, 'after propogation matrices, max_memory %d MB (current use %d MB)',
                     self.max_memory, lib.current_memory()[0])
         logger.info(self, "Propagation finished")
-        self._finalize()
 
     def read_step_dict(self, index, chk_file=None):
         if chk_file is None:

@@ -35,10 +35,10 @@ gaussian_vec_x   = lambda t: gaussian_field_vec(t, 0.0, 0.02, 0.0, [1e-4, 0.0, 0
 gaussian_field_x = ClassicalElectricField(h2o, field_func=gaussian_vec_x, stop_time=0.5)
 
 gaussian_vec_y   = lambda t: gaussian_field_vec(t, 0.0, 0.02, 0.0, [0.0, 1e-4, 0.0])
-gaussian_field_y = ClassicalElectricField(h2o, field_func=gaussian_vec_x, stop_time=0.5)
+gaussian_field_y = ClassicalElectricField(h2o, field_func=gaussian_vec_y, stop_time=0.5)
 
 gaussian_vec_z   = lambda t: gaussian_field_vec(t, 0.0, 0.02, 0.0, [0.0, 0.0, 1e-4])
-gaussian_field_z = ClassicalElectricField(h2o, field_func=gaussian_vec_x, stop_time=0.5)
+gaussian_field_z = ClassicalElectricField(h2o, field_func=gaussian_vec_z, stop_time=0.5)
 
 rttd = rt.TDSCF(h2o_rks)
 rttd.total_step     = 5000
@@ -83,9 +83,9 @@ dipole_axes3.set_ylabel('ZZ-Dipole (au)', fontsize=20)
 dipole_axes3.yaxis.set_major_formatter(ticker.FormatStrFormatter('%5.2e'))
 dipole_axes3.grid(True)
 
-dipole_axes1.plot(0.02419*rttd.ntime, dxx)
-dipole_axes2.plot(0.02419*rttd.ntime, dyy)
-dipole_axes3.plot(0.02419*rttd.ntime, dzz)
+dipole_axes1.plot(0.02419*time, dxx)
+dipole_axes2.plot(0.02419*time, dyy)
+dipole_axes3.plot(0.02419*time, dzz)
 dipole_fig.savefig("./h2o_dip.pdf")
 
 lrtd = tddft.TDDFT(h2o_rks)

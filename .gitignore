@@ -51,9 +51,14 @@ coverage.xml
 # Rope
 .ropeproject
 
+# General
+.DS_Store
+
 # Django stuff:
 *.log
 *.pot
+*.chk
+*.pdf
 
 CMakeCache.txt
 CMakeFiles
