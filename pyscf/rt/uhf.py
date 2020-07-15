@@ -106,8 +106,16 @@ class TDHF(rhf_tdscf.TDHF):
             orth_xtuple = self._orth_xtuple
         return orth2ao_covariant(fock_orth, orth_xtuple)
 
-    def dump_flags(self, verbose=None):
+    def dump_flags(self, result_obj=None, prop_obj=None, step_obj=None, step_size=None, total_step=None, verbose=None):
         log = logger.new_logger(self, verbose)
+
+        if result_obj is None: result_obj = self.result_obj
+        if prop_obj   is None: prop_obj   = self.prop_obj
+        if step_obj   is None: step_obj   = self.step_obj
+
+        if step_size  is None: step_size  = self.step_size
+        if total_step is None: total_step = self.total_step
+
         log.info('\n')
         log.info('******** %s ********', self.__class__)
         log.info(
@@ -118,19 +126,14 @@ class TDHF(rhf_tdscf.TDHF):
             log.info(
                 'The SCF converged tolerence is conv_tol = %g'%self._scf.conv_tol
                 )
-
-        if self.chk_file:
-            log.info('chkfile to save RT TDSCF result = %s', self.chk_file)
-        log.info( 'step_size = %f, total_step = %d', self.step_size, self.total_step )
-        log.info( 'prop_method = %s', self.prop_method)
-        log.info('max_memory %d MB (current use %d MB)',
-                 self.max_memory, lib.current_memory()[0])
+        log.info('step_size = %f, total_step = %d', step_size, total_step)
+        log.info('prop_obj = %s', prop_obj.__class__)
+        log.info('max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
 
     def _initialize(self):
         self._ovlp_ao          = self._scf.get_ovlp().astype(numpy.complex128)
         self._hcore_ao         = self._scf.get_hcore().astype(numpy.complex128)
         self._orth_xtuple      = orth_canonical_mo(self._scf)
-        self.dump_flags()
 
 if __name__ == "__main__":
     ''' This is a short test.'''

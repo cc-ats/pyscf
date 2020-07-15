@@ -10,19 +10,14 @@ import scipy
 from pyscf import gto, scf
 from pyscf import lib, lo
 from pyscf.lib     import logger
-from pyscf.rt      import chkfile
 from pyscf.rt.util import errm
 
 from pyscf.rt.util import print_matrix, print_cx_matrix, errm, expm
 from pyscf.rt.util import expia_b_exp_ia
 
-
 from pyscf import __config__
 
-# integration schemes
-# unitary euler propagation
-PRINT_MAT_NCOL    = getattr(__config__, 'rt_tdscf_print_mat_ncol',              7)
-PC_TOL            = getattr(__config__, 'rt_tdscf_pc_tol',                  1e-14)
+PC_TOL            = getattr(__config__, 'rt_tdscf_pc_tol',                   1e-8)
 PC_MAX_ITER       = getattr(__config__, 'rt_tdscf_pc_max_iter',                20)
 
 class Propogator(lib.StreamObject):
@@ -185,9 +180,7 @@ class MMUTPropogator(Propogator):
 
     def propagate_step(self, step_obj=None, verbose=None):
         r'''
-        a) P'(t+dt/2) = e^{-i F'(t) dt/2}    P'(t) e^{i F'(t) dt/2}
-        b) F'(t+dt/2) << P'(t+dt/2)
-        c) P'(t+dt)   = e^{-i F'(t+dt/2) dt} P'(t) e^{i F'(t+dt/2) dt}
+
 
         All mats in MO basis
 
@@ -200,25 +193,10 @@ class MMUTPropogator(Propogator):
         cput_time = (time.clock(), time.time())
         logger.debug(self, '\n    ########################################')
 
-        next_half_t = self.temp_ts[1] + self.step_size
-        next_half_dm_orth, next_half_dm_ao = self.rt_obj.propagate_step(
-            self.step_size, self.temp_fock_orths[0], self.temp_dm_orths[1]
-        )
-        cput1 = logger.timer(self, '%20s'%"first propagate", *cput_time)
-        next_half_hcore_ao  = self.rt_obj.get_hcore_ao(next_half_t)
-        next_half_veff_ao   = self.rt_obj.get_veff_ao(dm_orth=next_half_dm_orth, dm_ao=next_half_dm_ao)
-        next_half_fock_ao   = self.rt_obj.get_fock_ao(
-            next_half_hcore_ao, dm_orth=next_half_dm_orth, dm_ao=next_half_dm_ao, veff_ao=next_half_veff_ao
-            )
-        next_half_fock_orth = self.rt_obj.get_fock_orth(
-            next_half_hcore_ao, fock_ao=next_half_fock_ao, dm_orth=next_half_dm_orth, dm_ao=next_half_dm_ao, veff_ao=next_half_veff_ao
-            )
-        cput2 = logger.timer(self, '%20s'%"first fock build", *cput1)
         next_t = self.temp_ts[0] + self.step_size
         next_dm_orth, next_dm_ao = self.rt_obj.propagate_step(
-            self.step_size, next_half_fock_orth, self.temp_dm_orths[0]
+            self.step_size/2, self.temp_fock_orths[0], self.temp_dm_orths[1]
         )
-        cput3 = logger.timer(self, '%20s'%"second propagate", *cput2)
         next_hcore_ao  = self.rt_obj.get_hcore_ao(next_t)
         next_veff_ao   = self.rt_obj.get_veff_ao(dm_orth=next_dm_orth, dm_ao=next_dm_ao)
         next_fock_ao   = self.rt_obj.get_fock_ao(
@@ -227,7 +205,11 @@ class MMUTPropogator(Propogator):
         next_fock_orth = self.rt_obj.get_fock_orth(
             next_hcore_ao, fock_ao=next_fock_ao, dm_orth=next_dm_orth, dm_ao=next_dm_ao, veff_ao=next_veff_ao
             )
-        cput3 = logger.timer(self, '%20s'%"second fock build", *cput2)
+
+        next_half_t = self.temp_ts[1] + self.step_size
+        next_half_dm_orth, next_half_dm_ao = self.rt_obj.propagate_step(
+            self.step_size, next_fock_orth, self.temp_dm_orths[1]
+        )
 
         next_iter_step = self.step_iter + 1
         step_obj._update(
@@ -237,14 +219,13 @@ class MMUTPropogator(Propogator):
 
         self.temp_dm_aos           = [next_dm_ao     , next_half_dm_ao    ]
         self.temp_dm_orths         = [next_dm_orth   , next_half_dm_orth  ]
-        self.temp_fock_aos         = [next_fock_ao   , next_half_fock_ao  ]
-        self.temp_fock_orths       = [next_fock_orth , next_half_fock_orth]
+        self.temp_fock_aos         = [next_fock_ao   , None               ]
+        self.temp_fock_orths       = [next_fock_orth , None               ]
 
         self.step_iter  += 1
         self.temp_ts    += self.step_size
 
         cput4 = logger.timer(self, '%20s'%'step finished', *cput_time)
-        cput1 = logger.timer(self, 'propagate_step', *cput_time)
         logger.debug(self, '    step_iter=%d, t=%f au', next_iter_step, next_t)
         return self.step_iter
 

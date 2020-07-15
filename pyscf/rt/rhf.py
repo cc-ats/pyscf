@@ -69,8 +69,9 @@ def orth2ao_covariant(covariant_matrix_orth, orth_xtuple):
 def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None, step_size = None, total_step = None,
                    prop_obj = None, step_obj = None, result_obj = None, save_frequency = None,
                    verbose = None):
-
+    
     cput0 = (time.clock(), time.time())
+    rt_obj._initialize()
 
     if dm_ao_init is None:
         if dm_orth_init is not None:
@@ -89,7 +90,9 @@ def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None, step_size = None, total_
     
     if prop_obj    is None:  prop_obj    = rt_obj.prop_obj
     if step_obj    is None:  step_obj    = rt_obj.step_obj
-    if result_obj  is None:  result_obj     = rt_obj.result_obj
+    if result_obj  is None:  result_obj  = rt_obj.result_obj
+
+    rt_obj.dump_flags(result_obj=result_obj, prop_obj=prop_obj, step_obj=step_obj, step_size=step_size, total_step=total_step, verbose=verbose)
 
     h1e_ao_init    = rt_obj.get_hcore_ao(0.0)
     vhf_ao_init    = rt_obj.get_veff_ao(dm_orth=dm_orth_init ,dm_ao=dm_ao_init)
@@ -111,8 +114,8 @@ def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None, step_size = None, total_
         step_iter = prop_obj.propagate_step(step_obj=step_obj, verbose=verbose)
         if step_iter%save_frequency == 0:
             result_obj._update(step_obj)
-    result_obj._finalize()
-    cput2 = logger.timer(rt_obj, 'Finish rt_obj', *cput0)
+    result_obj._finalize(result_obj=result_obj, chk_file=chk_file)
+    cput2 = logger.timer(rt_obj, 'Finish kernel', *cput1)
 
 
 class TDHF(lib.StreamObject):
@@ -204,16 +207,25 @@ class TDHF(lib.StreamObject):
         return ao2orth_contravariant(dm_ao, orth_xtuple)
 
     def orth2ao_dm(self, dm_orth, orth_xtuple=None):
+        '''
+        Transfrom density matrix from orthogonal basis to AO basis 
+        '''
         if orth_xtuple is None:
             orth_xtuple = self._orth_xtuple
         return orth2ao_contravariant(dm_orth, orth_xtuple)
 
     def ao2orth_fock(self, fock_ao, orth_xtuple=None):
+        '''
+        Transfrom Fock matrix from AO basis to orthogonal basis
+        '''
         if orth_xtuple is None:
             orth_xtuple = self._orth_xtuple
         return ao2orth_covariant(fock_ao, orth_xtuple)
 
     def orth2ao_fock(self, fock_orth, orth_xtuple=None):
+        '''
+        Transfrom Fock matrix from orthogonal basis to AO basis 
+        '''
         if orth_xtuple is None:
             orth_xtuple = self._orth_xtuple
         return orth2ao_covariant(fock_orth, orth_xtuple)
@@ -279,8 +291,16 @@ class TDHF(lib.StreamObject):
             veff_ao = self.get_veff_ao(dm_orth=dm_orth, dm_ao=dm_ao)
         return self._scf.energy_tot(dm=dm_ao, h1e=hcore_ao, vhf=veff_ao).real
 
-    def dump_flags(self, verbose=None):
+    def dump_flags(self, result_obj=None, prop_obj=None, step_obj=None, step_size=None, total_step=None, verbose=None):
         log = logger.new_logger(self, verbose)
+
+        if result_obj is None: result_obj = self.result_obj
+        if prop_obj   is None: prop_obj   = self.prop_obj
+        if step_obj   is None: step_obj   = self.step_obj
+
+        if step_size  is None: step_size  = self.step_size
+        if total_step is None: total_step = self.total_step
+
         log.info('\n')
         log.info('******** %s ********', self.__class__)
         log.info(
@@ -292,31 +312,32 @@ class TDHF(lib.StreamObject):
                 'The SCF converged tolerence is conv_tol = %g'%self._scf.conv_tol
                 )
 
-        if self.chk_file:
-            log.info('chkfile to save RT TDSCF result = %s', self.chk_file)
-        log.info('step_size = %f, total_step = %d', self.step_size, self.total_step)
-        log.info('prop_method = %s', self.prop_method)
+        log.info('step_size = %f, total_step = %d', step_size, total_step)
+        log.info('prop_obj = %s', prop_obj.__class__)
         log.info('max_memory %d MB (current use %d MB)',
                  self.max_memory, lib.current_memory()[0])
 
     def _initialize(self):
-        self._ovlp_ao          = self._scf.get_ovlp().astype(complex128)
-        self._hcore_ao         = self._scf.get_hcore().astype(complex128)
-        self._orth_xtuple      = orth_canonical_mo(self._scf)
-        self.dump_flags()
+        if self._ovlp_ao is None:     self._ovlp_ao          = self._scf.get_ovlp().astype(complex128)
+        if self._hcore_ao is None:    self._hcore_ao         = self._scf.get_hcore().astype(complex128)
+        if self._orth_xtuple is None: self._orth_xtuple      = orth_canonical_mo(self._scf)
+        
 
-    def _finalize(self):
-        self.save_index_list = read_index_list(result_obj=self.result_obj , chk_file=self.chk_file)
+    def _finalize(self, result_obj=None, chk_file=None):
+        self.save_index_list = read_index_list(result_obj=result_obj , chk_file=chk_file)
 
     def kernel(self, dm_ao_init= None, dm_orth_init=None, step_size = None, total_step = None,
                    save_frequency = None, prop_method = None,
                    save_in_disk = None, save_in_memory = None, chk_file = None,
                    calculate_dipole = None, calculate_pop =None, calculate_energy=None,
                    verbose = None):
-        self._initialize()
 
         if verbose is None:
             verbose = self.verbose
+
+        if self._ovlp_ao is None:     self._ovlp_ao          = self._scf.get_ovlp().astype(complex128)
+        if self._hcore_ao is None:    self._hcore_ao         = self._scf.get_hcore().astype(complex128)
+        if self._orth_xtuple is None: self._orth_xtuple      = orth_canonical_mo(self._scf)
 
         if dm_ao_init is None:
             if dm_orth_init is not None:

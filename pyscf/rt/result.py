@@ -38,9 +38,9 @@ def read_step_dict(index, result_obj=None, chk_file=None):
     if result_obj is not None:
         if result_obj._chk_file is None:
             assert result_obj._time_list is not None
-            assert result_obj._save_iter_list[index] == index
+            assert result_obj.save_iter_list[index] == index
             temp_step_obj_dict = {
-                "save_index":        result_obj._save_iter_list[index],
+                "save_index":        result_obj.save_iter_list[index],
                 "step_index":        result_obj.step_iter_list[index],
                 "t":                 result_obj._time_list[index],
                 "dm_ao":             result_obj._dm_ao_list[index],
@@ -62,6 +62,27 @@ def read_step_dict(index, result_obj=None, chk_file=None):
 
     if chk_file is not None:
         return load(chk_file, 'rt_result/rt_step/%d'%index)
+
+def read_keyword_value(keyword, result_obj=None, chk_file=None):
+    assert (result_obj is not None) or (chk_file is not None)
+    index_list = read_index_list(result_obj=result_obj, chk_file=chk_file)
+    if result_obj is not None:
+        if result_obj._chk_file is None:
+            print("Reading %14s from %14s."%(keyword, "memory"))
+            assert result_obj._time_list is not None
+            keyword_value_list = [read_step_dict(
+                i, result_obj=result_obj, chk_file=chk_file
+                )[keyword] for i in index_list]
+            return asarray(keyword_value_list)
+        else:
+            chk_file = result_obj._chk_file
+
+    if chk_file is not None:
+        print("Reading %14s from %14s."%(keyword, chk_file))
+        keyword_value_list = [read_step_dict(
+                i,result_obj=result_obj, chk_file=chk_file
+                )[keyword] for i in index_list]
+        return asarray(keyword_value_list)
 
 class RealTimeStep(StreamObject):
     def __init__(self, rt_obj, verbose=None):
@@ -87,13 +108,10 @@ class RealTimeStep(StreamObject):
         self.step_dm_orth     = None
         self.step_fock_orth   = None
         self.step_fock_ao     = None
+        self.step_veff_ao     = None
 
     def _initialize(self, dm_ao_init, dm_orth_init, fock_ao_init, fock_orth_init,
                          hcore_ao, veff_ao):
-        if self.calculate_dipole:
-            self.step_dipole = self.rt_obj._scf.dip_moment(dm=dm_ao_init.real, mol=self.mol, verbose=0, unit='au')
-        if self.calculate_pop:
-            self.step_pop = self.rt_obj._scf.mulliken_pop(dm=dm_ao_init.real, mol=self.mol, verbose=0)
 
         self.t         = 0.0
         self.step_iter = 0
@@ -102,21 +120,10 @@ class RealTimeStep(StreamObject):
         self.step_dm_orth       = dm_orth_init
         self.step_fock_ao       = fock_ao_init
         self.step_fock_orth     = fock_orth_init
-
-        if self.calculate_energy:
-            self.step_energy_elec = self.rt_obj.get_energy_elec(
-                hcore_ao, dm_orth=dm_orth_init, dm_ao=dm_ao_init, veff_ao=veff_ao
-                )
-            self.step_energy_tot = self.rt_obj.get_energy_tot(
-                hcore_ao, dm_orth=dm_orth_init, dm_ao=dm_ao_init, veff_ao=veff_ao
-                )
-        
+        self.step_veff_ao       = veff_ao
+        self.step_hcore_ao      = hcore_ao
 
     def _update(self, t, step_iter, dm_ao, dm_orth, fock_ao, fock_orth, hcore_ao, veff_ao):
-        if self.calculate_dipole:
-            self.step_dipole = self.rt_obj._scf.dip_moment(dm=dm_ao.real, mol=self.mol, verbose=0, unit='au')
-        if self.calculate_pop:
-            self.step_pop = self.rt_obj._scf.mulliken_pop(dm=dm_ao.real, mol=self.mol, verbose=0)[1]
 
         self.t = t
         self.step_iter = step_iter
@@ -125,14 +132,10 @@ class RealTimeStep(StreamObject):
         self.step_dm_orth   =   dm_orth
         self.step_fock_ao   =   fock_ao
         self.step_fock_orth = fock_orth
+        self.step_veff_ao   = veff_ao
+        self.step_hcore_ao  = hcore_ao
 
-        if self.calculate_energy:
-            self.step_energy_elec = self.rt_obj.get_energy_elec(
-                hcore_ao, dm_orth=dm_orth, dm_ao=dm_ao, veff_ao=veff_ao
-                )
-            self.step_energy_tot = self.rt_obj.get_energy_tot(
-                hcore_ao, dm_orth=dm_orth, dm_ao=dm_ao, veff_ao=veff_ao
-                )
+
 
 class RealTimeResult(StreamObject):
     def __init__(self, rt_obj, verbose=None):
@@ -164,26 +167,46 @@ class RealTimeResult(StreamObject):
 
     def _initialize(self, first_step_obj):
         assert self._save_in_disk or self._save_in_memory
+
+        if first_step_obj.calculate_dipole:
+            step_dipole = self.rt_obj._scf.dip_moment(dm=first_step_obj.step_dm_ao.real, mol=self.mol, verbose=0, unit='au')
+        if first_step_obj.calculate_pop:
+            step_pop    = self.rt_obj._scf.mulliken_pop(dm=first_step_obj.step_dm_ao.real, mol=self.mol, verbose=0)
+
+        if first_step_obj.calculate_energy:
+            step_energy_elec = self.rt_obj.get_energy_elec(
+                first_step_obj.step_hcore_ao,
+                dm_orth=first_step_obj.step_dm_orth,
+                dm_ao=first_step_obj.step_dm_ao,
+                veff_ao=first_step_obj.step_veff_ao
+                )
+            step_energy_tot = self.rt_obj.get_energy_tot(
+                first_step_obj.step_hcore_ao,
+                dm_orth=first_step_obj.step_dm_orth,
+                dm_ao=first_step_obj.step_dm_ao,
+                veff_ao=first_step_obj.step_veff_ao
+                )
+
         if self._save_in_memory:
-            logger.info(self, "The results would be saved in the memory.")
+            logger.info(self, "    The results would be saved in the memory.")
             cput_time = (time.clock(), time.time())
-            if (first_step_obj.step_dipole is not None):
-                self._dipole_list   = [first_step_obj.step_dipole]
-            if (first_step_obj.step_pop is not None):
-                self._pop_list      = [first_step_obj.step_pop[1]]
-            if (first_step_obj.step_energy_elec is not None) and (first_step_obj.step_energy_tot is not None):
-                self._energy_elec_list = [first_step_obj.step_energy_elec]
-                self._energy_tot_list  = [first_step_obj.step_energy_tot ]
+            if (first_step_obj.calculate_dipole):
+                self._dipole_list   = [step_dipole]
+            if (first_step_obj.calculate_pop):
+                self._pop_list      = [step_pop[1]]
+            if (first_step_obj.calculate_energy):
+                self._energy_elec_list = [step_energy_elec]
+                self._energy_tot_list  = [step_energy_tot ]
 
             self._time_list        = [first_step_obj.t               ]
             self._dm_ao_list       = [first_step_obj.step_dm_ao      ]
             self._dm_orth_list     = [first_step_obj.step_dm_orth    ]
             self._fock_ao_list     = [first_step_obj.step_fock_ao    ]
             self._fock_orth_list   = [first_step_obj.step_fock_orth  ]
-            cput1 = logger.timer(self, 'The first step is saved in the memory:', *cput_time)
+            cput1 = logger.timer(self, '    The first step is saved in the memory:', *cput_time)
 
         if self._save_in_disk and self._chk_file is not None:
-            logger.info(self, "The results would be saved in the disk, %s.", self._chk_file)
+            logger.info(self, "    The results would be saved in the disk, %s.", self._chk_file)
             cput_time = (time.clock(), time.time())
             temp_step_obj_dict = {
                 "save_index":        0,
@@ -194,15 +217,15 @@ class RealTimeResult(StreamObject):
                 "fock_orth":         first_step_obj.step_fock_orth,
                 "fock_ao":           first_step_obj.step_fock_ao,  
             }
-            if (first_step_obj.step_dipole is not None):
-                temp_step_obj_dict["dipole"]   = first_step_obj.step_dipole
+            if (first_step_obj.calculate_dipole):
+                temp_step_obj_dict["dipole"]      = step_dipole
             if (first_step_obj.step_pop is not None):
-                temp_step_obj_dict["pop"]      = first_step_obj.step_pop
+                temp_step_obj_dict["pop"]         = step_pop
             if (first_step_obj.step_energy_elec is not None) and (first_step_obj.step_energy_tot is not None):
-                temp_step_obj_dict["energy_elec"] = first_step_obj.step_energy_elec
-                temp_step_obj_dict["energy_tot"]  = first_step_obj.step_energy_tot
+                temp_step_obj_dict["energy_elec"] = step_energy_elec
+                temp_step_obj_dict["energy_tot"]  = step_energy_tot
             dump_step_obj(self._chk_file, **temp_step_obj_dict)
-            cput1 = logger.timer(self, 'The first step is saved in the disk:', *cput_time)
+            cput1 = logger.timer(self, '    The first step is saved in the disk:', *cput_time)
 
         self.save_iter_list   = [0]
         self.save_iter        = 0
@@ -211,22 +234,44 @@ class RealTimeResult(StreamObject):
         return 0
 
     def _update(self, step_obj):
+        assert self._save_in_disk or self._save_in_memory
+
+        if step_obj.calculate_dipole:
+            step_dipole = self.rt_obj._scf.dip_moment(dm=step_obj.step_dm_ao.real, mol=self.mol, verbose=0, unit='au')
+        if step_obj.calculate_pop:
+            step_pop = self.rt_obj._scf.mulliken_pop(dm=step_obj.step_dm_ao.real, mol=self.mol, verbose=0)
+
+        if step_obj.calculate_energy:
+            step_energy_elec = self.rt_obj.get_energy_elec(
+                step_obj.step_hcore_ao,
+                dm_orth=step_obj.step_dm_orth,
+                dm_ao=step_obj.step_dm_ao,
+                veff_ao=step_obj.step_veff_ao
+                )
+            step_energy_tot = self.rt_obj.get_energy_tot(
+                step_obj.step_hcore_ao,
+                dm_orth=step_obj.step_dm_orth,
+                dm_ao=step_obj.step_dm_ao,
+                veff_ao=step_obj.step_veff_ao
+                )
+
         if self._save_in_memory:
             cput_time = (time.clock(), time.time())
-            if (step_obj.step_dipole is not None):
-                self._dipole_list.append(step_obj.step_dipole)
-            if (step_obj.step_pop is not None):
-                self._pop_list.append(step_obj.step_pop)
-            if (step_obj.step_energy_elec is not None) and (step_obj.step_energy_tot is not None):
-                self._energy_elec_list.append( step_obj.step_energy_elec)
-                self._energy_tot_list.append(  step_obj.step_energy_tot )
+
+            if (step_obj.calculate_dipole):
+                self._dipole_list.append(step_dipole)
+            if (step_obj.calculate_pop):
+                self._pop_list.append(   step_pop)
+            if (step_obj.calculate_energy):
+                self._energy_elec_list.append( step_energy_elec)
+                self._energy_tot_list.append(  step_energy_tot )
 
             self._time_list.append(        step_obj.t               )
             self._dm_ao_list.append(       step_obj.step_dm_ao      )
             self._dm_orth_list.append(     step_obj.step_dm_orth    )
             self._fock_orth_list.append(   step_obj.step_fock_orth  )
             self._fock_ao_list.append(     step_obj.step_fock_ao    )
-            cput1 = logger.timer(self, 'The %d step is saved in the memory:'%step_obj.step_iter, *cput_time)
+            cput1 = logger.timer(self, '    The %d step is saved in the memory:'%step_obj.step_iter, *cput_time)
 
         if self._save_in_disk and self._chk_file is not None:
             cput_time = (time.clock(), time.time())
@@ -239,13 +284,13 @@ class RealTimeResult(StreamObject):
                 "fock_orth":         step_obj.step_fock_orth,
                 "fock_ao":           step_obj.step_fock_ao,  
             }
-            if (step_obj.step_dipole is not None):
-                temp_step_obj_dict["dipole"]   = step_obj.step_dipole
-            if (step_obj.step_pop is not None):
-                temp_step_obj_dict["pop"]   = step_obj.step_pop
-            if (step_obj.step_energy_elec is not None) and (step_obj.step_energy_tot is not None):
-                temp_step_obj_dict["energy_elec"] = step_obj.step_energy_elec
-                temp_step_obj_dict["energy_tot"]  = step_obj.step_energy_tot
+            if (step_obj.calculate_dipole):
+                temp_step_obj_dict["dipole"]   = step_dipole
+            if (step_obj.calculate_pop):
+                temp_step_obj_dict["pop"]      = step_pop
+            if (step_obj.calculate_energy):
+                temp_step_obj_dict["energy_elec"] = step_energy_elec
+                temp_step_obj_dict["energy_tot"]  = step_energy_tot
             dump_step_obj(self._chk_file, **temp_step_obj_dict)
             cput1 = logger.timer(self, 'The %d step is saved in the disk:  '%step_obj.step_iter, *cput_time)
 
@@ -257,7 +302,7 @@ class RealTimeResult(StreamObject):
 
     def _finalize(self):
         if self._save_in_disk and self._chk_file is not None:
-            logger.info(self, '%d out of %d steps are saved in the memory.'%(len(self.save_iter_list), self.step_iter_list[-1]+1))
+            logger.info(self, '    %d out of %d steps are saved in the memory.'%(len(self.save_iter_list), self.step_iter_list[-1]+1))
         if self._save_in_disk and self._chk_file is not None:
-            logger.info(self, '%d out of %d steps are saved in the disk.  '%(len(self.save_iter_list), self.step_iter_list[-1]+1))
+            logger.info(self, '    %d out of %d steps are saved in the disk.  '%(len(self.save_iter_list), self.step_iter_list[-1]+1))
             save(self._chk_file, 'rt_result/save_index_list', asarray(self.save_iter_list, dtype=int))

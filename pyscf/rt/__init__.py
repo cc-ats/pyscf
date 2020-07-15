@@ -2,6 +2,15 @@
 '''
 Real-Time TD-DFT calculation
 ======================================
+Unless specified otherwise, all inputs and outputs are in atomic units(au).
+Some useful conversions are:
+
+Quantity	      Conversion
+Time	        1 au = 0.02419 fs
+Length	        1 au = 0.5292 A
+Energy	        1 au = 27.2114 eV
+Electric field	1 au = 514.2 V/nm
+Dipole moment	1 au = 2.542 D
 '''
 import pyscf
 
@@ -9,8 +18,6 @@ from pyscf import rt
 from pyscf import scf
 
 from pyscf.rt import util
-from pyscf.rt import chkfile
-
 from pyscf.rt import rhf
 from pyscf.rt import uhf
 from pyscf.rt import rks
