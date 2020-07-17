@@ -18,7 +18,7 @@ from pyscf.rt.result     import RealTimeStep, RealTimeResult
 from pyscf.rt.result     import read_index_list, read_step_dict, read_keyword_value
 
 def apply_field(mol, field=[0,0,0], dm0=None):
-    mf    = scf.UKS(mol)
+    mf    = scf.RKS(mol)
     mf.xc = "pbe0"
     mf.max_cycle = 10
     h =(mol.intor('cint1e_kin_sph') + mol.intor('cint1e_nuc_sph')
@@ -29,33 +29,27 @@ def apply_field(mol, field=[0,0,0], dm0=None):
     mf.kernel(dm0)
     return mf.make_rdm1()
 
-ho =   gto.Mole( atom='''
-  O    0.0000000    0.0000000    0.4951271
-  H    0.0000000    0.0000000   -0.4951271
+
+h2o =   gto.Mole( atom='''
+O     0.00000000    -0.00001441    -0.34824012
+H    -0.00000000     0.76001092    -0.93285191
+H     0.00000000    -0.75999650    -0.93290797
 '''
-, spin=1, basis='6-31g(d)', symmetry=False).build() # water
-ho.set_common_orig([0, 0, 0])  # The gauge origin for dipole integral
+, basis='6-31g', symmetry=False).build() # water
+h2o.set_common_orig([0, 0, 0])  # The gauge origin for dipole integral
 
-# h2o =   gto.Mole( atom='''
-# O     0.00000000    -0.00001441    -0.34824012
-# H    -0.00000000     0.76001092    -0.93285191
-# H     0.00000000    -0.75999650    -0.93290797
-# '''
-# , basis='6-31g(d)', symmetry=False).build() # water
-# h2o.set_common_orig([0, 0, 0])  # The gauge origin for dipole integral
+h2o_rks    = scf.RKS(h2o)
+h2o_rks.max_cycle = 10
+h2o_rks.xc = "pbe0"
+h2o_rks.conv_tol  = 1e-12
+h2o_rks.verbose = 4
+h2o_rks.kernel()
+dm = h2o_rks.make_rdm1()
+ref_dipole = h2o_rks.dip_moment(unit="au")
 
-ho_uks    = scf.UKS(ho)
-ho_uks.max_cycle = 10
-ho_uks.xc = "pbe0"
-ho_uks.conv_tol  = 1e-12
-ho_uks.verbose = 4
-ho_uks.kernel()
-dm = ho_uks.make_rdm1()
-ref_dipole = ho_uks.dip_moment(unit="au")
+dm_ = apply_field(h2o, field=[1e-2, 0, 0], dm0=dm)
 
-dm_ = apply_field(ho, field=[1e-2, 0, 0], dm0=dm)
-
-rttd = rt.TDDFT(ho_uks)
+rttd = rt.TDDFT(h2o_rks)
 rttd.verbose        = 4
 rttd.total_step     = 10
 rttd.step_size      = 0.2
@@ -148,8 +142,9 @@ ax2.plot(t_eppc,  dipole_eppc[:,0]  -  ref_dipole[0], label="EPPC")
 ax2.plot(t_lflp,  dipole_lflp[:,0]  -  ref_dipole[0], label="LFLP")
 ax2.yaxis.set_major_formatter(ticker.FormatStrFormatter('%0.0e'))
 
-fig.suptitle(r"HO Gas-Phase 6-31G/TD-PBE0")
+fig.suptitle(r"H$_2$O Gas-Phase 6-31G/TD-PBE0")
 ax2.set_xlabel('time (au)')
 ax1.set_ylabel('Energy Error (au)')
 ax2.set_ylabel('z-dipole (au)')
-fig.savefig("./test_prop_unrestricted.pdf")
+# plt.tight_layout()
+fig.savefig("./test_prop_restricted.pdf")

@@ -142,7 +142,7 @@ ax2.plot(t_eppc,  dipole_eppc[:,0]  -  ref_dipole[0], label="EPPC")
 ax2.plot(t_lflp,  dipole_lflp[:,0]  -  ref_dipole[0], label="LFLP")
 ax2.yaxis.set_major_formatter(ticker.FormatStrFormatter('%0.0e'))
 
-fig.suptitle(r"H$_2$O Gas-Phase 6-31G/TD-PBE0")
+ax1.set_title(r"H$_2$O Gas-Phase 6-31G/TD-PBE0")
 ax2.set_xlabel('time (au)')
 ax1.set_ylabel('Energy Error (au)')
 ax2.set_ylabel('z-dipole (au)')

@@ -28,28 +28,36 @@ h2o_rks.conv_tol = 1e-12
 h2o_rks.kernel()
 dm_init = h2o_rks.make_rdm1()
 
-gaussian_vec_x   = lambda t: gaussian_field_vec(t, 0.0, 0.02, 0.0, [1e-4, 0.0, 0.0])
-gaussian_field_x = ClassicalElectricField(h2o, field_func=gaussian_vec_x, stop_time=0.5)
-
-gaussian_vec_y   = lambda t: gaussian_field_vec(t, 0.0, 0.02, 0.0, [0.0, 1e-4, 0.0])
-gaussian_field_y = ClassicalElectricField(h2o, field_func=gaussian_vec_y, stop_time=0.5)
-
-gaussian_vec_z   = lambda t: gaussian_field_vec(t, 0.0, 0.02, 0.0, [0.0, 0.0, 1e-4])
-gaussian_field_z = ClassicalElectricField(h2o, field_func=gaussian_vec_z, stop_time=0.5)
-
 rttd = rt.TDSCF(h2o_rks)
 rttd.total_step     = 8000
 rttd.step_size      = 0.2
 rttd.verbose        = 4
 rttd.dm_ao_init     = dm_init
-rttd.prop_method    = "eppc"
+rttd.prop_method    = "mmut"
+
+lrtd = tddft.TDDFT(h2o_rks)
+lrtd.nstates = 30
+lrtd.kernel()
+
+fig, ax = plt.subplots(figsize=(20,10))
+ax.stem(27.2116*lrtd.e, lrtd.oscillator_strength(), linefmt='grey', markerfmt=None, basefmt=" ", use_line_collection=True, label="lr-tddft")
+
+field_strength = 1e-4
+gaussian_vec_x   = lambda t: gaussian_field_vec(t, 0.0, 0.02, 0.0, [field_strength, 0.0, 0.0])
+gaussian_field_x = ClassicalElectricField(h2o, field_func=gaussian_vec_x, stop_time=0.5)
+
+gaussian_vec_y   = lambda t: gaussian_field_vec(t, 0.0, 0.02, 0.0, [0.0, field_strength, 0.0])
+gaussian_field_y = ClassicalElectricField(h2o, field_func=gaussian_vec_y, stop_time=0.5)
+
+gaussian_vec_z   = lambda t: gaussian_field_vec(t, 0.0, 0.02, 0.0, [0.0, 0.0, field_strength])
+gaussian_field_z = ClassicalElectricField(h2o, field_func=gaussian_vec_z, stop_time=0.5)
 
 rttd.save_in_disk   = True
 rttd.chk_file       = "h2o_x.chk"
 rttd.save_in_memory = False
 rttd.electric_field = gaussian_field_x
 rttd.kernel()
-time = read_keyword_value("t", chk_file="h2o_x.chk")
+time = read_keyword_value("t",      chk_file="h2o_x.chk")
 dip1 = read_keyword_value("dipole", chk_file="h2o_x.chk")
 dxx  = dip1[:,0] - dip1[0,0]
 
@@ -64,6 +72,19 @@ rttd.electric_field = gaussian_field_z
 rttd.kernel()
 dip3 = read_keyword_value("dipole", chk_file="h2o_z.chk")
 dzz  = dip3[:,2] - dip3[0,2]
+
+mw, sigma = build_absorption_spectrum(0.2, time, numpy.array([dxx,dyy,dzz]).T, damp_expo=50.0)
+ax.plot(27.2116*mw, sigma, label="rt-tddft, strength=%e au"%field_strength)
+
+ax.legend()
+ax.set_title("Water Gas-Phase 6-31G/TD-PBE0 Absorption", fontsize=20)
+ax.set_xlabel('Energy (eV)', fontsize=20)
+ax.set_ylabel('Absorption', fontsize=20)
+ax.set_xlim(0,25)
+ax.set_ylim(0,1)
+ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%0.0e'))
+ax.grid(True)
+fig.savefig("./h2o_abos.pdf")
 
 dipole_fig, (dipole_axes1, dipole_axes2, dipole_axes3) = plt.subplots(3, 1, sharex=True, figsize=(20,20))
 dipole_axes1.set_ylabel('XX-Dipole (au)', fontsize=20)
@@ -85,20 +106,6 @@ dipole_axes2.plot(0.02419*time, dyy)
 dipole_axes3.plot(0.02419*time, dzz)
 dipole_fig.savefig("./h2o_dip.pdf")
 
-lrtd = tddft.TDDFT(h2o_rks)
-lrtd.nstates = 30
-lrtd.kernel()
-mw, sigma = build_absorption_spectrum(0.2, time, numpy.array([dxx,dyy,dzz]).T, damp_expo=50.0)
 
-fig, ax = plt.subplots(figsize=(20,10))
-ax.plot(27.2116*mw, sigma, label="rt-tddft")
-ax.stem(27.2116*lrtd.e, lrtd.oscillator_strength(), linefmt='grey', markerfmt=None, basefmt=" ", use_line_collection=True, label="lr-tddft")
-ax.legend()
-ax.set_title("Water Gas-Phase 6-31G/TD-PBE0 Absorption", fontsize=20)
-ax.set_xlabel('Energy (eV)', fontsize=20)
-ax.set_ylabel('Absorption', fontsize=20)
-ax.set_xlim(0,25)
-ax.set_ylim(0,1)
-ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%0.0e'))
-ax.grid(True)
-fig.savefig("./h2o_abos.pdf")
+    
+

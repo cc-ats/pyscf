@@ -64,14 +64,16 @@ def read_step_dict(index, result_obj=None, chk_file=None):
         return load(chk_file, 'rt_result/rt_step/%d'%index)
 
 def read_keyword_value(keyword, result_obj=None, chk_file=None):
+    ''' from keyword value memory or disk, keyword could be a str or list '''
     assert (result_obj is not None) or (chk_file is not None)
+    assert isinstance(keyword, str)
     index_list = read_index_list(result_obj=result_obj, chk_file=chk_file)
     if result_obj is not None:
         if result_obj._chk_file is None:
             print("Reading %14s from %14s."%(keyword, "memory"))
             assert result_obj._time_list is not None
             keyword_value_list = [read_step_dict(
-                i, result_obj=result_obj, chk_file=chk_file
+                i, result_obj=result_obj, chk_file=None
                 )[keyword] for i in index_list]
             return asarray(keyword_value_list)
         else:
@@ -80,9 +82,11 @@ def read_keyword_value(keyword, result_obj=None, chk_file=None):
     if chk_file is not None:
         print("Reading %14s from %14s."%(keyword, chk_file))
         keyword_value_list = [read_step_dict(
-                i,result_obj=result_obj, chk_file=chk_file
+                i,result_obj=None, chk_file=chk_file
                 )[keyword] for i in index_list]
         return asarray(keyword_value_list)
+
+
 
 class RealTimeStep(StreamObject):
     def __init__(self, rt_obj, verbose=None):
