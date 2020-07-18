@@ -38,7 +38,7 @@ class EulerPropogator(Propogator):
         self.verbose = verbose 
         
         self.rt_obj          = rt_obj
-        self.step_size       = rt_obj.step_size
+        self.step_size       = None
 
         self.step_obj         = None
         self.step_iter        = None
@@ -116,8 +116,8 @@ class EulerPropogator(Propogator):
 
         self.step_iter  += 1
         self.temp_ts    += self.step_size
-        cput3 = logger.timer(self, '%20s'%'step finished', *cput_time)
-        cput1 = logger.timer(self, 'propagate_step', *cput_time)
+        cput4 = logger.timer(self, '%20s'%'finalize', *cput3)
+        cput5 = logger.timer(self, '%20s'%'step finished', *cput_time)
         logger.debug(self, '    step_iter=%d, t=%f au', next_iter_step, next_t)
         return self.step_iter
 
@@ -135,7 +135,7 @@ class MMUTPropogator(Propogator):
         self.verbose = verbose 
         
         self.rt_obj          = rt_obj
-        self.step_size       = rt_obj.step_size
+        self.step_size       = None
 
         self.step_obj         = None
         self.step_iter        = None
@@ -239,7 +239,7 @@ class EPPCPropogator(PCPropogator):
         self.verbose = verbose 
         
         self.rt_obj          = rt_obj
-        self.step_size       = rt_obj.step_size
+        self.step_size       = None
 
         if tol is None:
             self.tol = PC_TOL
@@ -280,11 +280,11 @@ class EPPCPropogator(PCPropogator):
 
     def propagate_step(self, step_obj=None, verbose=None):
         '''      
-        a) P'(t) -> P'(t+dt/2) using extrapolated F'(t)
+        a) P'(t) -> P'(t+dt/2) using F'(t)
         b) F'(t+dt/2) << P'(t+dt/2)
         c) Propagate P'(t)->P'(t+dt) using new F'(t+1/2*dt) from b)
         d) F'(t+dt) << P'(t+dt)
-        e) If new F'(t+dt/2) is same as previous one exit, else go to c)
+        e) If F'(t+dt/2) == (F'(t+dt) + F'(t))/2, else go to c)
         '''
         if step_obj is None:
             step_obj = self.step_obj
@@ -350,7 +350,7 @@ class LFLPPCPropogator(PCPropogator):
         self.verbose = verbose 
         
         self.rt_obj          = rt_obj
-        self.step_size       = rt_obj.step_size
+        self.step_size       = None
 
         if tol is None:
             self.tol = PC_TOL

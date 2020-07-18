@@ -71,7 +71,6 @@ def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None, step_size = None, total_
                    verbose = None):
     
     cput0 = (time.clock(), time.time())
-    rt_obj._initialize()
 
     if dm_ao_init is None:
         if dm_orth_init is not None:
@@ -82,15 +81,17 @@ def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None, step_size = None, total_
     else:
         dm_orth_init = rt_obj.ao2orth_dm(dm_ao_init)
 
+    if prop_obj    is None:  prop_obj    = rt_obj.prop_obj
+    if step_obj    is None:  step_obj    = rt_obj.step_obj
+    if result_obj  is None:  result_obj  = rt_obj.result_obj
+
     if total_step is None:
         total_step     = rt_obj.total_step
 
     if step_size is None:
         step_size      = rt_obj.step_size
     
-    if prop_obj    is None:  prop_obj    = rt_obj.prop_obj
-    if step_obj    is None:  step_obj    = rt_obj.step_obj
-    if result_obj  is None:  result_obj  = rt_obj.result_obj
+    prop_obj.step_size = step_size
 
     rt_obj.dump_flags(result_obj=result_obj, prop_obj=prop_obj, step_obj=step_obj, step_size=step_size, total_step=total_step, verbose=verbose)
 
@@ -117,6 +118,9 @@ def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None, step_size = None, total_
     result_obj._finalize()
     rt_obj._finalize(result_obj=result_obj)
     cput2 = logger.timer(rt_obj, 'Finish kernel', *cput1)
+    logger.info(rt_obj, 'after propogation matrices, max_memory %d MB (current use %d MB)',
+            rt_obj.max_memory, lib.current_memory()[0])
+    logger.info(rt_obj, "Propagation finished")
 
 
 class TDHF(lib.StreamObject):
@@ -172,11 +176,9 @@ class TDHF(lib.StreamObject):
         self.result_obj        = None
         self.save_index_list   = None
 
-    def propagate_step(self, step_size, fock_orth, dm_orth, orth_xtuple=None):
-        if orth_xtuple is None:
-            orth_xtuple = self._orth_xtuple
+    def propagate_step(self, step_size, fock_orth, dm_orth):
         dm_orth_   = expia_b_exp_ia(-step_size*fock_orth, dm_orth)
-        dm_ao_     = self.orth2ao_dm(dm_orth_, orth_xtuple=orth_xtuple)
+        dm_ao_     = self.orth2ao_dm(dm_orth_)
         return dm_orth_, dm_ao_
 
     def set_prop_obj(self, key='euler'):
@@ -199,95 +201,93 @@ class TDHF(lib.StreamObject):
         else:
             self.prop_obj = EulerPropogator(self)
 
-    def ao2orth_dm(self, dm_ao, orth_xtuple=None):
+    def ao2orth_dm(self, dm_ao):
         '''
         Transfrom density matrix from AO basis to orthogonal basis
         '''
-        if orth_xtuple is None:
-            orth_xtuple = self._orth_xtuple
+        orth_xtuple = self.get_orth_xtuple()
         return ao2orth_contravariant(dm_ao, orth_xtuple)
 
-    def orth2ao_dm(self, dm_orth, orth_xtuple=None):
+    def orth2ao_dm(self, dm_orth):
         '''
         Transfrom density matrix from orthogonal basis to AO basis 
         '''
-        if orth_xtuple is None:
-            orth_xtuple = self._orth_xtuple
+        orth_xtuple = self.get_orth_xtuple()
         return orth2ao_contravariant(dm_orth, orth_xtuple)
 
-    def ao2orth_fock(self, fock_ao, orth_xtuple=None):
+    def ao2orth_fock(self, fock_ao):
         '''
         Transfrom Fock matrix from AO basis to orthogonal basis
         '''
-        if orth_xtuple is None:
-            orth_xtuple = self._orth_xtuple
+        orth_xtuple = self.get_orth_xtuple()
         return ao2orth_covariant(fock_ao, orth_xtuple)
 
-    def orth2ao_fock(self, fock_orth, orth_xtuple=None):
+    def orth2ao_fock(self, fock_orth):
         '''
         Transfrom Fock matrix from orthogonal basis to AO basis 
         '''
-        if orth_xtuple is None:
-            orth_xtuple = self._orth_xtuple
+        orth_xtuple = self.get_orth_xtuple()
         return orth2ao_covariant(fock_orth, orth_xtuple)
 
+    def get_orth_xtuple(self):
+        if self._orth_xtuple is None:
+            ovlp_ao           = self.get_ovlp_ao()
+            self._orth_xtuple = orth_canonical_mo(self._scf, ovlp_ao=ovlp_ao)
+        return self._orth_xtuple
+
     def get_hcore_ao(self, t):
+        if self._hcore_ao is None:
+            self._hcore_ao         = self._scf.get_hcore().astype(complex128)
         if self.electric_field is None:
             return self._hcore_ao
         else:
             return self._hcore_ao + self.electric_field.get_field_ao(t)
 
-    def get_veff_ao(self, dm_orth=None, dm_ao=None, orth_xtuple=None):
+    def get_ovlp_ao(self):
+        if self._ovlp_ao is None:
+            self._ovlp_ao = self._scf.get_ovlp().astype(complex128)
+        return self._ovlp_ao
+
+    def get_veff_ao(self, dm_orth=None, dm_ao=None):
         assert (dm_orth is not None) or (dm_ao is not None)
-        if orth_xtuple is None:
-            orth_xtuple = self._orth_xtuple
         if (dm_ao is None) and (dm_orth is not None):
-            dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
+            dm_ao = self.orth2ao_dm(dm_orth)
         veff_ao = self._scf.get_veff(mol=self.mol, dm=dm_ao, hermi=1)
         return veff_ao
 
-    def get_fock_ao(self, hcore_ao, dm_orth=None, dm_ao=None, veff_ao=None, orth_xtuple=None):
+    def get_fock_ao(self, hcore_ao, dm_orth=None, dm_ao=None, veff_ao=None):
         assert (dm_orth is not None) or (dm_ao is not None)
-        if orth_xtuple is None:
-            orth_xtuple = self._orth_xtuple
         if (dm_ao is None) and (dm_orth is not None):
-            dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
+            dm_ao = self.orth2ao_dm(dm_orth)
         if veff_ao is None:
             veff_ao = self.get_veff_ao(dm_orth=dm_orth, dm_ao=dm_ao)
-        fock_ao = self._scf.get_fock(hcore_ao, self._ovlp_ao, veff_ao, dm_ao)
+        ovlp_ao = self.get_ovlp_ao()
+        fock_ao = self._scf.get_fock(hcore_ao, ovlp_ao, veff_ao, dm_ao)
         return fock_ao
 
-    def get_fock_orth(self, hcore_ao, fock_ao=None, dm_orth=None, dm_ao=None, veff_ao=None, orth_xtuple=None):
+    def get_fock_orth(self, hcore_ao, fock_ao=None, dm_orth=None, dm_ao=None, veff_ao=None):
         if fock_ao is None:
             assert (dm_orth is not None) or (dm_ao is not None)
-            if orth_xtuple is None:
-                orth_xtuple = self._orth_xtuple
             if (dm_ao is None) and (dm_orth is not None):
-                dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
+                dm_ao = self.orth2ao_dm(dm_orth)
             if veff_ao is None:
                 veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao)
-            fock_ao =  self.ao2orth_fock(
-            self._scf.get_fock(hcore_ao, self._ovlp_ao, veff_ao, dm_ao),
-            orth_xtuple=orth_xtuple
-            )
-        fock_orth = self.ao2orth_fock(fock_ao, orth_xtuple=orth_xtuple)
+            ovlp_ao = self.get_ovlp_ao()
+            fock_ao =  self.ao2orth_fock(self._scf.get_fock(hcore_ao, ovlp_ao, veff_ao, dm_ao),)
+        fock_orth = self.ao2orth_fock(fock_ao)
         return fock_orth
 
     def get_energy_elec(self, hcore_ao, dm_orth=None,
-                        dm_ao=None, veff_ao=None, orth_xtuple=None):
-        if orth_xtuple is None:
-            orth_xtuple = self._orth_xtuple
+                        dm_ao=None, veff_ao=None):
         if (dm_ao is None) and (dm_orth is not None):
-            dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
+            dm_ao = self.orth2ao_dm(dm_orth)
         if veff_ao is None:
-            veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao, orth_xtuple=orth_xtuple)
+            veff_ao = self.get_veff_ao(dm_orth, dm_ao=dm_ao)
         return self._scf.energy_elec(dm=dm_ao, h1e=hcore_ao, vhf=veff_ao)[0].real
 
-    def get_energy_tot(self, hcore_ao, dm_orth=None, dm_ao=None, veff_ao=None, orth_xtuple=None):
-        if orth_xtuple is None:
-            orth_xtuple = self._orth_xtuple
+    def get_energy_tot(self, hcore_ao, dm_orth=None, dm_ao=None, veff_ao=None):
         if (dm_ao is None) and (dm_orth is not None):
-            dm_ao = self.orth2ao_dm(dm_orth, orth_xtuple=orth_xtuple)
+            dm_ao = self.orth2ao_dm(dm_orth)
         if veff_ao is None:
             veff_ao = self.get_veff_ao(dm_orth=dm_orth, dm_ao=dm_ao)
         return self._scf.energy_tot(dm=dm_ao, h1e=hcore_ao, vhf=veff_ao).real
@@ -318,12 +318,6 @@ class TDHF(lib.StreamObject):
         log.info('max_memory %d MB (current use %d MB)',
                  self.max_memory, lib.current_memory()[0])
 
-    def _initialize(self):
-        if self._ovlp_ao is None:     self._ovlp_ao          = self._scf.get_ovlp().astype(complex128)
-        if self._hcore_ao is None:    self._hcore_ao         = self._scf.get_hcore().astype(complex128)
-        if self._orth_xtuple is None: self._orth_xtuple      = orth_canonical_mo(self._scf)
-        
-
     def _finalize(self, result_obj=None):
         self.save_index_list = read_index_list(result_obj=result_obj)
 
@@ -335,10 +329,6 @@ class TDHF(lib.StreamObject):
 
         if verbose is None:
             verbose = self.verbose
-
-        if self._ovlp_ao is None:     self._ovlp_ao          = self._scf.get_ovlp().astype(complex128)
-        if self._hcore_ao is None:    self._hcore_ao         = self._scf.get_hcore().astype(complex128)
-        if self._orth_xtuple is None: self._orth_xtuple      = orth_canonical_mo(self._scf)
 
         if dm_ao_init is None:
             if dm_orth_init is not None:
@@ -352,7 +342,7 @@ class TDHF(lib.StreamObject):
         if prop_method is None:
             prop_method = self.prop_method
         self.set_prop_obj(key=prop_method)
-        prop_obj    = self.prop_obj
+        prop_obj = self.prop_obj
 
         if calculate_dipole is None:  calculate_dipole    = self.calculate_dipole
         if calculate_pop    is None:  calculate_pop       = self.calculate_pop
@@ -366,11 +356,12 @@ class TDHF(lib.StreamObject):
         step_obj    = self.step_obj
 
         if save_in_memory is None:  save_in_memory = self.save_in_memory
-        if chk_file       is None:  chk_file     = self.chk_file
-        if save_in_disk   is None:  save_in_disk = self.save_in_disk
+        if chk_file       is None:  chk_file       = self.chk_file
+        if save_in_disk   is None:  save_in_disk   = self.save_in_disk
 
         if self.result_obj is None:
             self.result_obj   = RealTimeResult(self, verbose=verbose)
+
         self.result_obj._save_in_disk   = save_in_disk
         self.result_obj._chk_file       = chk_file
         self.result_obj._save_in_memory = save_in_memory
@@ -390,9 +381,6 @@ class TDHF(lib.StreamObject):
                  prop_obj = prop_obj, step_obj = step_obj, result_obj = result_obj,
                  verbose = verbose
             )
-        logger.info(self, 'after propogation matrices, max_memory %d MB (current use %d MB)',
-                    self.max_memory, lib.current_memory()[0])
-        logger.info(self, "Propagation finished")
 
     def read_step_dict(self, index, chk_file=None):
         if chk_file is None:

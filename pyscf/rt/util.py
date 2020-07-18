@@ -17,7 +17,7 @@ DAMP_EXPO         = getattr(__config__, 'rt_tdscf_damp_expo',     1000)
 PRINT_MAT_NCOL    = getattr(__config__, 'rt_tdscf_print_mat_ncol',   7)
 
 def build_absorption_spectrum(dt, time, ndipole, damp_expo=DAMP_EXPO):
-
+    print("ndipole.shape = ", ndipole.shape)
     ndipole_x = ndipole[:,0] - ndipole[0,0]
     ndipole_y = ndipole[:,1] - ndipole[0,1]
     ndipole_z = ndipole[:,2] - ndipole[0,2]
@@ -37,7 +37,7 @@ def build_absorption_spectrum(dt, time, ndipole, damp_expo=DAMP_EXPO):
     mw = mw[:m]
     sigma = sigma[:m]
     scale = numpy.abs(sigma.max())
-    return mw, sigma/scale
+    return mw.real, sigma.real/scale
 
 def print_matrix(title, array, ncols=7, fmt=' % 11.4e'):
     ''' printing a real rectangular matrix, or the real part of a complex matrix, ncols columns per batch '''

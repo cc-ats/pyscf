@@ -39,8 +39,8 @@ lrtd = tddft.TDDFT(h2o_rks)
 lrtd.nstates = 30
 lrtd.kernel()
 
-fig, ax = plt.subplots(figsize=(20,10))
-ax.stem(27.2116*lrtd.e, lrtd.oscillator_strength(), linefmt='grey', markerfmt=None, basefmt=" ", use_line_collection=True, label="lr-tddft")
+fig, ax = plt.subplots(figsize=(10,6))
+ax.stem(27.2116*lrtd.e, lrtd.oscillator_strength(), linefmt='grey', markerfmt=None, basefmt=" ", use_line_collection=True, label="LR-TDDFT")
 
 field_strength = 1e-4
 gaussian_vec_x   = lambda t: gaussian_field_vec(t, 0.0, 0.02, 0.0, [field_strength, 0.0, 0.0])
@@ -74,9 +74,9 @@ dip3 = read_keyword_value("dipole", chk_file="h2o_z.chk")
 dzz  = dip3[:,2] - dip3[0,2]
 
 mw, sigma = build_absorption_spectrum(0.2, time, numpy.array([dxx,dyy,dzz]).T, damp_expo=50.0)
-ax.plot(27.2116*mw, sigma, label="rt-tddft, strength=%e au"%field_strength)
+ax.plot(27.2116*mw, sigma, label="RT-TDDFT, strength=%e au"%field_strength)
 
-ax.legend()
+ax.legend(prop={'size': 10})
 ax.set_title("Water Gas-Phase 6-31G/TD-PBE0 Absorption", fontsize=20)
 ax.set_xlabel('Energy (eV)', fontsize=20)
 ax.set_ylabel('Absorption', fontsize=20)
@@ -84,11 +84,12 @@ ax.set_xlim(0,25)
 ax.set_ylim(0,1)
 ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%0.0e'))
 ax.grid(True)
-fig.savefig("./h2o_abos.pdf")
+fig.tight_layout()
+fig.savefig("./test_spectrum_abos.pdf")
 
-dipole_fig, (dipole_axes1, dipole_axes2, dipole_axes3) = plt.subplots(3, 1, sharex=True, figsize=(20,20))
+dipole_fig, (dipole_axes1, dipole_axes2, dipole_axes3) = plt.subplots(3, 1, sharex=True, figsize=(15,15))
 dipole_axes1.set_ylabel('XX-Dipole (au)', fontsize=20)
-dipole_axes1.set_title("Water Gas-Phase 6-31G/TD-PBE0 Dipole")
+dipole_axes1.set_title("Water Gas-Phase 6-31G/TD-PBE0 Dipole", fontsize=30)
 dipole_axes1.yaxis.set_major_formatter(ticker.FormatStrFormatter('%5.2e'))
 dipole_axes1.grid(True)
 
@@ -96,7 +97,7 @@ dipole_axes2.set_ylabel('YY-Dipole (au)', fontsize=20)
 dipole_axes2.yaxis.set_major_formatter(ticker.FormatStrFormatter('%5.2e'))
 dipole_axes2.grid(True)
 
-dipole_axes3.set_xlabel('time (fs)', fontsize=20)
+dipole_axes3.set_xlabel('Time (fs)', fontsize=20)
 dipole_axes3.set_ylabel('ZZ-Dipole (au)', fontsize=20)
 dipole_axes3.yaxis.set_major_formatter(ticker.FormatStrFormatter('%5.2e'))
 dipole_axes3.grid(True)
@@ -104,7 +105,8 @@ dipole_axes3.grid(True)
 dipole_axes1.plot(0.02419*time, dxx)
 dipole_axes2.plot(0.02419*time, dyy)
 dipole_axes3.plot(0.02419*time, dzz)
-dipole_fig.savefig("./h2o_dip.pdf")
+dipole_fig.tight_layout()
+dipole_fig.savefig("./test_spectrum_dipole.pdf")
 
 
     

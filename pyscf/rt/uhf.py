@@ -47,7 +47,7 @@ def ao2orth_contravariant(contravariant_matrix_ao, orth_xtuple):
     x_inv   = orth_xtuple[2]
     x_t_inv = orth_xtuple[3]
     contravariant_matrix_orth_a = reduce(dot, [x_inv[0], contravariant_matrix_ao[0], x_t_inv[0]])
-    contravariant_matrix_orth_b = reduce(dot, [x_inv[1], contravariant_matrix_ao[0], x_t_inv[1]])
+    contravariant_matrix_orth_b = reduce(dot, [x_inv[1], contravariant_matrix_ao[1], x_t_inv[1]])
     return asarray([contravariant_matrix_orth_a, contravariant_matrix_orth_b])
 
 def orth2ao_contravariant(contravariant_matrix_orth, orth_xtuple):
@@ -73,37 +73,35 @@ def orth2ao_covariant(covariant_matrix_orth, orth_xtuple):
     covariant_matrix_ao_a = reduce(dot, [x_t_inv[0], covariant_matrix_orth[0], x_inv[0]])
     covariant_matrix_ao_b = reduce(dot, [x_t_inv[1], covariant_matrix_orth[1], x_inv[1]])
     return asarray([covariant_matrix_ao_a, covariant_matrix_ao_b])
-
    
 class TDHF(rhf_tdscf.TDHF):
-    def propagate_step(self, step_size, fock_orth, dm_orth, orth_xtuple=None):
-        if orth_xtuple is None:
-            orth_xtuple = self._orth_xtuple
+    def propagate_step(self, step_size, fock_orth, dm_orth):
         dm_orth_   = asarray(
             [expia_b_exp_ia(-step_size*fock_orth[0], dm_orth[0]),
             expia_b_exp_ia(-step_size*fock_orth[1], dm_orth[1])]
             )
-        dm_ao_     = self.orth2ao_dm(dm_orth_, orth_xtuple=orth_xtuple)
+        dm_ao_     = self.orth2ao_dm(dm_orth_)
         return dm_orth_, dm_ao_
 
-    def ao2orth_dm(self, dm_ao, orth_xtuple=None):
-        if orth_xtuple is None:
-            orth_xtuple = self._orth_xtuple
+    def get_orth_xtuple(self):
+        if self._orth_xtuple is None:
+            self._orth_xtuple = orth_canonical_mo(self._scf)
+        return self._orth_xtuple
+
+    def ao2orth_dm(self, dm_ao):
+        orth_xtuple = self.get_orth_xtuple()
         return ao2orth_contravariant(dm_ao, orth_xtuple)
 
-    def orth2ao_dm(self, dm_orth, orth_xtuple=None):
-        if orth_xtuple is None:
-            orth_xtuple = self._orth_xtuple
+    def orth2ao_dm(self, dm_orth):
+        orth_xtuple = self.get_orth_xtuple()
         return orth2ao_contravariant(dm_orth, orth_xtuple)
 
-    def ao2orth_fock(self, fock_ao, orth_xtuple=None):
-        if orth_xtuple is None:
-            orth_xtuple = self._orth_xtuple
+    def ao2orth_fock(self, fock_ao):
+        orth_xtuple = self.get_orth_xtuple()
         return ao2orth_covariant(fock_ao, orth_xtuple)
 
-    def orth2ao_fock(self, fock_orth, orth_xtuple=None):
-        if orth_xtuple is None:
-            orth_xtuple = self._orth_xtuple
+    def orth2ao_fock(self, fock_orth):
+        orth_xtuple = self.get_orth_xtuple()
         return orth2ao_covariant(fock_orth, orth_xtuple)
 
     def dump_flags(self, result_obj=None, prop_obj=None, step_obj=None, step_size=None, total_step=None, verbose=None):
@@ -129,11 +127,6 @@ class TDHF(rhf_tdscf.TDHF):
         log.info('step_size = %f, total_step = %d', step_size, total_step)
         log.info('prop_obj = %s', prop_obj.__class__)
         log.info('max_memory %d MB (current use %d MB)', self.max_memory, lib.current_memory()[0])
-
-    def _initialize(self):
-        self._ovlp_ao          = self._scf.get_ovlp().astype(numpy.complex128)
-        self._hcore_ao         = self._scf.get_hcore().astype(numpy.complex128)
-        self._orth_xtuple      = orth_canonical_mo(self._scf)
 
 if __name__ == "__main__":
     ''' This is a short test.'''
@@ -161,13 +154,14 @@ if __name__ == "__main__":
     rttd.total_step     = 10
     rttd.step_size      = 0.02
     rttd.chk_file       = "./test/h2o_rt.chk"
-    rttd.prop_method    = "eppc"
+    rttd.prop_method    = "euler"
     rttd.save_frequency = 5
     rttd.kernel(dm_ao_init=dm_init, save_in_disk = True, save_in_memory = True,
                 calculate_energy=True, calculate_dipole=True)
 
     for i in rttd.save_index_list:
         print("t = %f"%rttd.result_obj._time_list[i])
+        print("energy = %f"%(rttd.result_obj._energy_tot_list[i]-rttd.result_obj._energy_tot_list[0]))
         temp_dict = read_step_dict(i, result_obj = None, chk_file = "./test/h2o_rt.chk" )
         assert numpy.allclose(temp_dict["dm_orth"], rttd.result_obj._dm_orth_list[i])
         temp_dict = read_step_dict(i, result_obj = rttd.result_obj, chk_file = None )
