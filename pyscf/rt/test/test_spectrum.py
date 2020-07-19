@@ -19,7 +19,7 @@ h2o =   gto.Mole( atom='''
   H    -0.00000000     0.76001092    -0.93285191
   H     0.00000000    -0.75999650    -0.93290797
   '''
-  , basis='6-31g', symmetry=False).build()
+  , basis='6-311g(d)', symmetry=False).build()
 
 h2o_rks    = scf.RKS(h2o)
 h2o_rks.verbose  = 0
@@ -77,7 +77,7 @@ mw, sigma = build_absorption_spectrum(0.2, time, numpy.array([dxx,dyy,dzz]).T, d
 ax.plot(27.2116*mw, sigma, label="RT-TDDFT, strength=%e au"%field_strength)
 
 ax.legend(prop={'size': 10})
-ax.set_title("Water Gas-Phase 6-31G/TD-PBE0 Absorption", fontsize=20)
+ax.set_title("Water Gas-Phase 6-311G(d)/TD-PBE0 Absorption", fontsize=20)
 ax.set_xlabel('Energy (eV)', fontsize=20)
 ax.set_ylabel('Absorption', fontsize=20)
 ax.set_xlim(0,25)
@@ -89,7 +89,7 @@ fig.savefig("./test_spectrum_abos.pdf")
 
 dipole_fig, (dipole_axes1, dipole_axes2, dipole_axes3) = plt.subplots(3, 1, sharex=True, figsize=(15,15))
 dipole_axes1.set_ylabel('XX-Dipole (au)', fontsize=20)
-dipole_axes1.set_title("Water Gas-Phase 6-31G/TD-PBE0 Dipole", fontsize=30)
+dipole_axes1.set_title("Water Gas-Phase 6-311G(d)/TD-PBE0 Dipole", fontsize=24)
 dipole_axes1.yaxis.set_major_formatter(ticker.FormatStrFormatter('%5.2e'))
 dipole_axes1.grid(True)
 

@@ -35,7 +35,7 @@ O     0.00000000    -0.00001441    -0.34824012
 H    -0.00000000     0.76001092    -0.93285191
 H     0.00000000    -0.75999650    -0.93290797
 '''
-, basis='6-31g', symmetry=False).build() # water
+, basis='sto-3g', symmetry=False).build() # water
 h2o.set_common_orig([0, 0, 0])  # The gauge origin for dipole integral
 
 h2o_rks    = scf.RKS(h2o)
@@ -141,7 +141,7 @@ ax2.plot(t_eppc,  dipole_eppc[:,0]  -  ref_dipole[0], label="EPPC")
 ax2.plot(t_lflp,  dipole_lflp[:,0]  -  ref_dipole[0], label="LFLP")
 ax2.yaxis.set_major_formatter(ticker.FormatStrFormatter('%0.0e'))
 
-ax1.set_title(r"H$_2$O Gas-Phase 6-31G/TD-PBE0")
+ax1.set_title(r"H$_2$O Gas-Phase STO-3G/TD-PBE0")
 ax2.set_xlabel('Time (au)')
 ax1.set_ylabel('Energy Error (au)')
 ax2.set_ylabel('Z-Dipole (au)')

@@ -14,21 +14,13 @@ from pyscf.rt.util   import build_absorption_spectrum
 from pyscf.rt.field  import ClassicalElectricField, constant_field_vec, gaussian_field_vec
 from pyscf.rt.result import read_index_list, read_step_dict, read_keyword_value
 
-def z_oscillator_strength(tdobj, e=None, xy=None, gauge='length', order=0):
-    if e is None: e = tdobj.e
-
-    if gauge == 'length':
-        trans_dip = tdobj.transition_dipole(xy=xy)
-        f = numpy.einsum('s,s,s->s', e, trans_dip[:,2], trans_dip[:,2])
-        return f/numpy.linalg.norm(f)
-
 
 h2o =   gto.Mole( atom='''
   O     0.00000000    -0.00001441    -0.34824012
   H    -0.00000000     0.76001092    -0.93285191
   H     0.00000000    -0.75999650    -0.93290797
   '''
-  , basis='6-31g', symmetry=False).build()
+  , basis='6-311g(d)', symmetry=False).build()
 
 h2o_rks    = scf.RKS(h2o)
 h2o_rks.verbose  = 0
@@ -49,7 +41,7 @@ lrtd.nstates = 30
 lrtd.kernel()
 
 fig, (ax1,ax2) = plt.subplots(2,1,figsize=(10,10))
-ax1.stem(27.2116*lrtd.e, z_oscillator_strength(lrtd), linefmt='grey', markerfmt=None, basefmt=" ", use_line_collection=True, label="LR-TDDFT, z oscillator strength")
+ax1.stem(27.2116*lrtd.e, lrtd.oscillator_strength(), linefmt='grey', markerfmt=None, basefmt=" ", use_line_collection=True, label="LR-TDDFT, oscillator strength")
 
 for field_strength in [5e-3, 1e-3, 2e-4]:
     cos_vec_z   = lambda t: numpy.cos(0.3768*t)*numpy.asarray([0.0, 0.0, field_strength])
@@ -68,7 +60,7 @@ for field_strength in [5e-3, 1e-3, 2e-4]:
     ax1.plot(27.2116*mw, sigma, label="RT-TDDFT, field strength=%.2e au"%field_strength)
 
 ax1.legend()
-ax1.set_title("Water Gas-Phase 6-31G/TD-PBE0", fontsize=24)
+ax1.set_title("Water Gas-Phase 6-311G(d)/TD-PBE0", fontsize=24)
 ax1.set_xlabel('Energy (eV)', fontsize=16)
 ax1.set_ylabel('Absorption', fontsize=16)
 ax1.set_xlim(0,30)
