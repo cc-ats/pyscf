@@ -15,5 +15,5 @@ source /home/yangjunjie/pyscf/pyscf/lib/compile-oscer.sh
 
 # MAIN
 
-bash ./test_all.s
+bash ./test_all.sh
 
