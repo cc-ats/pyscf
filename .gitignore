@@ -59,6 +59,7 @@ coverage.xml
 *.pot
 *.chk
 *.pdf
+script_pyscf.sh
 
 CMakeCache.txt
 CMakeFiles
