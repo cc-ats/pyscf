@@ -305,7 +305,7 @@ class RealTimeResult(StreamObject):
         return self.save_iter
 
     def _finalize(self):
-        if self._save_in_disk and self._chk_file is not None:
+        if self._save_in_memory:
             logger.info(self, '    %d out of %d steps are saved in the memory.'%(len(self.save_iter_list), self.step_iter_list[-1]+1))
         if self._save_in_disk and self._chk_file is not None:
             logger.info(self, '    %d out of %d steps are saved in the disk.  '%(len(self.save_iter_list), self.step_iter_list[-1]+1))
