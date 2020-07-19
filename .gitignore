@@ -60,6 +60,7 @@ coverage.xml
 *.chk
 *.pdf
 script_pyscf.sh
+compile-oscer.sh
 
 CMakeCache.txt
 CMakeFiles
