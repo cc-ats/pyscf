@@ -20,7 +20,7 @@ h2o =   gto.Mole( atom='''
   H    -0.00000000     0.76001092    -0.93285191
   H     0.00000000    -0.75999650    -0.93290797
   '''
-  , basis='6-311g(d)', symmetry=False).build()
+  , basis='6-311g+(d)', symmetry=False).build()
 
 h2o_rks    = scf.RKS(h2o)
 h2o_rks.verbose  = 0
@@ -60,7 +60,7 @@ for field_strength in [5e-3, 1e-3, 2e-4]:
     ax1.plot(27.2116*mw, sigma, label="RT-TDDFT, field strength=%.2e au"%field_strength)
 
 ax1.legend()
-ax1.set_title("Water Gas-Phase 6-311G(d)/TD-PBE0", fontsize=24)
+ax1.set_title("Water Gas-Phase 6-311+G(d)/TD-PBE0", fontsize=24)
 ax1.set_xlabel('Energy (eV)', fontsize=16)
 ax1.set_ylabel('Absorption', fontsize=16)
 ax1.set_xlim(0,30)
