@@ -36,6 +36,7 @@ rttd.dm_ao_init     = dm_init
 rttd.prop_method    = "mmut"
 
 lrtd = tddft.TDDFT(h2o_rks)
+lrtd.verbose = 4
 lrtd.nstates = 30
 lrtd.kernel()
 
@@ -52,25 +53,22 @@ gaussian_field_y = ClassicalElectricField(h2o, field_func=gaussian_vec_y, stop_t
 gaussian_vec_z   = lambda t: gaussian_field_vec(t, 0.0, 0.02, 0.0, [0.0, 0.0, field_strength])
 gaussian_field_z = ClassicalElectricField(h2o, field_func=gaussian_vec_z, stop_time=0.5)
 
-rttd.save_in_disk   = True
-rttd.chk_file       = "h2o_x.chk"
-rttd.save_in_memory = False
+rttd.save_in_disk   = False
+rttd.save_in_memory = True
 rttd.electric_field = gaussian_field_x
 rttd.kernel()
-time = read_keyword_value("t",      chk_file="h2o_x.chk")
-dip1 = read_keyword_value("dipole", chk_file="h2o_x.chk")
+time = read_keyword_value("t",      result_obj=rttd.result_obj)
+dip1 = read_keyword_value("dipole", result_obj=rttd.result_obj)
 dxx  = dip1[:,0] - dip1[0,0]
 
-rttd.chk_file       = "h2o_y.chk"
 rttd.electric_field = gaussian_field_y
 rttd.kernel()
-dip2 = read_keyword_value("dipole", chk_file="h2o_y.chk")
+dip2 = read_keyword_value("dipole", result_obj=rttd.result_obj)
 dyy  = dip2[:,1] - dip2[0,1]
 
-rttd.chk_file       = "h2o_z.chk"
 rttd.electric_field = gaussian_field_z
 rttd.kernel()
-dip3 = read_keyword_value("dipole", chk_file="h2o_z.chk")
+dip3 = read_keyword_value("dipole", result_obj=rttd.result_obj)
 dzz  = dip3[:,2] - dip3[0,2]
 
 mw, sigma = build_absorption_spectrum(0.2, time, numpy.array([dxx,dyy,dzz]).T, damp_expo=50.0)
