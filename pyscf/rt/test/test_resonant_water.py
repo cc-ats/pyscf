@@ -20,7 +20,7 @@ h2o =   gto.Mole( atom='''
   H    -0.00000000     0.76001092    -0.93285191
   H     0.00000000    -0.75999650    -0.93290797
   '''
-  , basis='6-311g+(d)', symmetry=False).build()
+  , basis='sto-3g', symmetry=False).build()
 
 h2o_rks    = scf.RKS(h2o)
 h2o_rks.verbose  = 0

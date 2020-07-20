@@ -14,28 +14,40 @@ from pyscf.rt.util   import build_absorption_spectrum
 from pyscf.rt.field  import ClassicalElectricField, constant_field_vec, gaussian_field_vec
 from pyscf.rt.result import read_index_list, read_step_dict, read_keyword_value
 
-h2o =   gto.Mole( atom='''
-  O     0.00000000    -0.00001441    -0.34824012
-  H    -0.00000000     0.76001092    -0.93285191
-  H     0.00000000    -0.75999650    -0.93290797
+adenine =   gto.Mole( atom='''
+  N     -2.2027     -0.0935     -0.0068
+  C     -0.9319      0.4989     -0.0046
+  C      0.0032     -0.5640     -0.0064
+  N     -0.7036     -1.7813     -0.0164
+  C     -2.0115     -1.4937     -0.0151
+  C      1.3811     -0.2282     -0.0017
+  N      1.7207      1.0926     -0.0252
+  C      0.7470      2.0612     -0.0194
+  N     -0.5782      1.8297     -0.0072
+  H      1.0891      3.1044     -0.0278
+  N      2.4103     -1.1617      0.1252
+  H     -3.0709      0.3774     -0.0035
+  H     -2.8131     -2.2379     -0.0191
+  H      2.1765     -2.0715     -0.1952
+  H      3.3110     -0.8521     -0.1580
   '''
   , basis='6-311+g(d)', symmetry=False).build()
 
-h2o_rks    = scf.RKS(h2o)
-h2o_rks.verbose  = 0
-h2o_rks.xc       = "pbe0"
-h2o_rks.conv_tol = 1e-12
-h2o_rks.kernel()
-dm_init = h2o_rks.make_rdm1()
+adenine_rks    = scf.RKS(adenine)
+adenine_rks.verbose  = 0
+adenine_rks.xc       = "pbe0"
+adenine_rks.conv_tol = 1e-12
+adenine_rks.kernel()
+dm_init = adenine_rks.make_rdm1()
 
-rttd = rt.TDSCF(h2o_rks)
+rttd = rt.TDSCF(adenine_rks)
 rttd.total_step     = 8000
 rttd.step_size      = 0.2
 rttd.verbose        = 4
 rttd.dm_ao_init     = dm_init
 rttd.prop_method    = "mmut"
 
-lrtd = tddft.TDDFT(h2o_rks)
+lrtd = tddft.TDDFT(adenine_rks)
 lrtd.verbose = 4
 lrtd.nstates = 30
 lrtd.kernel()
@@ -45,16 +57,18 @@ ax.stem(27.2116*lrtd.e, lrtd.oscillator_strength(), linefmt='grey', markerfmt=No
 
 field_strength = 1e-4
 gaussian_vec_x   = lambda t: gaussian_field_vec(t, 0.0, 0.02, 0.0, [field_strength, 0.0, 0.0])
-gaussian_field_x = ClassicalElectricField(h2o, field_func=gaussian_vec_x, stop_time=0.5)
+gaussian_field_x = ClassicalElectricField(adenine, field_func=gaussian_vec_x, stop_time=0.5)
 
 gaussian_vec_y   = lambda t: gaussian_field_vec(t, 0.0, 0.02, 0.0, [0.0, field_strength, 0.0])
-gaussian_field_y = ClassicalElectricField(h2o, field_func=gaussian_vec_y, stop_time=0.5)
+gaussian_field_y = ClassicalElectricField(adenine, field_func=gaussian_vec_y, stop_time=0.5)
 
 gaussian_vec_z   = lambda t: gaussian_field_vec(t, 0.0, 0.02, 0.0, [0.0, 0.0, field_strength])
-gaussian_field_z = ClassicalElectricField(h2o, field_func=gaussian_vec_z, stop_time=0.5)
+gaussian_field_z = ClassicalElectricField(adenine, field_func=gaussian_vec_z, stop_time=0.5)
 
 rttd.save_in_disk   = False
+rttd.chk_file       = None
 rttd.save_in_memory = True
+
 rttd.electric_field = gaussian_field_x
 rttd.kernel()
 time = read_keyword_value("t",      result_obj=rttd.result_obj)
@@ -75,37 +89,13 @@ mw, sigma = build_absorption_spectrum(0.2, time, numpy.array([dxx,dyy,dzz]).T, d
 ax.plot(27.2116*mw, sigma, label="RT-TDDFT, strength=%e au"%field_strength)
 
 ax.legend(prop={'size': 10})
-ax.set_title("Water Gas-Phase 6-311+G(d)/TD-PBE0 Absorption", fontsize=20)
+ax.set_title("Adenine Gas-Phase 6-311+G(d)/TD-PBE0 Absorption", fontsize=20)
 ax.set_xlabel('Energy (eV)', fontsize=20)
 ax.set_ylabel('Absorption', fontsize=20)
-ax.set_xlim(0,25)
+ax.set_xlim(0,40)
 ax.set_ylim(0,1)
 ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%0.0e'))
 ax.grid(True)
 fig.tight_layout()
 fig.savefig("./test_spectrum_abos.pdf")
-
-dipole_fig, (dipole_axes1, dipole_axes2, dipole_axes3) = plt.subplots(3, 1, sharex=True, figsize=(15,15))
-dipole_axes1.set_ylabel('XX-Dipole (au)', fontsize=20)
-dipole_axes1.set_title("Water Gas-Phase 6-311G(d)/TD-PBE0 Dipole", fontsize=24)
-dipole_axes1.yaxis.set_major_formatter(ticker.FormatStrFormatter('%5.2e'))
-dipole_axes1.grid(True)
-
-dipole_axes2.set_ylabel('YY-Dipole (au)', fontsize=20)
-dipole_axes2.yaxis.set_major_formatter(ticker.FormatStrFormatter('%5.2e'))
-dipole_axes2.grid(True)
-
-dipole_axes3.set_xlabel('Time (fs)', fontsize=20)
-dipole_axes3.set_ylabel('ZZ-Dipole (au)', fontsize=20)
-dipole_axes3.yaxis.set_major_formatter(ticker.FormatStrFormatter('%5.2e'))
-dipole_axes3.grid(True)
-
-dipole_axes1.plot(0.02419*time, dxx)
-dipole_axes2.plot(0.02419*time, dyy)
-dipole_axes3.plot(0.02419*time, dzz)
-dipole_fig.tight_layout()
-dipole_fig.savefig("./test_spectrum_dipole.pdf")
-
-
-    
 
