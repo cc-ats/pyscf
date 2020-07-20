@@ -132,7 +132,7 @@ ax1.legend()
 ax1.yaxis.set_major_formatter(ticker.FormatStrFormatter('%0.0e'))
 ax1.set_ylim(
    -numpy.max(numpy.abs(energy_mmut  -  energy_mmut[0]))*10.0,
-    numpy.max(numpy.abs(energy_mmut  -  energy_mmut[0]))*10.0
+    numpy.max(numpy.abs(energy_mmut  -  energy_mmut[0]))*20.0
 )
 
 ax2.plot(t_euler,dipole_euler[:,0] -   ref_dipole[0], label="Euler")
