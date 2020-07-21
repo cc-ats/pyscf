@@ -63,20 +63,20 @@ lrtd.analyze()
 
 fig, (ax1,ax2) = plt.subplots(2,1,figsize=(10,10))
 ax1.stem(27.2116*lrtd.e, lrtd.oscillator_strength(), linefmt='grey', markerfmt=None, basefmt=" ", use_line_collection=True, label="LR-TDDFT, Oscillator Strength")
-ax1.plot(27.2116*mw, 2*sigma, label="RT-TDDFT, Freq=%4.4f au, Strength=%4.2e au"%(freq, field_strength))
+ax1.plot(27.2116*mw, sigma, label="RT-TDDFT, Freq=%4.4f au, Strength=%4.2e au"%(freq, field_strength))
 
 ax1.legend(prop={'size': 10})
 ax1.set_title(r'H$_2$O Gas-Phase 6-311+G(d)/TD-PBE0 Absorption', fontsize=16)
 ax1.set_xlabel('Energy (eV)', fontsize=16)
-ax1.set_ylabel('Absorption', fontsize=16)
+ax1.set_ylabel('Absorption (Scaled)', fontsize=16)
 ax1.set_xlim(0,50)
 ax1.set_ylim(0,1)
 ax1.yaxis.set_major_formatter(ticker.FormatStrFormatter('%0.0e'))
 
 right_axis = ax2.twinx()
 left_axis = ax2
-p1, = left_axis.plot( time, dxx, label="Z-Dipole",color='C0' )
-p_, = left_axis.plot(-time, dxx, label="Field",   color='C1' )
+p1, = left_axis.plot( time, dxx, label="X-Dipole",color='C0' )
+p_, = left_axis.plot(-time, dxx, label="Electric Field",   color='C1' )
 p2, = right_axis.plot(time, [sin_field_z.get_field_vec(t)[0] for t in time], label="Field",color='C1')
  
 left_axis.set_xlabel('Time (fs)',   fontsize=16)
