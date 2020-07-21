@@ -12,7 +12,7 @@ from   pyscf  import gto
 from   pyscf  import rt
 
 from pyscf.rt.util   import build_absorption_spectrum
-from pyscf.rt.field  import ClassicalElectricField, constant_field_vec, sin_field_vec
+from pyscf.rt.field  import ClassicalElectricField
 from pyscf.rt.result import read_index_list, read_step_dict, read_keyword_value
 
 

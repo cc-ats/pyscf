@@ -30,7 +30,7 @@ dm_ = apply_field(mol, field=[0, 0, 1e-4], dm0=dm)
 
 rttd = rt.TDDFT(mf)
 rttd.verbose        = 4
-rttd.total_step     = 5
+rttd.total_step     = 100
 rttd.step_size      = 0.2
 rttd.prop_method    = "mmut"
 rttd.dm_ao_init     = dm_
