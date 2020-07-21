@@ -84,17 +84,19 @@ class EulerPropogator(Propogator):
         if verbose is None:
             verbose = self.verbose
         
-        logger.debug(self, '\n    ########################################')
         cput_time = (time.clock(), time.time())
+        log = logger.new_logger(self, verbose)
+        log.debug('\n    ----------------------------------------')
         next_dm_orth, next_dm_ao = self.rt_obj.propagate_step(
             self.step_size, self.temp_fock_orths[0], self.temp_dm_orths[0]
         )
-        cput1 = logger.timer(self, '%20s'%"propagate", *cput_time)
+
+        cput1          = log.timer('%20s'%"Propagate Step", *cput_time)
         next_t         = self.temp_ts[0] + self.step_size
         next_iter_step = self.step_iter + 1
-
         next_hcore_ao  = self.rt_obj.get_hcore_ao(next_t)
-        cput2 = logger.timer(self, '%20s'%"build hcore", *cput1)
+
+        cput2          = log.timer('%20s'%"Build hcore", *cput1)
         next_veff_ao   = self.rt_obj.get_veff_ao(dm_orth=next_dm_orth, dm_ao=next_dm_ao)
         next_fock_ao   = self.rt_obj.get_fock_ao(
             next_hcore_ao, dm_orth=next_dm_orth, dm_ao=next_dm_ao, veff_ao=next_veff_ao
@@ -102,8 +104,8 @@ class EulerPropogator(Propogator):
         next_fock_orth = self.rt_obj.get_fock_orth(
             next_hcore_ao, fock_ao=next_fock_ao, dm_orth=next_dm_orth, dm_ao=next_dm_ao, veff_ao=next_veff_ao
             )
-        cput3 = logger.timer(self, '%20s'%'build fock', *cput2)
-        
+
+        cput3 = log.timer('%20s'%"Build Fock", *cput2)
         step_obj._update(
             next_t, next_iter_step, next_dm_ao, next_dm_orth,
             next_fock_ao, next_fock_orth, next_hcore_ao, next_veff_ao
@@ -116,8 +118,8 @@ class EulerPropogator(Propogator):
 
         self.step_iter  += 1
         self.temp_ts    += self.step_size
-        cput4 = logger.timer(self, '%20s'%'finalize', *cput3)
-        cput5 = logger.timer(self, '%20s'%'step finished', *cput_time)
+        cput4 = log.timer('%20s'%"Finalize", *cput3)
+        cput5 = log.timer('%20s'%"Finish Step", *cput_time)
         logger.debug(self, '    step_iter=%d, t=%f au', next_iter_step, next_t)
         return self.step_iter
 
