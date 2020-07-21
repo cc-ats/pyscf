@@ -25,10 +25,10 @@ def dump_step_obj(chkfile, **kwargs):
 def read_index_list(result_obj=None, chk_file=None):
     assert (result_obj is not None) or (chk_file is not None)
     if result_obj is not None:
-        if result_obj._chk_file is None:
-            assert result_obj._time_list is not None
+        if result_obj.save_iter_list is not None:
             return result_obj.save_iter_list
         else:
+            assert result_obj._chk_file is not None
             chk_file = result_obj._chk_file
 
     if chk_file is not None:

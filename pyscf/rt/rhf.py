@@ -112,9 +112,14 @@ def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None, step_size = None, total_
 
     while step_iter < total_step:
         # propagation step
-        step_iter = prop_obj.propagate_step(step_obj=step_obj, verbose=verbose)
+        if (step_iter+1)%100 == 0:
+            step_verbose = verbose + 1
+        else:
+            step_verbose = verbose
+        step_iter = prop_obj.propagate_step(step_obj=step_obj, verbose=step_verbose)
         if step_iter%save_frequency == 0:
             result_obj._update(step_obj)
+
     result_obj._finalize()
     rt_obj._finalize(result_obj=result_obj)
     cput2 = logger.timer(rt_obj, 'Finish kernel', *cput1)
