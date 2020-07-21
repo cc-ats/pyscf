@@ -30,7 +30,7 @@ h2o_rks.kernel()
 dm_init = h2o_rks.make_rdm1()
 
 rttd = rt.TDSCF(h2o_rks)
-rttd.total_step     = 8000
+rttd.total_step     = 2000
 rttd.step_size      = 0.2
 rttd.verbose        = 4
 rttd.dm_ao_init     = dm_init
@@ -41,23 +41,25 @@ lrtd.nstates = 30
 lrtd.kernel()
 
 fig, (ax1,ax2) = plt.subplots(2,1,figsize=(10,10))
-ax1.stem(27.2116*lrtd.e, lrtd.oscillator_strength(), linefmt='grey', markerfmt=None, basefmt=" ", use_line_collection=True, label="LR-TDDFT, oscillator strength")
+ax1.stem(27.2116*lrtd.e, lrtd.oscillator_strength(), linefmt='grey', markerfmt=None, basefmt=" ", use_line_collection=True, label="LR-TDDFT, Oscillator Strength")
 
-for field_strength in [5e-3, 1e-3, 2e-4]:
-    cos_vec_z   = lambda t: numpy.cos(0.3768*t)*numpy.asarray([0.0, 0.0, field_strength])
-    cos_field_z = ClassicalElectricField(h2o, field_func=cos_vec_z, stop_time=100.0)
+freq = 0.372295453
+period = 2*numpy.pi/freq
+cos_vec_z   = lambda t: numpy.sin(freq*t)*numpy.asarray([0.0, 0.0, 1e-4])
+cos_field_z = ClassicalElectricField(h2o, field_func=cos_vec_z, stop_time=5.0*period)
 
-    rttd.save_in_disk   = True
-    rttd.chk_file       = "h2o_z_%.2e.chk"%field_strength
-    rttd.save_in_memory = False
-    rttd.electric_field = cos_field_z
-    # rttd.kernel()
-    time = read_keyword_value("t",      chk_file="h2o_z_%.2e.chk"%field_strength)
-    dip  = read_keyword_value("dipole", chk_file="h2o_z_%.2e.chk"%field_strength)
-    dzz  = dip[:,2] - dip[0,2]
+rttd.save_in_disk   = True
+rttd.chk_file       = "h2o_z_%.2e.chk"%(1e-4)
+rttd.save_in_memory = False
+rttd.electric_field = cos_field_z
+rttd.kernel()
 
-    mw, sigma = build_absorption_spectrum(0.2, time[:7*rttd.total_step//8], dip[1*rttd.total_step//8+1:,:], damp_expo=50.0)
-    ax1.plot(27.2116*mw, sigma, label="RT-TDDFT, field strength=%.2e au"%field_strength)
+time = read_keyword_value("t",      chk_file="h2o_z_%.2e.chk"%(1e-4))
+dip  = read_keyword_value("dipole", chk_file="h2o_z_%.2e.chk"%(1e-4))
+dzz  = dip[:,2] - dip[0,2]
+
+mw, sigma = build_absorption_spectrum(0.2, time[:1*rttd.total_step//2], dip[1*rttd.total_step//2+1:,:], damp_expo=50.0)
+ax1.plot(27.2116*mw, sigma, label="RT-TDDFT, Freq=%4.4f au, Strength=%4.2e au"%(0.372295453, 1e-4))
 
 ax1.legend()
 ax1.set_title("Water Gas-Phase 6-311+G(d)/TD-PBE0", fontsize=24)
@@ -79,7 +81,7 @@ left_axis.set_ylabel('Dipole (au)', fontsize=16)
 right_axis.set_ylabel('Field (au)', fontsize=16)
 right_axis.yaxis.set_major_formatter(ticker.FormatStrFormatter('%0.0e'))
 left_axis.set_ylim(-0.016,0.016)
-left_axis.set_xlim(0,1600)
+left_axis.set_xlim(0,200)
 left_axis.legend()
 ax2.grid(True)
 fig.tight_layout()

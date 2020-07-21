@@ -58,11 +58,12 @@ mw, sigma = build_absorption_spectrum(0.2, time, numpy.array(dipole_list).T, dam
 
 fig, ax = plt.subplots(figsize=(10,6))
 lrtd = tddft.TDDFT(water_rks)
-lrtd.verbose = 4
+lrtd.verbose = 5
 lrtd.nstates = 30
 lrtd.kernel()
+lrtd.analyze()
 ax.stem(27.2116*lrtd.e, lrtd.oscillator_strength(), linefmt='grey', markerfmt=None, basefmt=" ", use_line_collection=True, label="LR-TDDFT")
-ax.plot(27.2116*mw, sigma, label="RT-TDDFT, strength=%e au"%field_strength)
+ax.plot(27.2116*mw, 2*sigma, label="RT-TDDFT, strength=%4.2e au"%field_strength)
 
 ax.legend(prop={'size': 10})
 ax.set_title('Water Gas-Phase 6-311+G(d)/TD-PBE0 Absorption', fontsize=20)
