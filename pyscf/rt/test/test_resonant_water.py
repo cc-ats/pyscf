@@ -57,7 +57,7 @@ rttd.kernel()
 
 time = read_keyword_value("t",      chk_file="h2o_z_%.2e.chk"%(1e-4))
 dip  = read_keyword_value("dipole", chk_file="h2o_z_%.2e.chk"%(1e-4))
-dzz  = dip[:,2] - dip[0,2]
+dxx  = dip[:,0] - dip[0,0]
 
 mw, sigma = build_absorption_spectrum(0.2, time[:1*rttd.total_step//2], dip[1*rttd.total_step//2+1:,:], damp_expo=50.0)
 ax1.plot(27.2116*mw, sigma, label="RT-TDDFT, Freq=%4.4f au, Strength=%4.2e au"%(0.372295453, 1e-4))
@@ -73,9 +73,9 @@ ax1.grid(True)
 
 right_axis = ax2.twinx()
 left_axis = ax2
-p1, = left_axis.plot(time, dzz, label="Z-Dipole",color='C0' )
-p_, = left_axis.plot(-time, dzz, label="Field",color='C1' )
-p2, = right_axis.plot(time, [gaussian_field_z.get_field_vec(t)[2] for t in time], label="Field",color='C1')
+p1, = left_axis.plot( time, dxx, label="Z-Dipole",color='C0' )
+p_, = left_axis.plot(-time, dxx, label="Field",color='C1' )
+p2, = right_axis.plot(time, [gaussian_field_z.get_field_vec(t)[0] for t in time], label="Field",color='C1')
  
 left_axis.set_xlabel('Time (fs)', fontsize=16)
 left_axis.set_ylabel('Dipole (au)', fontsize=16)
