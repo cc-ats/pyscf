@@ -2,6 +2,7 @@
 
 import pyscf
 import numpy
+from numpy import exp, cos, sin, power
 
 from matplotlib import pyplot as plt
 import matplotlib.ticker as ticker
@@ -45,13 +46,13 @@ ax1.stem(27.2116*lrtd.e, lrtd.oscillator_strength(), linefmt='grey', markerfmt=N
 
 freq = 0.372295453
 period = 2*numpy.pi/freq
-cos_vec_z   = lambda t: numpy.sin(freq*t)*numpy.asarray([0.0, 0.0, 1e-4])
-cos_field_z = ClassicalElectricField(h2o, field_func=cos_vec_z, stop_time=5.0*period)
+gaussian_vec_z   = lambda t: exp(-power(t - 4*period, 2) / (2 * power(2*period, 2))) * sin(freq*t)
+gaussian_field_z = ClassicalElectricField(h2o, field_func=gaussian_vec_z, stop_time=8.0*period)
 
 rttd.save_in_disk   = True
 rttd.chk_file       = "h2o_z_%.2e.chk"%(1e-4)
 rttd.save_in_memory = False
-rttd.electric_field = cos_field_z
+rttd.electric_field = gaussian_field_z
 rttd.kernel()
 
 time = read_keyword_value("t",      chk_file="h2o_z_%.2e.chk"%(1e-4))
@@ -74,7 +75,7 @@ right_axis = ax2.twinx()
 left_axis = ax2
 p1, = left_axis.plot(time, dzz, label="Z-Dipole",color='C0' )
 p_, = left_axis.plot(-time, dzz, label="Field",color='C1' )
-p2, = right_axis.plot(time, [cos_field_z.get_field_vec(t)[2] for t in time], label="Field",color='C1')
+p2, = right_axis.plot(time, [gaussian_field_z.get_field_vec(t)[2] for t in time], label="Field",color='C1')
  
 left_axis.set_xlabel('Time (fs)', fontsize=16)
 left_axis.set_ylabel('Dipole (au)', fontsize=16)
