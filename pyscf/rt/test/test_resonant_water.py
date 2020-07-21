@@ -31,7 +31,7 @@ h2o_rks.kernel()
 dm_init = h2o_rks.make_rdm1()
 
 rttd = rt.TDSCF(h2o_rks)
-rttd.total_step     = 4000
+rttd.total_step     = 8000
 rttd.step_size      = 0.2
 rttd.verbose        = 4
 rttd.dm_ao_init     = dm_init
@@ -44,9 +44,9 @@ lrtd.kernel()
 fig, (ax1,ax2) = plt.subplots(2,1,figsize=(10,10))
 ax1.stem(27.2116*lrtd.e, lrtd.oscillator_strength(), linefmt='grey', markerfmt=None, basefmt=" ", use_line_collection=True, label="LR-TDDFT, Oscillator Strength")
 
-freq = 0.431196756
+freq = 0.28902542
 period = 2*numpy.pi/freq
-gaussian_vec_z   = lambda t: [exp(-power(t - 4*period, 2) / (2 * power(2*period, 2))) * sin(freq*t), 0.0, 0.0]
+gaussian_vec_z   = lambda t: [1e-4*exp(-power(t - 4*period, 2) / (2 * power(2*period, 2))) * sin(freq*t), 0.0, 0.0]
 gaussian_field_z = ClassicalElectricField(h2o, field_func=gaussian_vec_z, stop_time=8.0*period)
 
 rttd.save_in_disk   = True
