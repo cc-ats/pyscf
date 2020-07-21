@@ -78,7 +78,7 @@ h   0.000000000000000 -2.509154418614532  0.000000000000000
     result_obj_1     = RealTimeResult(rttd,  verbose=0)
     result_obj_1.verbose = 5
     result_obj_1._save_in_memory = True
-    result_obj_1.chk_file        = "test.chk"
+    result_obj_1._chk_file        = "test.chk"
     result_obj_1._save_in_disk   = True
     kernel(rttd, step_size = 0.2, total_step = 1, save_frequency = 1, dm_ao_init=dm_,
                 result_obj=result_obj_1, prop_obj=prop_euler, step_obj = step_obj_1)
