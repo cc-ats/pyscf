@@ -108,7 +108,8 @@ class EulerPropogator(Propogator):
         cput3 = log.timer('%20s'%"Build Fock", *cput2)
         step_obj._update(
             next_t, next_iter_step, next_dm_ao, next_dm_orth,
-            next_fock_ao, next_fock_orth, next_hcore_ao, next_veff_ao
+            next_fock_ao, next_fock_orth, next_hcore_ao, next_veff_ao,
+            verbose=verbose
             )
 
         self.temp_dm_aos[0]           = next_dm_ao

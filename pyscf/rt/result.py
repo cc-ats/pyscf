@@ -237,8 +237,9 @@ class RealTimeResult(StreamObject):
 
         return 0
 
-    def _update(self, step_obj):
+    def _update(self, step_obj, verbose=None):
         assert self._save_in_disk or self._save_in_memory
+        log = logger.new_logger(self, verbose)
 
         if step_obj.calculate_dipole:
             step_dipole = self.rt_obj._scf.dip_moment(dm=step_obj.step_dm_ao.real, mol=self.mol, verbose=0, unit='au')
@@ -275,7 +276,7 @@ class RealTimeResult(StreamObject):
             self._dm_orth_list.append(     step_obj.step_dm_orth    )
             self._fock_orth_list.append(   step_obj.step_fock_orth  )
             self._fock_ao_list.append(     step_obj.step_fock_ao    )
-            cput1 = logger.timer(self, '    The %d step is saved in the memory:'%step_obj.step_iter, *cput_time)
+            cput1 = log.timer('    The %d step is saved in the memory:'%step_obj.step_iter, *cput_time)
 
         if self._save_in_disk and self._chk_file is not None:
             cput_time = (time.clock(), time.time())
@@ -296,7 +297,7 @@ class RealTimeResult(StreamObject):
                 temp_step_obj_dict["energy_elec"] = step_energy_elec
                 temp_step_obj_dict["energy_tot"]  = step_energy_tot
             dump_step_obj(self._chk_file, **temp_step_obj_dict)
-            cput1 = logger.timer(self, 'The %d step is saved in the disk:  '%step_obj.step_iter, *cput_time)
+            cput1 = log.timer('    The %d step is saved in the disk:  '%step_obj.step_iter, *cput_time)
 
         self.save_iter = self.save_iter + 1
         self.save_iter_list.append(self.save_iter)
