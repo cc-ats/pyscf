@@ -71,6 +71,8 @@ def kernel(rt_obj, dm_ao_init= None, dm_orth_init=None, step_size = None, total_
                    verbose = None):
     
     cput0 = (time.clock(), time.time())
+    if verbose is None:
+        verbose = 0
 
     if dm_ao_init is None:
         if dm_orth_init is not None:

@@ -62,7 +62,7 @@ result_obj_1     = RealTimeResult(rttd,  verbose=3)
 result_obj_1._save_in_memory = True
 result_obj_1._save_in_disk   = False
 kernel(rttd, step_size = 0.2, total_step = 500, save_frequency = 1, dm_ao_init=dm_,
-             result_obj=result_obj_1, prop_obj=prop_euler, step_obj = step_obj_1)
+             result_obj=result_obj_1, prop_obj=prop_euler, step_obj = step_obj_1, verbose=4)
 
 t_euler         = read_keyword_value("t",           result_obj=result_obj_1)
 energy_euler    = read_keyword_value("energy_elec", result_obj=result_obj_1)
@@ -79,7 +79,7 @@ result_obj_2     = RealTimeResult(rttd,  verbose=3)
 result_obj_2._save_in_memory = True
 result_obj_2._save_in_disk   = False
 kernel(rttd, step_size = 0.2, total_step = 500, save_frequency = 1, dm_ao_init=dm_,
-             result_obj=result_obj_2, prop_obj=prop_mmut, step_obj = step_obj_2)
+             result_obj=result_obj_2, prop_obj=prop_mmut, step_obj = step_obj_2, verbose=4)
 
 t_mmut         = read_keyword_value("t",           result_obj=result_obj_2)
 energy_mmut    = read_keyword_value("energy_elec", result_obj=result_obj_2)
@@ -97,7 +97,7 @@ result_obj_3     = RealTimeResult(rttd,  verbose=3)
 result_obj_3._save_in_memory = True
 result_obj_3._save_in_disk   = False
 kernel(rttd, step_size = 0.2, total_step = 500, save_frequency = 1, dm_ao_init=dm_,
-             result_obj=result_obj_3, prop_obj=prop_eppc, step_obj = step_obj_3)
+             result_obj=result_obj_3, prop_obj=prop_eppc, step_obj = step_obj_3, verbose=4)
 
 t_eppc         = read_keyword_value("t",            result_obj=result_obj_3)
 energy_eppc    = read_keyword_value("energy_elec",  result_obj=result_obj_3)
@@ -115,7 +115,7 @@ result_obj_4     = RealTimeResult(rttd,  verbose=3)
 result_obj_4._save_in_memory = True
 result_obj_4._save_in_disk   = False
 kernel(rttd, step_size = 0.2, total_step = 500, save_frequency = 1, dm_ao_init=dm_,
-             result_obj=result_obj_4, prop_obj=prop_lflp, step_obj = step_obj_4)
+             result_obj=result_obj_4, prop_obj=prop_lflp, step_obj = step_obj_4, verbose=4)
 
 t_lflp         = read_keyword_value("t",            result_obj=result_obj_4)
 energy_lflp    = read_keyword_value("energy_elec",  result_obj=result_obj_4)

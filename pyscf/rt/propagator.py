@@ -194,7 +194,7 @@ class MMUTPropogator(Propogator):
 
         cput_time = (time.clock(), time.time())
         log = logger.new_logger(self, verbose)
-        log.debug('\n    ########################################')
+        log.debug('\n    ----------------------------------------')
 
         next_t = self.temp_ts[0] + self.step_size
         next_dm_orth, next_dm_ao = self.rt_obj.propagate_step(
@@ -229,7 +229,7 @@ class MMUTPropogator(Propogator):
         self.temp_ts    += self.step_size
 
         log.debug('    step_iter=%d, t=%f au', next_iter_step, next_t)
-        cput_time = log.timer('%20s'%'step finished', *cput_time)
+        cput5 = log.timer('%20s'%"Finish Step", *cput_time)
         return self.step_iter
 
 class PCPropogator(Propogator):
@@ -295,7 +295,8 @@ class EPPCPropogator(PCPropogator):
             verbose = self.verbose
 
         cput_time = (time.clock(), time.time())
-        logger.debug(self, '\n    ########################################')
+        log = logger.new_logger(self, verbose)
+        log.debug('\n    ----------------------------------------')
 
         step_converged      = False
         inner_iter          = 0
@@ -340,10 +341,10 @@ class EPPCPropogator(PCPropogator):
 
         self.step_iter  += 1
         self.temp_ts    += self.step_size
-        cput1 = logger.timer(self, 'propagate_step', *cput_time)
-        logger.debug(self, '    step_iter=%d, t=%f au', next_iter_step, next_t)
-        logger.debug(self, '    PC step: inner_iter = %d, err = %e (tol = %e)', inner_iter, err, self.tol)
-        
+
+        log.debug('    step_iter=%d, t=%f au', next_iter_step, next_t)
+        log.debug('    PC step: inner_iter = %d, err = %e (tol = %e)', inner_iter, err, self.tol)
+        cput5 = log.timer('%20s'%"Finish Step", *cput_time)
         return self.step_iter
 
 class LFLPPCPropogator(PCPropogator):
@@ -421,7 +422,8 @@ class LFLPPCPropogator(PCPropogator):
             verbose = self.verbose
 
         cput_time = (time.clock(), time.time())
-        logger.debug(self, '\n    ########################################')
+        log = logger.new_logger(self, verbose)
+        log.debug('\n    ----------------------------------------')
 
         step_converged      = False
         inner_iter          = 0
@@ -466,8 +468,8 @@ class LFLPPCPropogator(PCPropogator):
         self.step_iter  += 1
         self.temp_ts    += self.step_size
 
-        cput1 = logger.timer(self, 'propagate_step', *cput_time)
-        logger.debug(self, '    step_iter=%d, t=%f au', next_iter_step, next_t)
-        logger.debug(self, '    PC step: inner_iter = %d, err = %e (tol = %e)', inner_iter, err, self.tol)
+        log.debug('    step_iter=%d, t=%f au', next_iter_step, next_t)
+        log.debug('    PC step: inner_iter = %d, err = %e (tol = %e)', inner_iter, err, self.tol)
+        cput5 = log.timer('%20s'%"Finish Step", *cput_time)
         
         return self.step_iter
