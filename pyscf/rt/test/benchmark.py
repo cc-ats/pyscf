@@ -76,7 +76,7 @@ h   0.000000000000000 -2.509154418614532  0.000000000000000
     step_obj_1.calculate_pop    = False
     step_obj_1.calculate_energy = False
     result_obj_1     = RealTimeResult(rttd,  verbose=0)
-    result_obj_1.verbose = 0
+    result_obj_1.verbose = 5
     result_obj_1._save_in_memory = True
     result_obj_1._save_in_disk   = True
     kernel(rttd, step_size = 0.2, total_step = 1, save_frequency = 1, dm_ao_init=dm_,
