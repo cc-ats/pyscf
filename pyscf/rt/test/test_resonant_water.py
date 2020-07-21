@@ -38,15 +38,19 @@ rttd.dm_ao_init     = dm_init
 rttd.prop_method    = "mmut"
 
 lrtd = tddft.TDDFT(h2o_rks)
+lrtd.verbose = 4
 lrtd.nstates = 30
+lrtd.max_space = 100
+lrtd.max_space = 200
 lrtd.kernel()
+lrtd.analyze()
 
 fig, (ax1,ax2) = plt.subplots(2,1,figsize=(10,10))
 ax1.stem(27.2116*lrtd.e, lrtd.oscillator_strength(), linefmt='grey', markerfmt=None, basefmt=" ", use_line_collection=True, label="LR-TDDFT, Oscillator Strength")
 
 freq = 0.28902542
 period = 2*numpy.pi/freq
-gaussian_vec_z   = lambda t: [1e-4*exp(-power(t - 4*period, 2) / (2 * power(2*period, 2))) * sin(freq*t), 0.0, 0.0]
+gaussian_vec_z   = lambda t: [1e-4*sin(freq*t), 0.0, 0.0]
 gaussian_field_z = ClassicalElectricField(h2o, field_func=gaussian_vec_z, stop_time=8.0*period)
 
 rttd.save_in_disk   = True
@@ -59,7 +63,7 @@ time = read_keyword_value("t",      chk_file="h2o_z_%.2e.chk"%(1e-4))
 dip  = read_keyword_value("dipole", chk_file="h2o_z_%.2e.chk"%(1e-4))
 dxx  = dip[:,0] - dip[0,0]
 
-mw, sigma = build_absorption_spectrum(0.2, time[:1*rttd.total_step//2], dip[1*rttd.total_step//2+1:,:], damp_expo=50.0)
+mw, sigma = build_absorption_spectrum(0.2, time[:7*rttd.total_step//8], dip[1*rttd.total_step//8+1:,:], damp_expo=50.0)
 ax1.plot(27.2116*mw, sigma, label="RT-TDDFT, Freq=%4.4f au, Strength=%4.2e au"%(0.372295453, 1e-4))
 
 ax1.legend()
@@ -82,7 +86,7 @@ left_axis.set_ylabel('Dipole (au)', fontsize=16)
 right_axis.set_ylabel('Field (au)', fontsize=16)
 right_axis.yaxis.set_major_formatter(ticker.FormatStrFormatter('%0.0e'))
 left_axis.set_ylim(-0.016,0.016)
-left_axis.set_xlim(0,800)
+left_axis.set_xlim(0,1600)
 left_axis.legend()
 ax2.grid(True)
 fig.tight_layout()

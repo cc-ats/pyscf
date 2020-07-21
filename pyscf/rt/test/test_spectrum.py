@@ -40,21 +40,21 @@ rttd.save_in_memory = True
 
 field_strength = 1e-4
 dipole_list = []
-# for i in range(3):
-#     temp_vec = [0.0, 0.0, 0.0]
-#     temp_vec[i] = field_strength
-#     temp_delta_vec   = lambda t: gaussian_field_vec(t, 0.0, 0.02, 0.0, temp_vec)
-#     temp_delta_field = ClassicalElectricField(water, field_func=temp_delta_vec, stop_time=0.5)
-# 
-#     rttd.electric_field = temp_delta_field
-#     rttd.kernel()
-#     
-#     time     = read_keyword_value("t",      result_obj=rttd.result_obj)
-#     temp_dip = read_keyword_value("dipole", result_obj=rttd.result_obj)
-#     dipole_list.append(temp_dip[:,i] - temp_dip[0,i])
-# 
-# 
-# mw, sigma = build_absorption_spectrum(0.2, time, numpy.array(dipole_list).T, damp_expo=50.0)
+for i in range(3):
+    temp_vec = [0.0, 0.0, 0.0]
+    temp_vec[i] = field_strength
+    temp_delta_vec   = lambda t: gaussian_field_vec(t, 0.0, 0.02, 0.0, temp_vec)
+    temp_delta_field = ClassicalElectricField(water, field_func=temp_delta_vec, stop_time=0.5)
+
+    rttd.electric_field = temp_delta_field
+    rttd.kernel()
+    
+    time     = read_keyword_value("t",      result_obj=rttd.result_obj)
+    temp_dip = read_keyword_value("dipole", result_obj=rttd.result_obj)
+    dipole_list.append(temp_dip[:,i] - temp_dip[0,i])
+
+
+mw, sigma = build_absorption_spectrum(0.2, time, numpy.array(dipole_list).T, damp_expo=50.0)
 
 fig, ax = plt.subplots(figsize=(10,6))
 lrtd = tddft.TDDFT(water_rks)
@@ -63,9 +63,9 @@ lrtd.nstates = 30
 lrtd.max_space = 100
 lrtd.max_space = 200
 lrtd.kernel()
+lrtd.analyze()
 print("lrtd.e = \n", lrtd.e)
 print("lrtd.converged = \n", lrtd.converged)
-lrtd.analyze()
 ax.stem(27.2116*lrtd.e, lrtd.oscillator_strength(), linefmt='grey', markerfmt=None, basefmt=" ", use_line_collection=True, label="LR-TDDFT")
 ax.plot(27.2116*mw, 2*sigma, label="RT-TDDFT, strength=%4.2e au"%field_strength)
 
