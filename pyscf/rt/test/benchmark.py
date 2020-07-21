@@ -37,7 +37,7 @@ with open('/proc/meminfo') as f:
     print(f.readline()[:-1])
 print('OMP_NUM_THREADS=%s\n'%os.environ.get('OMP_NUM_THREADS', None))
 
-for bas in ('sto-3g', '3-21g', '6-311g', 'cc-pVDZ', 'cc-pVTZ'):
+for bas in ('sto-3g', '3-21g', '6-311g', 'cc-pVDZ'):
     mol = pyscf.M(atom = '''
 c   1.217739890298750 -0.703062453466927  0.000000000000000
 h   2.172991468538160 -1.254577209307266  0.000000000000000
