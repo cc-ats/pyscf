@@ -30,7 +30,7 @@ h2o_rks.kernel()
 dm_init = h2o_rks.make_rdm1()
 
 rttd = rt.TDSCF(h2o_rks)
-rttd.total_step     = 2000
+rttd.total_step     = 4000
 rttd.step_size      = 0.2
 rttd.verbose        = 4
 rttd.dm_ao_init     = dm_init
@@ -81,7 +81,7 @@ left_axis.set_ylabel('Dipole (au)', fontsize=16)
 right_axis.set_ylabel('Field (au)', fontsize=16)
 right_axis.yaxis.set_major_formatter(ticker.FormatStrFormatter('%0.0e'))
 left_axis.set_ylim(-0.016,0.016)
-left_axis.set_xlim(0,200)
+left_axis.set_xlim(0,800)
 left_axis.legend()
 ax2.grid(True)
 fig.tight_layout()
