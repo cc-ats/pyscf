@@ -15,7 +15,7 @@ from pyscf.rt.propagator import EulerPropogator, MMUTPropogator
 from pyscf.rt.propagator import EPPCPropogator,  LFLPPCPropogator
 
 from pyscf.rt.result import RealTimeStep,    RealTimeResult
-from pyscf.rt.result import read_index_list, read_step_dict         
+from pyscf.rt.result import read_index_list, read_step_dict, read_keyword_value         
 
 from pyscf.rt.util import print_matrix, print_cx_matrix
 from pyscf.rt.util import expia_b_exp_ia
@@ -387,10 +387,16 @@ class TDHF(lib.StreamObject):
                  verbose = verbose
             )
 
-    def read_step_dict(self, index, chk_file=None):
-        if chk_file is None:
-            chk_file = self.chk_file
-        return read_step_dict(index, result_obj=self.result_obj, chk_file=chk_file)
+    def read_step_dict(self, index):
+        chk_file   = self.chk_file
+        result_obj = self.result_obj
+        return read_step_dict(index, result_obj=result_obj, chk_file=chk_file)
+
+    def read_keyword_value(self, keyword):
+        chk_file   = self.chk_file
+        result_obj = self.result_obj
+        index_list = self.save_index_list
+        return read_keyword_value(keyword, result_obj=result_obj, chk_file=chk_file, index_list=index_list)
 
 if __name__ == "__main__":
     ''' This is a short test.'''

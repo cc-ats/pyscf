@@ -63,11 +63,12 @@ def read_step_dict(index, result_obj=None, chk_file=None):
     if chk_file is not None:
         return load(chk_file, 'rt_result/rt_step/%d'%index)
 
-def read_keyword_value(keyword, result_obj=None, chk_file=None):
+def read_keyword_value(keyword, result_obj=None, chk_file=None, index_list=None):
     ''' from keyword value memory or disk, keyword could be a str or list '''
     assert (result_obj is not None) or (chk_file is not None)
     assert isinstance(keyword, str)
-    index_list = read_index_list(result_obj=result_obj, chk_file=chk_file)
+    if index_list is None:
+        index_list = read_index_list(result_obj=result_obj, chk_file=chk_file)
     if result_obj is not None:
         if result_obj._chk_file is None:
             print("Reading %14s from %14s."%(keyword, "memory"))
