@@ -12,9 +12,9 @@ from pyscf.lib import logger
 
 from pyscf.rt  import rhf as rhf_tdscf
 
-from pyscf.rt.propagator import Propogator,      PCPropogator
-from pyscf.rt.propagator import EulerPropogator, MMUTPropogator
-from pyscf.rt.propagator import EPPCPropogator,  LFLPPCPropogator
+from pyscf.rt.propagator import Propagator,      PCPropagator
+from pyscf.rt.propagator import EulerPropagator, MMUTPropagator
+from pyscf.rt.propagator import EPPCPropagator,  LFLPPCPropagator
 
 from pyscf.rt.result import RealTimeStep,    RealTimeResult
 from pyscf.rt.result import read_index_list, read_step_dict         

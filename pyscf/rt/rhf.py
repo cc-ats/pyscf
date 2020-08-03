@@ -10,9 +10,9 @@ from numpy import dot, complex128
 from pyscf import lib
 from pyscf.lib import logger
 
-from pyscf.rt.propagator import Propogator,      PCPropogator
-from pyscf.rt.propagator import EulerPropogator, MMUTPropogator
-from pyscf.rt.propagator import EPPCPropogator,  LFLPPCPropogator
+from pyscf.rt.propagator import Propagator,      PCPropagator
+from pyscf.rt.propagator import EulerPropagator, MMUTPropagator
+from pyscf.rt.propagator import EPPCPropagator,  LFLPPCPropagator
 
 from pyscf.rt.result import RealTimeStep,    RealTimeResult
 from pyscf.rt.result import read_index_list, read_step_dict, read_keyword_value         
@@ -153,7 +153,7 @@ class TDHF(lib.StreamObject):
 
 # propagation method
         self.prop_method     = None # a string
-        self.prop_obj        = None # a Propogator object
+        self.prop_obj        = None # a Propagator object
 
 # intermediate result 
         self._orth_xtuple     = None
@@ -194,17 +194,17 @@ class TDHF(lib.StreamObject):
         if (key is not None):
             if   (key.lower() == 'euler'):
                 # self.prop_func = euler_prop
-                self.prop_obj = EulerPropogator(self, verbose=self.verbose)
+                self.prop_obj = EulerPropagator(self, verbose=self.verbose)
             elif (key.lower() == 'mmut'):
-                self.prop_obj = MMUTPropogator(self, verbose=self.verbose)
+                self.prop_obj = MMUTPropagator(self, verbose=self.verbose)
             elif (key.lower() == 'ep-pc' or key.lower() == 'eppc'):
-                self.prop_obj = EPPCPropogator(self, verbose=self.verbose)
+                self.prop_obj = EPPCPropagator(self, verbose=self.verbose)
             elif (key.lower() == 'lflp-pc' or key.lower() == 'lflp'):
-                self.prop_obj = LFLPPCPropogator(self, verbose=self.verbose)
+                self.prop_obj = LFLPPCPropagator(self, verbose=self.verbose)
             else:
                 raise RuntimeError("unknown prop method!")
         else:
-            self.prop_obj = EulerPropogator(self)
+            self.prop_obj = EulerPropagator(self)
 
     def ao2orth_dm(self, dm_ao):
         '''

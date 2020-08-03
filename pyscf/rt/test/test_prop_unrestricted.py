@@ -12,8 +12,8 @@ from   pyscf  import rt
 
 from pyscf.rt.rhf        import kernel
 from pyscf.rt.util       import print_cx_matrix
-from pyscf.rt.propagator import EulerPropogator, MMUTPropogator
-from pyscf.rt.propagator import EPPCPropogator, LFLPPCPropogator
+from pyscf.rt.propagator import EulerPropagator, MMUTPropagator
+from pyscf.rt.propagator import EPPCPropagator, LFLPPCPropagator
 from pyscf.rt.result     import RealTimeStep, RealTimeResult
 from pyscf.rt.result     import read_index_list, read_step_dict, read_keyword_value
 
@@ -53,7 +53,7 @@ rttd.verbose        = 4
 rttd.total_step     = None
 rttd.step_size      = None
 
-prop_euler       = EulerPropogator(rttd, verbose=3)
+prop_euler       = EulerPropagator(rttd, verbose=3)
 step_obj_1       = RealTimeStep(rttd,    verbose=3)
 step_obj_1.calculate_dipole = True
 step_obj_1.calculate_pop    = True
@@ -70,7 +70,7 @@ dm_orth_euler   = read_keyword_value("dm_orth",     result_obj=result_obj_1)
 fock_orth_euler = read_keyword_value("fock_orth",   result_obj=result_obj_1)
 dipole_euler    = read_keyword_value("dipole",      result_obj=result_obj_1)
 
-prop_mmut        = MMUTPropogator(rttd,  verbose=3)
+prop_mmut        = MMUTPropagator(rttd,  verbose=3)
 step_obj_2       = RealTimeStep(rttd,    verbose=3)
 step_obj_2.calculate_dipole = True
 step_obj_2.calculate_pop    = True
@@ -87,7 +87,7 @@ dm_orth_mmut   = read_keyword_value("dm_orth",     result_obj=result_obj_2)
 fock_orth_mmut = read_keyword_value("fock_orth",   result_obj=result_obj_2)
 dipole_mmut    = read_keyword_value("dipole",      result_obj=result_obj_2)
 
-prop_eppc        = EPPCPropogator(rttd,  verbose=3)
+prop_eppc        = EPPCPropagator(rttd,  verbose=3)
 step_obj_3       = RealTimeStep(rttd,    verbose=3)
 prop_eppc.tol    = 1e-12
 step_obj_3.calculate_dipole = True
@@ -105,7 +105,7 @@ dm_orth_eppc   = read_keyword_value("dm_orth",      result_obj=result_obj_3)
 fock_orth_eppc = read_keyword_value("fock_orth",    result_obj=result_obj_3)
 dipole_eppc    = read_keyword_value("dipole",       result_obj=result_obj_3)
 
-prop_lflp        = LFLPPCPropogator(rttd, verbose=3)
+prop_lflp        = LFLPPCPropagator(rttd, verbose=3)
 step_obj_4       = RealTimeStep(rttd,     verbose=3)
 prop_lflp.tol    = 1e-12
 step_obj_4.calculate_dipole = True

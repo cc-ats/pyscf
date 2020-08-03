@@ -20,15 +20,15 @@ from pyscf import __config__
 PC_TOL            = getattr(__config__, 'rt_tdscf_pc_tol',                   1e-8)
 PC_MAX_ITER       = getattr(__config__, 'rt_tdscf_pc_max_iter',                20)
 
-class Propogator(lib.StreamObject):
+class Propagator(lib.StreamObject):
     r'''
-    Propogator
+    Propagator
     '''
     pass
 
-class EulerPropogator(Propogator):
+class EulerPropagator(Propagator):
     r'''
-     EulerPropogator
+     EulerPropagator
 
      Propagate MO density matrix/matricies using Euler method.
     '''
@@ -123,9 +123,9 @@ class EulerPropogator(Propogator):
         logger.debug(self, '    step_iter=%d, t=%f au', next_iter_step, next_t)
         return self.step_iter
 
-class MMUTPropogator(Propogator):
+class MMUTPropagator(Propagator):
     r'''
-     MMUTPropogator
+     MMUTPropagator
 
      Propagate MO density matrix/matricies using
      modified-midpoint unitary transformation (MMUT)
@@ -232,10 +232,10 @@ class MMUTPropogator(Propogator):
         cput5 = log.timer('%20s'%"Finish Step", *cput_time)
         return self.step_iter
 
-class PCPropogator(Propogator):
+class PCPropagator(Propagator):
     pass
 
-class EPPCPropogator(PCPropogator):
+class EPPCPropagator(PCPropagator):
     def __init__(self, rt_obj, verbose=None, tol=None, max_iter=None):
         if verbose is None:
             verbose = rt_obj.verbose
@@ -347,7 +347,7 @@ class EPPCPropogator(PCPropogator):
         cput5 = log.timer('%20s'%"Finish Step", *cput_time)
         return self.step_iter
 
-class LFLPPCPropogator(PCPropogator):
+class LFLPPCPropagator(PCPropagator):
     def __init__(self, rt_obj, verbose=None, tol=None, max_iter=None):
         if verbose is None:
             verbose = rt_obj.verbose

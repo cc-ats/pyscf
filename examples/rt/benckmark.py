@@ -13,7 +13,7 @@ from   pyscf  import gto
 from   pyscf  import rt
 
 from pyscf.rt.rhf        import kernel
-from pyscf.rt.propagator import EulerPropogator
+from pyscf.rt.propagator import EulerPropagator
 from pyscf.rt.result     import RealTimeStep, RealTimeResult
 
 def apply_field(mol, field=[0,0,0], dm0=None):
@@ -69,7 +69,7 @@ h   0.000000000000000 -2.509154418614532  0.000000000000000
     rttd.total_step     = None
     rttd.step_size      = None
 
-    prop_euler         = EulerPropogator(rttd, verbose=0)
+    prop_euler         = EulerPropagator(rttd, verbose=0)
     prop_euler.verbose = 5
     step_obj_1       = RealTimeStep(rttd,    verbose=0)
     step_obj_1.calculate_dipole = False
