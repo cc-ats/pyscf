@@ -185,7 +185,8 @@ Keyword argument "init_dm" is replaced by "dm0"''')
         if not TIGHT_GRAD_CONV_TOL:
             norm_gorb = norm_gorb / numpy.sqrt(norm_gorb.size)
         norm_ddm = numpy.linalg.norm(dm-dm_last)
-        logger.info(mf, 'cycle= %d E= %.15g  delta_E= %4.3g  |g|= %4.3g  |ddm|= %4.3g',
+        # logger.info(mf, 'cycle= %d E= %.15g  delta_E= %4.3g  |g|= %4.3g  |ddm|= %4.3g',
+        logger.note(mf, 'cycle= %d E= %.15g  delta_E= %4.3g  |g|= %4.3g  |ddm|= %4.3g',
                     cycle+1, e_tot, e_tot-last_hf_e, norm_gorb, norm_ddm)
 
         if callable(mf.check_convergence):

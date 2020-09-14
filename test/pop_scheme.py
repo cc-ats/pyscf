@@ -4,7 +4,7 @@ from pyscf import gto, scf, dft
 from pyscf.tools.dump_mat import dump_rec
 from sys import stdout
 
-class PopulationScheme(object):
+class FrgPopulationScheme(object):
     def __init__(self, mf, frg_list, do_spin_pop=False):
         assert isinstance(mf, scf.hf.SCF)
         assert isinstance(frg_list,      list)
@@ -108,7 +108,7 @@ class PopulationScheme(object):
         pass
 
 
-class MullikenPopulation(PopulationScheme):
+class FrgMullikenPopulation(FrgPopulationScheme):
     def make_frg_weight_matrix(self, ifrg):
         nao = self.ao_num
         ao_in_frg  = self.get_ao_in_frg(ifrg)
@@ -117,7 +117,7 @@ class MullikenPopulation(PopulationScheme):
             for nu in range(nao):
                 if mu not in ao_in_frg and nu not in ao_in_frg:
                     ovlp_ao[mu,nu] = 0.0
-                elif mu != nu:
+                elif mu not in ao_in_frg or nu not in ao_in_frg:
                     ovlp_ao[mu,nu] = 0.5*ovlp_ao[mu,nu]
         return ovlp_ao
 

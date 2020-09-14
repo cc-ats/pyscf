@@ -1,0 +1,50 @@
+def rdft(mf, constraints, omega_list,
+             tol=1e-5,    constraints_tol=1e-3, maxiter=200, 
+             verbose=4,   diis_pos='post',      diis_type=1):
+    do_spin_pop = constraints.do_spin_pop
+    mf.verbose   = verbose
+    mf.max_cycle = maxiter
+    old_get_fock = mf.get_fock
+
+    omega_vals   = numpy.asarray(omega_list)
+    assert omega_vals.shape == constraints.get_pop_shape()
+
+    weight_matrices = constraints.make_weight_matrices()
+
+    rdft_diis       = lib.diis.DIIS()
+    rdft_diis.space = 8
+
+    def get_fock(h1e, s1e, vhf, dm, cycle=0, mf_diis=None):
+        fock_0 = old_get_fock(h1e, s1e, vhf, dm, cycle, None)
+        if mf_diis is None:
+            fock_add = constraints.make_fock_add(dm, omega_vals, weight_matrices=weight_matrices, do_spin_pop=do_spin_pop)
+            return fock_0 + fock_add
+
+        rdft_conv_flag = False
+        if cycle < 10:
+            inner_max_cycle = 20
+        else:
+            inner_max_cycle = 50
+
+        fock_0   = old_get_fock(h1e, s1e, vhf, dm, cycle, None)
+        fock_add = constraints.make_fock_add(dm, omega_vals, weight_matrices=weight_matrices, do_spin_pop=do_spin_pop)
+        fock     = fock_0 + fock_add #ZHC
+
+        if cycle > 1:
+            if diis_type == 1:
+                fock = rdft_diis.update(fock_0, scf.diis.get_err_vec(s1e, dm, fock)) + fock_add
+            elif diis_type == 2:
+                # TO DO difference < threshold...
+                fock = rdft_diis.update(fock)
+            elif diis_type == 3:
+                fock = rdft_diis.update(fock, scf.diis.get_err_vec(s1e, dm, fock))
+            else:
+                print("\nWARN: Unknow CDFT DIIS type, NO DIIS IS USED!!!\n")
+
+        return fock
+
+    dm0 = mf.make_rdm1()
+    mf.get_fock = get_fock
+    mf.kernel(dm0)
+
+    return mf

@@ -1,7 +1,7 @@
 import numpy
 from pyscf import gto, scf, dft, lib
 
-from pop_scheme import PopulationScheme
+from pop_scheme import FrgPopulationScheme, FrgMullikenPopulation
 from pyscf.tools.dump_mat import dump_rec
 from sys import stdout
 
@@ -14,7 +14,7 @@ class Constraints(object):
 
         self.do_spin_pop          = pop_scheme.do_spin_pop
 
-        assert isinstance(pop_scheme,       PopulationScheme)
+        assert isinstance(pop_scheme,       FrgPopulationScheme)
         assert len(nelec_required_list) == pop_scheme.frg_num
         self.constraints_num            =  pop_scheme.frg_num
 
@@ -64,36 +64,37 @@ class Constraints(object):
                 tmp = fock_add_ao[0]
                 return numpy.asarray(tmp)
 
-def rdft(mf, constraints, omega_list,
-             tol=1e-5,    constraints_tol=1e-3, maxiter=200, 
-             verbose=4,   diis_pos='post',      diis_type=1):
-    do_spin_pop = constraints.do_spin_pop
+
+def rdft(mf, frg_list,  nelec_required_list,  omega_list, dm0=None,
+             pop_scheme="mulliken", do_spin_pop=False,
+             tol=1e-8,  maxiter=200, 
+             verbose=0, diis_pos='post',      diis_type=1):
     mf.verbose   = verbose
     mf.max_cycle = maxiter
-    old_get_fock = mf.get_fock
+    mf.conv_tol  = tol
+    old_get_fock       = mf.get_fock
+    old_energy_elec    = mf.energy_elec
+
+    if pop_scheme is "mulliken":
+        pop_method = FrgMullikenPopulation(mf, frg_list, do_spin_pop=do_spin_pop)
+    else:
+        RuntimeError("Don't support the population scheme!")
 
     omega_vals   = numpy.asarray(omega_list)
-    assert omega_vals.shape == constraints.get_pop_shape()
+    con_vals     = numpy.asarray(nelec_required_list)
+    assert omega_vals.shape == con_vals.shape
 
+    constraints     = Constraints(pop_method, nelec_required_list)
     weight_matrices = constraints.make_weight_matrices()
 
     rdft_diis       = lib.diis.DIIS()
-    rdft_diis.space = 8
+    rdft_diis.space = 15
 
     def get_fock(h1e, s1e, vhf, dm, cycle=0, mf_diis=None):
         fock_0 = old_get_fock(h1e, s1e, vhf, dm, cycle, None)
         if mf_diis is None:
             fock_add = constraints.make_fock_add(dm, omega_vals, weight_matrices=weight_matrices, do_spin_pop=do_spin_pop)
             return fock_0 + fock_add
-
-        rdft_conv_flag = False
-        if cycle < 10:
-            inner_max_cycle = 20
-        else:
-            inner_max_cycle = 50
-
-        if verbose > 3:
-            print("\nCDFT INNER LOOP:")
 
         fock_0   = old_get_fock(h1e, s1e, vhf, dm, cycle, None)
         fock_add = constraints.make_fock_add(dm, omega_vals, weight_matrices=weight_matrices, do_spin_pop=do_spin_pop)
@@ -112,8 +113,27 @@ def rdft(mf, constraints, omega_list,
 
         return fock
 
-    dm0 = mf.make_rdm1()
-    mf.get_fock = get_fock
+    def energy_elec(dm=None, h1e=None, vhf=None):
+        e0    = old_energy_elec(dm,h1e,vhf)
+        pop_minus_nelec_required = constraints.get_pop_minus_nelec_required(
+            density_matrix=dm, weight_matrices=weight_matrices,do_spin_pop=do_spin_pop
+        )
+        pop_minus_nelec_required2 = pop_minus_nelec_required * pop_minus_nelec_required
+        e_add = numpy.einsum("fs,fs->", pop_minus_nelec_required2, omega_vals)
+        if verbose > 3:
+            print("e0 = {: 12.6f}, e_add = {: 12.6f}".format(e0[0], e_add))
+        return (e0[0]+e_add, e0[1])
+
+    mf.get_fock    = get_fock
+    mf.energy_elec = energy_elec
     mf.kernel(dm0)
 
-    return mf
+    dm1   = mf.make_rdm1()
+    e0    = old_energy_elec(dm1)
+    pop_minus_nelec_required = constraints.get_pop_minus_nelec_required(
+        density_matrix=dm1, weight_matrices=weight_matrices,do_spin_pop=do_spin_pop
+    )
+    pop_minus_nelec_required2 = pop_minus_nelec_required * pop_minus_nelec_required
+    e_add = numpy.einsum("fs,fs->", pop_minus_nelec_required2, omega_vals)
+
+    return e0[0], e_add, dm1
