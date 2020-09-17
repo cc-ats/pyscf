@@ -33,13 +33,11 @@ class FrgPopulationScheme(object):
         is_frgm_in_mol = natm_tmp == natm
         assert is_frgm_in_mol
         assert is_uniq_atm
+        assert self._scf.converged
 
         self.frg_num    = len(frg_list)
         self.atm_num    = natm
         self.ao_num     = self._mol.nao
-
-        if not self._scf.converged:
-            mf.kernel()
 
         self.weight_matrices = None
 

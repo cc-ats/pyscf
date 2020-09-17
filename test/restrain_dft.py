@@ -1,245 +1,157 @@
-import numpy as np
-import scipy.linalg as la
-import copy
-from functools import reduce
-from pyscf import gto, scf, lo, dft, lib
+import numpy
+from pyscf import gto, scf, dft, lib
 
-def get_localized_orbitals(mf, lo_method, mo=None):
-    if mo is None:
-        mo = mf.mo_coeff
+from pop_scheme import FrgPopulationScheme, FrgMullikenPopulation
+from pyscf.tools.dump_mat import dump_rec
+from sys import stdout
 
-    mol = mf.mol
-    s1e = mf.get_ovlp()
+class Constraints(object):
+    def __init__(self, pop_scheme, nelec_required_list):
+        self._scf                 = pop_scheme._scf
+        self._mol                 = pop_scheme._scf.mol
+        self._pop_scheme          = pop_scheme
+        self._nelec_required_list = numpy.asarray(nelec_required_list)
 
-    if lo_method.lower() == 'lowdin' or lo_method.lower() == 'meta_lowdin':
-        C = lo.orth_ao(mf, 'meta_lowdin', s=s1e)
-        C_inv = np.dot(C.conj().T,s1e)
-        if isinstance(mf, scf.hf.RHF):
-            C_inv_spin = C_inv
+        self.do_spin_pop          = pop_scheme.do_spin_pop
+
+        assert isinstance(pop_scheme,       FrgPopulationScheme)
+        assert len(nelec_required_list) == pop_scheme.frg_num
+        self.constraints_num            =  pop_scheme.frg_num
+
+        if self.do_spin_pop:
+            len_nelec_required = 2
+            assert self._nelec_required_list.shape == (self.constraints_num, 2)
         else:
-            C_inv_spin = np.array([C_inv]*2)
+            len_nelec_required = 1
+            assert self._nelec_required_list.shape == (self.constraints_num, 1)
+        
+        for nelec_required in nelec_required_list:
+            assert isinstance(nelec_required, list)
+            assert len(nelec_required) == len_nelec_required
+            for num_e in nelec_required:
+                assert isinstance(num_e, float)
 
-    elif lo_method == 'iao':
-        s1e = mf.get_ovlp()
-        pmol = mf.mol.copy()
-        pmol.build(False, False, basis='minao')
-        if isinstance(mf, scf.hf.RHF):
-            mo_coeff_occ = mf.mo_coeff[:,mf.mo_occ>0]
-            C = lo.iao.iao(mf.mol, mo_coeff_occ)
-            # Orthogonalize IAO
-            C = lo.vec_lowdin(C, s1e)
-            C_inv = np.dot(C.conj().T,s1e)
-            C_inv_spin = C_inv
+    def get_pop_shape(self):
+        return self._nelec_required_list.shape
+
+    def get_pop_minus_nelec_required(self, density_matrix=None, weight_matrices=None,
+                                           do_spin_pop=None):
+        pop = self._pop_scheme.get_pop(density_matrix=density_matrix, weight_matrices=weight_matrices, do_spin_pop=do_spin_pop)
+        return pop-self._nelec_required_list
+
+    def make_weight_matrices(self):
+        return self._pop_scheme.make_weight_matrices()
+
+    def make_fock_add(self, dms, omega_vals, weight_matrices=None, do_spin_pop=None):
+        if weight_matrices is None:
+            weight_matrices = self.make_weight_matrices()
+        if do_spin_pop     is None:
+            do_spin_pop     = self.do_spin_pop
+        
+        assert omega_vals.shape == self._nelec_required_list.shape
+        pop_minus_nelec_required = self.get_pop_minus_nelec_required(
+            density_matrix=dms, weight_matrices=weight_matrices, do_spin_pop=do_spin_pop
+            )
+        fock_add_ao = numpy.einsum("fs,fs,fij->sij", omega_vals, pop_minus_nelec_required, weight_matrices)
+        if do_spin_pop:
+            tmp = [fock_add_ao[0], fock_add_ao[1]]
+            return numpy.asarray(tmp)
         else:
-            mo_coeff_occ_a = mf.mo_coeff[0][:,mf.mo_occ[0]>0]
-            mo_coeff_occ_b = mf.mo_coeff[1][:,mf.mo_occ[1]>0]
-            C_a = lo.iao.iao(mf.mol, mo_coeff_occ_a)
-            C_b = lo.iao.iao(mf.mol, mo_coeff_occ_b)
-            C_a = lo.vec_lowdin(C_a, s1e)
-            C_b = lo.vec_lowdin(C_b, s1e)
-            C_inv_a = np.dot(C_a.T, s1e)
-            C_inv_b = np.dot(C_b.T, s1e)
-            C_inv_spin = np.array([C_inv_a, C_inv_b])
+            if isinstance(self._scf, scf.uhf.UHF):
+                tmp = [fock_add_ao[0], fock_add_ao[0]]
+                return numpy.asarray(tmp)
+            else:
+                tmp = fock_add_ao[0]
+                return numpy.asarray(tmp)
 
-    elif lo_method == 'nao':
-        C = lo.orth_ao(mf, 'nao')
-        C_inv = np.dot(C.conj().T,s1e)
-        if isinstance(mf, scf.hf.RHF):
-            C_inv_spin = C_inv
-        else:
-            C_inv_spin = np.array([C_inv]*2)
 
-    else:
-        raise NotImplementedError("UNDEFINED LOCAL ORBITAL TYPE, EXIT...")
-
-    mo_lo = np.einsum('...jk,...kl->...jl', C_inv_spin, mo)
-    return C_inv_spin, mo_lo
-
-def pop_analysis(mf, mo_on_loc_ao, disp=True, full_dm=False):
-    '''
-    population analysis for local orbitals.
-    return dm_lo
-
-    mf should be a converged object
-    full_rdm = False: return the diagonal element of dm_lo
-    disp = True: show all the population to screen
-    '''
-    dm_lo = mf.make_rdm1(mo_on_loc_ao, mf.mo_occ)
-
-    if disp:
-        mf.mulliken_pop(mf.mol, dm_lo, np.eye(mf.mol.nao_nr()))
-
-    if full_dm:
-        return dm_lo
-    else:
-        return np.einsum('...ii->...i', dm_lo)
-
-def get_fock_add_rdft(restraints, v, c_ao2lo_inv):
-    v_lagr           = constraints.sum2separated(v)
-    sites_a, sites_b = constraints.unique_sites()
-    if isinstance(mf, scf.hf.RHF):
-        c_ao2lo_a = c_ao2lo_b = c_ao2lo_inv
-    else:
-        c_ao2lo_a, c_ao2lo_b = c_ao2lo_inv
-
-    v_a = np.einsum('ip,i,iq->pq', c_ao2lo_a[sites_a].conj(), v_lagr[0], c_ao2lo_a[sites_a])
-    v_b = np.einsum('ip,i,iq->pq', c_ao2lo_b[sites_b].conj(), v_lagr[1], c_ao2lo_b[sites_b])
-
-    if isinstance(mf, scf.hf.RHF):
-        return v_a + v_b
-    else:
-        return np.array((v_a, v_b))
-
-def v_rdft(mf, restraints, orb_pop):
-    if isinstance(mf, scf.hf.RHF):
-        pop_a = pop_b = orb_pop * .5
-    else:
-        pop_a, pop_b  = orb_pop
-    
-    n_c              = restraints.nelec_required
-    omega_vals       = restraints.omega_vals
-    sites_a, sites_b = restraints.unique_sites()
-
-    n_cur     = pop_a[sites_a], pop_b[sites_b]
-    n_cur_sum = restraints.separated2sum(n_cur)[1]
-
-    return omega_vals*(n_cur_sum - n_c)
-
-def rdft(mf, restraints, lo_method='lowdin', tol=1e-5,
-         constraints_tol=1e-3, maxiter=200, C_inv=None, verbose=4,
-         diis_pos='post', diis_type=1):
-
+def rdft(mf, frg_list, nelec_required_list, omega_list,
+             dm0=None, old_get_fock=None, old_energy_elec=None,
+             diis_class=None, diis_space=8,
+             pop_scheme="mulliken", do_spin_pop=False,
+             tol=1e-8,  maxiter=200, verbose=0):
     mf.verbose   = verbose
     mf.max_cycle = maxiter
+    mf.conv_tol  = tol
+    mf.diis      = None
+    mf.DIIS      = None
 
-    if not mf.converged:
-        mf.kernel()
+    if dm0 is None:
+        dm0 = mf.make_rdm1()
+    if old_get_fock is None:
+        old_get_fock       = mf.get_fock
+    if old_energy_elec is None:
+        old_energy_elec    = mf.energy_elec
 
-    old_get_fock = mf.get_fock
-    c_inv        = get_localized_orbitals(mf, lo_method, mf.mo_coeff)[0]
-
-    cdft_diis       = lib.diis.DIIS()
-    cdft_diis.space = 8
-
-    if lo_method.lower() == 'iao':
-        mo_on_loc_ao = get_localized_orbitals(mf, lo_method, mf.mo_coeff)[1]
+    if pop_scheme is "mulliken":
+        pop_method = FrgMullikenPopulation(mf, frg_list, do_spin_pop=do_spin_pop)
     else:
-        mo_on_loc_ao = np.einsum('...jk,...kl->...jl', c_inv, mf.mo_coeff)
+        RuntimeError("Don't support the population scheme!")
 
-    orb_pop = pop_analysis(mf, mo_on_loc_ao, disp=False)
-    v_0     = v_rdft(mf, restraints, orb_pop)
+    omega_vals   = numpy.asarray(omega_list)
+    con_vals     = numpy.asarray(nelec_required_list)
+    assert omega_vals.shape == con_vals.shape
+
+    constraints     = Constraints(pop_method, nelec_required_list)
+    weight_matrices = constraints.make_weight_matrices()
+
+    if diis_class is None:
+        rdft_diis       = scf.diis.SCF_DIIS(mf, mf.diis_file)
+        rdft_diis.space = 15
+    elif issubclass(diis_class, lib.diis.DIIS):
+        rdft_diis       = diis_class(mf, mf.diis_file)
+        rdft_diis.space = 15
+
+    def get_fock(h1e=None, s1e=None, vhf=None, dm=None, cycle=-1,
+                 diis=None, diis_start_cycle=None):
+        fock_0 = old_get_fock(h1e=h1e, s1e=s1e, vhf=vhf, dm=dm,
+                              cycle=-1, diis=None)
+        fock_add = constraints.make_fock_add(dm, omega_vals, weight_matrices=weight_matrices, do_spin_pop=do_spin_pop)
+        fock     = fock_0 + fock_add
+        
+        if cycle < 0 and diis is None:  # Not inside the SCF iteration
+            return fock
+
+        if s1e is None: s1e = mf.get_ovlp()
+        if diis is not None and cycle >= diis_start_cycle:
+            fock = rdft_diis.update(s1e, dm, fock, mf, h1e, vhf)
+        return fock
+
 
     def get_fock(h1e, s1e, vhf, dm, cycle=0, mf_diis=None):
         fock_0 = old_get_fock(h1e, s1e, vhf, dm, cycle, None)
-
         if mf_diis is None:
-            fock_add = get_fock_add_rdft(restraints, v_0, c_inv)
+            fock_add = constraints.make_fock_add(dm, omega_vals, weight_matrices=weight_matrices, do_spin_pop=do_spin_pop)
             return fock_0 + fock_add
 
         fock_0   = old_get_fock(h1e, s1e, vhf, dm, cycle, None)
-        fock_add = get_fock_add_rdft(restraints, v_0, c_inv)
-        fock     = fock_0 + fock_add 
+        fock_add = constraints.make_fock_add(dm, omega_vals, weight_matrices=weight_matrices, do_spin_pop=do_spin_pop)
+        fock     = fock_0 + fock_add #ZHC
 
+        if cycle > 1:
+            fock = rdft_diis.update(fock)
         return fock
 
-    dm0 = mf.make_rdm1()
-    mf.get_fock = get_fock
-    mf.kernel(dm0)
+    # def energy_elec(dm=None, h1e=None, vhf=None):
+    #     e0     = old_energy_elec(dm, h1e, vhf)
+    #     pop_minus_nelec_required = constraints.get_pop_minus_nelec_required(
+    #         density_matrix=dm, weight_matrices=weight_matrices,do_spin_pop=do_spin_pop
+    #     )
+    #     pop_minus_nelec_required2 = pop_minus_nelec_required * pop_minus_nelec_required
+    #     # e_add = numpy.einsum("fs,fs->", pop_minus_nelec_required2, omega_vals)
+    #     e_add = 0.0
+    #     return (e0[0]+e_add, e0[1])
 
-    mo_on_loc_ao = get_localized_orbitals(mf, lo_method, mf.mo_coeff)[1]
-    orb_pop = pop_analysis(mf, mo_on_loc_ao, disp=True)
-    return mf, orb_pop
+    mf.get_fock    = get_fock
+    # mf.energy_elec = energy_elec
+    mf.kernel(dm0=dm0)
 
-class PopulationScheme(object):
-    
+    dm1   = mf.make_rdm1()
+    # e0    = old_energy_elec(dm1)
+    pop_minus_nelec_required = constraints.get_pop_minus_nelec_required(
+        density_matrix=dm1, weight_matrices=weight_matrices,do_spin_pop=do_spin_pop
+    )
+    pop_minus_nelec_required2 = pop_minus_nelec_required * pop_minus_nelec_required
+    e_add = numpy.einsum("fs,fs->", pop_minus_nelec_required2, omega_vals)
 
-class Restraints(object):
-    def __init__(self, orbital_indices, spin_labels, nelec_required, omega_vals):
-        self.orbital_indices = orbital_indices
-        self.spin_labels     = spin_labels
-        self.nelec_required  = np.asarray(nelec_required)
-        self.omega_vals     = np.asarray(omega_vals)
-        assert(
-        len(orbital_indices) == len(spin_labels) == len(nelec_required) == len(omega_vals)
-            )
-
-    def get_n_constraints(self):
-        return len(self.nelec_required)
-
-    def unique_sites(self):
-        sites_a = []
-        sites_b = []
-        for group, spin_labels in zip(self.orbital_indices, self.spin_labels):
-            for orbidx, spin in zip(group, spin_labels):
-                if spin == 0:
-                    sites_a.append(orbidx)
-                else:
-                    sites_b.append(orbidx)
-        sites_a = np.sort(list(set(sites_a)))
-        sites_b = np.sort(list(set(sites_b)))
-        return sites_a, sites_b
-
-    def site_to_constraints_transform_matrix(self):
-        sites_a, sites_b = self.unique_sites()
-        map_sites_a = dict(((v,k) for k,v in enumerate(sites_a)))
-        map_sites_b = dict(((v,k) for k,v in enumerate(sites_b)))
-
-        n_constraints = self.get_n_constraints()
-        t_a = np.zeros((sites_a.size, n_constraints))
-        t_b = np.zeros((sites_b.size, n_constraints))
-        for k, group in enumerate(self.orbital_indices):
-            for orbidx, spin in zip(group, self.spin_labels[k]):
-                if spin == 0:
-                    t_a[map_sites_a[orbidx],k] += 1
-                else:
-                    t_b[map_sites_b[orbidx],k] += 1
-        return t_a, t_b
-
-    def sum2separated(self, pop_vals):
-        '''
-        convert the format of constraint from a summation format (it allows several orbitals' linear combination)
-        to the format each orbital is treated individually (also they are separated by spin)
-        '''
-        t_a, t_b = self.site_to_constraints_transform_matrix()
-        v_c = self.omega_vals * pop_vals
-        v_c_a = np.einsum('pi,i->p', t_a, v_c)
-        v_c_b = np.einsum('pi,i->p', t_b, v_c)
-        return v_c_a, v_c_b
-
-    def separated2sum(self, n_c):
-        '''the inversion function for sum2separated'''
-        t_a, t_b = self.site_to_constraints_transform_matrix()
-        n_c_new = np.array([np.einsum('pi,p->i', t_a, n_c[0]),
-                            np.einsum('pi,p->i', t_b, n_c[1])]).T
-
-        n_c_sum = n_c_new[:,0] + n_c_new[:,1]
-        v_c_sum = [n_c_new[i,0] if 0 in spins else n_c_new[i,1]
-                   for i,spins in enumerate(self.spin_labels)]
-        return n_c_new, n_c_sum, v_c_sum
-
-if __name__ == '__main__':
-    mol = gto.Mole()
-    mol.verbose = 0
-    mol.atom = '''
-    He 0.0 0.0 -2.0
-    H  0.0 0.0 -2.929352
-    He 0.0 0.0 2.0
-    H  0.0 0.0 2.929352
-    '''
-    mol.basis = 'sto-3g'
-    mol.spin   = 0
-    mol.charge = 2
-    mol.build()
-
-    mf           = scf.RHF(mol)
-    mf.conv_tol  = 1e-9
-    mf.verbose   = 0
-    mf.max_cycle = 100
-    mf.kernel()
-
-    orbital_indices = [[0,0],[2,2]]
-    spin_labels     = [[0,1],[0,1]]
-    nelec_required  = [1,1]
-    omega_vals      = [9.9, 0.1]
-    constraints = Restraints(orbital_indices, spin_labels, nelec_required, omega_vals)
-    mf, dm_pop  = rdft(mf, constraints, lo_method='lowdin', verbose=4)
+    return e_add
