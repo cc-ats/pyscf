@@ -87,7 +87,7 @@ class Constraints(object):
                 return numpy.asarray(tmp_fock_ao)
 
 def rdft(mf, frg_list, nelec_required_list, omega_list,
-             dm0=None, old_get_fock=None,
+             dm0=None, old_get_fock=None, old_energy_elec=None,
              diis_class=None, diis_space=8, diis_start_cycle=8,
              pop_scheme="mulliken", do_spin_pop=False,
              tol=1e-8,  maxiter=200, verbose=0):
