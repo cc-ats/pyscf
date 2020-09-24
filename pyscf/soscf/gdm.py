@@ -1,4 +1,5 @@
 import sys
+from sys import stdout
 import time
 from functools import reduce
 
@@ -11,6 +12,8 @@ from numpy.linalg import svd
 from pyscf import lib
 from pyscf import gto
 from pyscf.lib import logger
+from pyscf.tools.dump_mat import dump_rec
+
 from pyscf.scf import chkfile
 from pyscf.scf import addons
 from pyscf.scf import hf, uhf
@@ -21,6 +24,8 @@ from pyscf import __config__
 
 SVD_TOL               = getattr(__config__, 'soscf_gdm_effective_svd_tol', 1e-5)
 WITH_EX_EY_DEGENERACY = getattr(__config__, 'soscf_gdm_Ex_Ey_degeneracy',  True)
+DEF_EFF_THRSH         = getattr(__config__, 'soscf_gdm_def_eff_thrsh',    -1000.0)
+CURV_CONDITION_SCALE  = getattr(__config__, 'soscf_gdm_curv_condition_scale', 0.9)
 
 def _effective_svd(a, tol=SVD_TOL):
     w = svd(a)[1]
@@ -51,9 +56,10 @@ def _force_Ex_Ey_degeneracy_(dr, orbsym):
     return dr
 
 # returns an exact gradient and approximate hessian
-def gen_grad_and_hess_rhf(mf, mo_coeff, mo_occ, fock_ao=None, h1e=None,
-                  with_symmetry=True):
-    mo_coeff0 = mo_coeff
+def get_orb_grad_hess_rhf(mf, mo_coeff, mo_occ, fock_ao=None, with_symmetry=True):
+    if fock_ao is None:
+        dm      = mf.make_rdm1(mo_coeff, mo_occ)
+        fock_ao = mf.get_fock(dm=dm)
     mol = mf.mol
 
     occidx = numpy.where(mo_occ==2)[0]
@@ -67,199 +73,164 @@ def gen_grad_and_hess_rhf(mf, mo_coeff, mo_occ, fock_ao=None, h1e=None,
         orbsym = hf_symm.get_orbsym(mol, mo_coeff)
         sym_forbid = orbsym[viridx,None] != orbsym[occidx]
 
-    if fock_ao is None:
-        dm0 = mf.make_rdm1(mo_coeff, mo_occ)
-        fock_ao = mf.get_fock(h1e, dm=dm0)
-        fock = reduce(numpy.dot, (mo_coeff.conj().T, fock_ao, mo_coeff))
-    else:
-        # If fock is given, it corresponds to main basis. It needs to be
-        # diagonalized with the mo_coeff of the main basis.
-        fock = reduce(numpy.dot, (mo_coeff0.conj().T, fock_ao, mo_coeff0))
+    f1   = reduce(numpy.dot, (mo_coeff.conj().T, fock_ao, mo_coeff))
+    foo  = f1[occidx[:,None],occidx]
+    fvv  = f1[viridx[:,None],viridx]
 
-    g   = fock[viridx[:,None],occidx] * 2
-    foo = fock[occidx[:,None],occidx]
-    fvv = fock[viridx[:,None],viridx]
-
+    grad   = f1[viridx[:,None],occidx] * 2
     h_diag = (fvv.diagonal().real[:,None] - foo.diagonal().real) * 2
 
     if with_symmetry and mol.symmetry:
-        g[sym_forbid] = 0
+        grad[sym_forbid] = 0
         h_diag[sym_forbid] = 0
 
-    return g.reshape(-1), h_diag.reshape(-1)
+    return grad.reshape(-1), h_diag.reshape(-1)
 
-
-def gen_grad_and_hess_uhf(mf, mo_coeff, mo_occ, fock_ao=None, h1e=None,
-                  with_symmetry=True):
-    mol = mf.mol
-    mo_coeff0 = mo_coeff
-    occidxa = numpy.where(mo_occ[0]>0)[0]
-    occidxb = numpy.where(mo_occ[1]>0)[0]
-    viridxa = numpy.where(mo_occ[0]==0)[0]
-    viridxb = numpy.where(mo_occ[1]==0)[0]
-    nocca = len(occidxa)
-    noccb = len(occidxb)
-    nvira = len(viridxa)
-    nvirb = len(viridxb)
-    orboa = mo_coeff[0][:,occidxa]
-    orbob = mo_coeff[1][:,occidxb]
-    orbva = mo_coeff[0][:,viridxa]
-    orbvb = mo_coeff[1][:,viridxb]
-
-    if with_symmetry and mol.symmetry:
-        orbsyma, orbsymb = uhf_symm.get_orbsym(mol, mo_coeff)
-        sym_forbida = orbsyma[viridxa,None] != orbsyma[occidxa]
-        sym_forbidb = orbsymb[viridxb,None] != orbsymb[occidxb]
-        sym_forbid = numpy.hstack((sym_forbida.ravel(), sym_forbidb.ravel()))
-
+def get_canonicalize_rhf(mf, mo_coeff, mo_occ, fock_ao=None):
+    '''Canonicalization diagonalizes the Fock matrix within occupied, open,
+    virtual subspaces separatedly (without change occupancy).
+    '''
     if fock_ao is None:
-        dm0 = mf.make_rdm1(mo_coeff, mo_occ)
-        fock_ao = mf.get_fock(h1e, dm=dm0)
-        focka = reduce(numpy.dot, (mo_coeff[0].conj().T, fock_ao[0], mo_coeff[0]))
-        fockb = reduce(numpy.dot, (mo_coeff[1].conj().T, fock_ao[1], mo_coeff[1]))
-    else:
-        focka = reduce(numpy.dot, (mo_coeff0[0].conj().T, fock_ao[0], mo_coeff0[0]))
-        fockb = reduce(numpy.dot, (mo_coeff0[1].conj().T, fock_ao[1], mo_coeff0[1]))
-    fooa = focka[occidxa[:,None],occidxa]
-    fvva = focka[viridxa[:,None],viridxa]
-    foob = fockb[occidxb[:,None],occidxb]
-    fvvb = fockb[viridxb[:,None],viridxb]
+        dm      = mf.make_rdm1(mo_coeff, mo_occ)
+        fock_ao = mf.get_fock(dm=dm)
 
-    g = numpy.hstack((focka[viridxa[:,None],occidxa].ravel(),
-                      fockb[viridxb[:,None],occidxb].ravel()))
+    occidx = mo_occ == 2
+    viridx = mo_occ == 0
 
-    h_diaga = fvva.diagonal().real[:,None] - fooa.diagonal().real
-    h_diagb = fvvb.diagonal().real[:,None] - foob.diagonal().real
-    h_diag = numpy.hstack((h_diaga.reshape(-1), h_diagb.reshape(-1)))
+    mo   = numpy.empty_like(mo_coeff)
+    mo_e = numpy.empty(mo_occ.size)
 
-    if with_symmetry and mol.symmetry:
-        g[sym_forbid] = 0
-        h_diag[sym_forbid] = 0
+    orbo   = mo_coeff[:,occidx]
+    foo    = reduce(numpy.dot, (orbo.conj().T, fock_ao, orbo))
+    e, cano_trans_orb_oo = scipy.linalg.eig(foo)
 
-    return g, h_diag
+    orbv   = mo_coeff[:,viridx]
+    fvv    = reduce(numpy.dot, (orbv.conj().T, fock_ao, orbv))
+    e, cano_trans_orb_vv = scipy.linalg.eig(fvv)
 
+    return cano_trans_orb_oo, cano_trans_orb_vv, mo
 
-def kernel(mf, mo_coeff=None, mo_occ=None, dm=None,
-           conv_tol=1e-10, conv_tol_grad=None, max_cycle=50, dump_chk=True,
-           callback=None, verbose=logger.NOTE):
-    cput0 = (time.clock(), time.time())
-    log = logger.new_logger(mf, verbose)
-    mol = mf._scf.mol
-    
-    if conv_tol_grad is None:
-        conv_tol_grad = numpy.sqrt(conv_tol)
-        log.info('Set conv_tol_grad to %g', conv_tol_grad)
+# def kernel(mf, mo_coeff=None, mo_occ=None, dm=None,
+#            conv_tol=1e-10, conv_tol_grad=None, max_cycle=50, dump_chk=True,
+#            callback=None, verbose=logger.NOTE):
+#     cput0 = (time.clock(), time.time())
+#     log = logger.new_logger(mf, verbose)
+#     mol = mf._scf.mol
 
-# call mf._scf.get_hcore, mf._scf.get_ovlp because they might be overloaded
-    h1e = mf._scf.get_hcore(mol)
-    s1e = mf._scf.get_ovlp(mol)
+#     if conv_tol_grad is None:
+#         conv_tol_grad = numpy.sqrt(conv_tol)
+#         log.info('Set conv_tol_grad to %g', conv_tol_grad)
 
-    if mo_coeff is not None and mo_occ is not None:
-        dm = mf.make_rdm1(mo_coeff, mo_occ)
-        # call mf._scf.get_veff, to avoid "newton().density_fit()" polluting get_veff
-        vhf = mf._scf.get_veff(mol, dm)
-        fock = mf.get_fock(h1e, s1e, vhf, dm, level_shift_factor=0)
-        mo_energy, mo_tmp = mf.eig(fock, s1e)
-        mf.get_occ(mo_energy, mo_tmp)
-        mo_tmp = None
+# # call mf._scf.get_hcore, mf._scf.get_ovlp because they might be overloaded
+#     h1e = mf._scf.get_hcore(mol)
+#     s1e = mf._scf.get_ovlp(mol)
 
-    else:
-        if dm is None:
-            logger.debug(mf, 'Initial guess density matrix is not given. '
-                         'Generating initial guess from %s', mf.init_guess)
-            dm = mf.get_init_guess(mf._scf.mol, mf.init_guess)
-        vhf = mf._scf.get_veff(mol, dm)
-        fock = mf.get_fock(h1e, s1e, vhf, dm, level_shift_factor=0)
-        mo_energy, mo_coeff = mf.eig(fock, s1e)
-        mo_occ = mf.get_occ(mo_energy, mo_coeff)
-        dm, dm_last = mf.make_rdm1(mo_coeff, mo_occ), dm
-        vhf = mf._scf.get_veff(mol, dm, dm_last=dm_last, vhf_last=vhf)
+#     if mo_coeff is not None and mo_occ is not None:
+#         dm = mf.make_rdm1(mo_coeff, mo_occ)
+#         # call mf._scf.get_veff, to avoid "newton().density_fit()" polluting get_veff
+#         vhf = mf._scf.get_veff(mol, dm)
+#         fock = mf.get_fock(h1e, s1e, vhf, dm, level_shift_factor=0)
+#         mo_energy, mo_tmp = mf.eig(fock, s1e)
+#         mf.get_occ(mo_energy, mo_tmp)
+#         mo_tmp = None
 
-    # Save mo_coeff and mo_occ because they are needed by function rotate_mo
-    mf.mo_coeff, mf.mo_occ = mo_coeff, mo_occ
+#     else:
+#         if dm is None:
+#             logger.debug(mf, 'Initial guess density matrix is not given. '
+#                          'Generating initial guess from %s', mf.init_guess)
+#             dm = mf.get_init_guess(mf._scf.mol, mf.init_guess)
+#         vhf = mf._scf.get_veff(mol, dm)
+#         fock = mf.get_fock(h1e, s1e, vhf, dm, level_shift_factor=0)
+#         mo_energy, mo_coeff = mf.eig(fock, s1e)
+#         mo_occ = mf.get_occ(mo_energy, mo_coeff)
+#         dm, dm_last = mf.make_rdm1(mo_coeff, mo_occ), dm
+#         vhf = mf._scf.get_veff(mol, dm, dm_last=dm_last, vhf_last=vhf)
 
-    e_tot = mf._scf.energy_tot(dm, h1e, vhf)
-    fock = mf.get_fock(h1e, s1e, vhf, dm, level_shift_factor=0)
-    log.info('Initial guess E= %.15g  |g|= %g', e_tot,
-             numpy.linalg.norm(mf._scf.get_grad(mo_coeff, mo_occ, fock)))
+#     # Save mo_coeff and mo_occ because they are needed by function rotate_mo
+#     mf.mo_coeff, mf.mo_occ = mo_coeff, mo_occ
 
-    if dump_chk and mf.chkfile:
-        chkfile.save_mol(mol, mf.chkfile)
+#     e_tot = mf._scf.energy_tot(dm, h1e, vhf)
+#     fock = mf.get_fock(h1e, s1e, vhf, dm, level_shift_factor=0)
+#     log.info('Initial guess E= %.15g  |g|= %g', e_tot,
+#              numpy.linalg.norm(mf._scf.get_grad(mo_coeff, mo_occ, fock)))
 
-# Copy the integral file to soscf object to avoid the integrals being cached
-# twice.
-    if mol is mf.mol and not getattr(mf, 'with_df', None):
-        mf._eri = mf._scf._eri
-        # If different direct_scf_cutoff is assigned to newton_ah mf.opt
-        # object, mf.opt should be different to mf._scf.opt
-        #mf.opt = mf._scf.opt
+#     if dump_chk and mf.chkfile:
+#         chkfile.save_mol(mol, mf.chkfile)
 
-    rotaiter = _rotate_orb_cc(mf, h1e, s1e, conv_tol_grad, verbose=log)
-    next(rotaiter)  # start the iterator
-    kftot = jktot = 0
-    scf_conv = False
-    cput1 = log.timer('initializing second order scf', *cput0)
+# # Copy the integral file to soscf object to avoid the integrals being cached
+# # twice.
+#     if mol is mf.mol and not getattr(mf, 'with_df', None):
+#         mf._eri = mf._scf._eri
+#         # If different direct_scf_cutoff is assigned to newton_ah mf.opt
+#         # object, mf.opt should be different to mf._scf.opt
+#         #mf.opt = mf._scf.opt
 
-    for imacro in range(max_cycle):
-        u, g_orb, kfcount, jkcount, dm_last, vhf = \
-                rotaiter.send((mo_coeff, mo_occ, dm, vhf, e_tot))
-        kftot += kfcount + 1
-        jktot += jkcount + 1
+#     rotaiter = _rotate_orb_cc(mf, h1e, s1e, conv_tol_grad, verbose=log)
+#     next(rotaiter)  # start the iterator
+#     kftot = jktot = 0
+#     scf_conv = False
+#     cput1 = log.timer('initializing second order scf', *cput0)
 
-        last_hf_e = e_tot
-        norm_gorb = numpy.linalg.norm(g_orb)
-        mo_coeff = mf.rotate_mo(mo_coeff, u, log)
-        dm = mf.make_rdm1(mo_coeff, mo_occ)
-        vhf = mf._scf.get_veff(mol, dm, dm_last=dm_last, vhf_last=vhf)
-        fock = mf.get_fock(h1e, s1e, vhf, dm, level_shift_factor=0)
-# NOTE: DO NOT change the initial guess mo_occ, mo_coeff
-        if mf.verbose >= logger.DEBUG:
-            mo_energy, mo_tmp = mf.eig(fock, s1e)
-            mf.get_occ(mo_energy, mo_tmp)
-# call mf._scf.energy_tot for dft, because the (dft).get_veff step saved _exc in mf._scf
-        e_tot = mf._scf.energy_tot(dm, h1e, vhf)
+#     for imacro in range(max_cycle):
+#         u, g_orb, kfcount, jkcount, dm_last, vhf = \
+#                 rotaiter.send((mo_coeff, mo_occ, dm, vhf, e_tot))
+#         kftot += kfcount + 1
+#         jktot += jkcount + 1
 
-        log.info('macro= %d  E= %.15g  delta_E= %g  |g|= %g  %d KF %d JK',
-                 imacro, e_tot, e_tot-last_hf_e, norm_gorb,
-                 kfcount+1, jkcount)
-        cput1 = log.timer('cycle= %d'%(imacro+1), *cput1)
+#         last_hf_e = e_tot
+#         norm_gorb = numpy.linalg.norm(g_orb)
+#         mo_coeff = mf.rotate_mo(mo_coeff, u, log)
+#         dm = mf.make_rdm1(mo_coeff, mo_occ)
+#         vhf = mf._scf.get_veff(mol, dm, dm_last=dm_last, vhf_last=vhf)
+#         fock = mf.get_fock(h1e, s1e, vhf, dm, level_shift_factor=0)
+# # NOTE: DO NOT change the initial guess mo_occ, mo_coeff
+#         if mf.verbose >= logger.DEBUG:
+#             mo_energy, mo_tmp = mf.eig(fock, s1e)
+#             mf.get_occ(mo_energy, mo_tmp)
+# # call mf._scf.energy_tot for dft, because the (dft).get_veff step saved _exc in mf._scf
+#         e_tot = mf._scf.energy_tot(dm, h1e, vhf)
 
-        if callable(mf.check_convergence):
-            scf_conv = mf.check_convergence(locals())
-        elif abs(e_tot-last_hf_e) < conv_tol and norm_gorb < conv_tol_grad:
-            scf_conv = True
+#         log.info('macro= %d  E= %.15g  delta_E= %g  |g|= %g  %d KF %d JK',
+#                  imacro, e_tot, e_tot-last_hf_e, norm_gorb,
+#                  kfcount+1, jkcount)
+#         cput1 = log.timer('cycle= %d'%(imacro+1), *cput1)
 
-        if dump_chk:
-            mf.dump_chk(locals())
+#         if callable(mf.check_convergence):
+#             scf_conv = mf.check_convergence(locals())
+#         elif abs(e_tot-last_hf_e) < conv_tol and norm_gorb < conv_tol_grad:
+#             scf_conv = True
 
-        if callable(callback):
-            callback(locals())
+#         if dump_chk:
+#             mf.dump_chk(locals())
 
-        if scf_conv:
-            break
+#         if callable(callback):
+#             callback(locals())
 
-    if callable(callback):
-        callback(locals())
+#         if scf_conv:
+#             break
 
-    rotaiter.close()
-    mo_energy, mo_coeff1 = mf._scf.canonicalize(mo_coeff, mo_occ, fock)
-    if mf.canonicalization:
-        log.info('Canonicalize SCF orbitals')
-        mo_coeff = mo_coeff1
-        if dump_chk:
-            mf.dump_chk(locals())
-    log.info('macro X = %d  E=%.15g  |g|= %g  total %d KF %d JK',
-             imacro+1, e_tot, norm_gorb, kftot+1, jktot+1)
-    if (numpy.any(mo_occ==0) and
-        mo_energy[mo_occ>0].max() > mo_energy[mo_occ==0].min()):
-        log.warn('HOMO %s > LUMO %s was found in the canonicalized orbitals.',
-                 mo_energy[mo_occ>0].max(), mo_energy[mo_occ==0].min())
-    return scf_conv, e_tot, mo_energy, mo_coeff, mo_occ
+#     if callable(callback):
+#         callback(locals())
+
+#     rotaiter.close()
+#     mo_energy, mo_coeff1 = mf._scf.canonicalize(mo_coeff, mo_occ, fock)
+#     if mf.canonicalization:
+#         log.info('Canonicalize SCF orbitals')
+#         mo_coeff = mo_coeff1
+#         if dump_chk:
+#             mf.dump_chk(locals())
+#     log.info('macro X = %d  E=%.15g  |g|= %g  total %d KF %d JK',
+#              imacro+1, e_tot, norm_gorb, kftot+1, jktot+1)
+#     if (numpy.any(mo_occ==0) and
+#         mo_energy[mo_occ>0].max() > mo_energy[mo_occ==0].min()):
+#         log.warn('HOMO %s > LUMO %s was found in the canonicalized orbitals.',
+#                  mo_energy[mo_occ>0].max(), mo_energy[mo_occ==0].min())
+#     return scf_conv, e_tot, mo_energy, mo_coeff, mo_occ
 
 
 class GDMOptimizer(object):
     '''
-    Attributes for Newton solver:
+    Attributes for GDM solver:
         max_cycle_inner : int
             gdm iterations within eacy macro iterations.
             Default is 10
@@ -271,59 +242,71 @@ class GDMOptimizer(object):
             GDM solver.
             Default is True.
     '''
+
     gdm_start_tol   = getattr(__config__, 'soscf_gdm_start_tol',  1e9)
     gdm_start_cycle = getattr(__config__, 'soscf_gdm_start_cycle',  1)
-    gdm_level_shift = getattr(__config__, 'soscf_gdm_level_shift',  0)
+    gdm_level_shift = getattr(__config__, 'soscf_gdm_level_shift',0.0)
     gdm_conv_tol    = getattr(__config__, 'soscf_gdm_conv_tol', 1e-12)
     gdm_lindep      = getattr(__config__, 'soscf_gdm_lindep',   1e-14)
     gdm_max_cycle   = getattr(__config__, 'soscf_gdm_max_cycle',   40)
 
-    max_cycle_inner  = getattr(__config__, 'soscf_gdm_max_cycle_inner'   , 12)
-    max_stepsize     = getattr(__config__, 'soscf_gdm_max_stepsize',      .05)
-    canonicalization = getattr(__config__, 'soscf_gdm_canonicalization', True)
+    max_cycle_ls     = getattr(__config__, 'soscf_gdm_max_cycle_inner'   , 12)
+    max_stepsize_ls  = getattr(__config__, 'soscf_gdm_max_stepsize',      .05)
     
-    gdm_grad_trust_region = getattr(__config__, 'soscf_gdm_grad_trust_region', 2.5)
-
 
     def __init__(self, mf):
         self.__dict__.update(mf.__dict__)
         self._scf = mf
-        self._keys.update(('max_cycle_inner',
-                              'max_stepsize',
-                          'canonicalization', 
+
+        self._keys.update((   'max_cycle_ls',
+                           'max_stepsize_ls',
                              'gdm_start_tol',
                            'gdm_start_cycle',
                            'gdm_level_shift',
                               'gdm_conv_tol',
                                 'gdm_lindep',
-                             'gdm_max_cycle',
-                     'gdm_grad_trust_region'))
+                             'gdm_max_cycle'))
+
+        self.effective_thresh = DEF_EFF_THRSH
+
+        self.ene_pre = 0.0
+        self.ene_cur = 0.0
+
+        self.x_cur = 0.0
+        self.g_cur = 0.0
+        self.g_ref = 0.0
+        self.x_ref = 0.0
+        self.ref_len = 0.0
+        self.r_trust = 0.0
+        self.de_model = 0.0
+        self.step_max = 0.0
+
+        self.rms = 0.0
+        self.error = 0.0
+
+        self.is_first_step    = True
+        self.nssv             = 0
+        self.iter_line_search = 0
+
+        # Line search wolfe1 condition 1
+        self.is_wolfe1 = True
+        # Line search wolfe1 condition 1
+        self.is_wolfe2 = True
+
+
+        self.gdm_step_vec = None
+        self.step_list    = None
+        self.grad_list    = None
+
+        # self.appr_orb_hess_inv = None
+        # self.orb_grad = None
+        # self.orb_step = None
 
     def dump_flags(self, verbose=None):
         log = logger.new_logger(self, verbose)
         log.info('\n')
         self._scf.dump_flags(verbose)
         log.info('******** %s GDM solver flags ********', self._scf.__class__)
-        log.info('SCF tol = %g',               self.conv_tol)
-        log.info('conv_tol_grad = %s',    self.conv_tol_grad)
-        log.info('max. SCF cycles = %d',      self.max_cycle)
-        log.info('direct_scf = %s',     self._scf.direct_scf)
-        if self._scf.direct_scf:
-            log.info('direct_scf_tol = %g', self._scf.direct_scf_tol)
-        if self.chkfile:
-            log.info('chkfile to save SCF result = %s', self.chkfile)
-        log.info('max_cycle_inner = %d',  self.max_cycle_inner)
-        log.info('max_stepsize = %g',        self.max_stepsize)
-        log.info('gdm_start_tol = %g',      self.gdm_start_tol)
-        log.info('gdm_level_shift = %g',  self.gdm_level_shift)
-        log.info('gdm_conv_tol = %g',        self.gdm_conv_tol)
-        log.info('gdm_lindep = %g',            self.gdm_lindep)
-        log.info('gdm_start_cycle = %d',  self.gdm_start_cycle)
-        log.info('gdm_max_cycle = %d',      self.gdm_max_cycle)
-        log.info('canonicalization = %s',self.canonicalization)
-        log.info('gdm_grad_trust_region = %g', self.gdm_grad_trust_region)
-        log.info('max_memory %d MB (current use %d MB)',
-                 self.max_memory, lib.current_memory()[0])
         return self
 
     def build(self, mol=None):
@@ -339,6 +322,133 @@ class GDMOptimizer(object):
         if mol is not None:
             self.mol = mol
         return self._scf.reset(mol)
+
+    def update_rotate_matrix(self, dx, mo_occ, u0=1, mo_coeff=None):
+        dr = hf.unpack_uniq_var(dx, mo_occ)
+
+        if WITH_EX_EY_DEGENERACY:
+            mol = self._scf.mol
+            if mol.symmetry and mol.groupname in ('Dooh', 'Coov'):
+                orbsym = hf_symm.get_orbsym(mol, mo_coeff)
+                _force_Ex_Ey_degeneracy_(dr, orbsym)
+        return numpy.dot(u0, expmat(dr))
+
+    def rotate_mo(self, mo_coeff, u, log=None):
+        mo = numpy.dot(mo_coeff, u)
+        if self._scf.mol.symmetry:
+            orbsym = hf_symm.get_orbsym(self._scf.mol, mo_coeff)
+            mo = lib.tag_array(mo, orbsym=orbsym)
+
+        if isinstance(log, logger.Logger) and log.verbose >= logger.DEBUG:
+            idx = self.mo_occ > 0
+            s = reduce(numpy.dot, (mo[:,idx].conj().T, self._scf.get_ovlp(),
+                                   self.mo_coeff[:,idx]))
+            log.debug('Overlap to initial guess, SVD = %s',
+                      _effective_svd(s, 1e-5))
+            log.debug('Overlap to last step, SVD = %s',
+                      _effective_svd(u[idx][:,idx], 1e-5))
+        return mo
+
+    def update_orb(self, orb_step, mo_coeff=None, mo_occ=None, dm0=None,
+                         s1e=None, hie=None, vhf0=None):
+        if s1e is None:
+            s1e = self._scf.get_ovlp()
+        if h1e is None:
+            h1e = self._scf.get_hcore()
+
+        u = self.update_rotate_matrix(orb_step, mo_occ, mo_coeff=mo_coeff)
+        if mo_coeff is not None:
+            u = self.rotate_mo(mo_coeff, u)
+        mo_coeff = u
+
+        dm_ao = self._scf.make_rdm1(mo_coeff, mo_occ)
+        vhf0  = self._scf.get_veff(self._scf.mol, dm_ao, dm_last=dm0, vhf_last=vhf0)
+        dm0   = dm_ao
+        fock_ao = self._scf.get_fock(h1e, s1e, vhf0, dm0)
+
+        coo, cvv, mo    = get_canonicalize_rhf(self._scf, mo_coeff, mo_occ, fock_ao=fock_ao)
+
+        pass
+
+    def update_hess_inv(self): # BFGS update hess inv
+        pass
+
+    def next_gdm_step(self, ene_prev, mo_coeff, mo_occ, fock_ao, verbose=None, iter_gdm_step=None):
+        if verbose is None:
+            verbose = self.verbose
+
+        log = logger.new_logger(self, verbose)
+        log.note('\n')
+        log.info('Geometric Direct Minimization')
+
+        grad, diag_hess = self.get_orb_grad_hess(mo_coeff, mo_occ, fock_ao=fock_ao)
+        self.ene_pre = self.e_tot
+        self.ene_cur = self._scf.energy_tot()
+
+        norm_gorb = numpy.linalg.norm(grad)
+        norm_gorb = norm_gorb / numpy.sqrt(norm_gorb.size)
+
+        if (norm_gorb < self.gdm_conv_tol * self.gdm_conv_tol):
+            log.debug("---------- Successful GDM Step ----------")
+            log.debug("Hopefully we are in the right direction.")
+            self.e_tot = self.ene_cur
+            return True
+
+        if self.gdm_step_vec is None:
+            self.gdm_step_vec = numpy.empty_like(grad)
+
+        if self.grad_list is None:
+            self.grad_list = []
+            self.grad_list.append(grad)
+        else:
+            num_grad = len(self.grad_list)
+            if (self.nssv == num_grad):
+                self.grad_list.append(grad)
+            elif (self.nssv < num_grad):
+                self.grad_list[self.nssv] = grad
+            else:
+                RuntimeError("GDM dimensioning error!")
+
+        if not self.is_first_step:
+            diff_ene = self.ene_cur-self.ene_pre
+            self.trust_radius = self.get_trust_radius(diff_ene)
+            if -diff_ene >= 1e-4*self.g_ref:
+                self.is_wolfe1 = True
+            elif numpy.abs(diff_ene) <= self.effective_thresh:
+                self.is_wolfe1 = True
+            else:
+                self.is_wolfe1 = False
+            
+            self.g_cur = numpy.dot(self.gdm_step_vec, grad)
+            xx         = numpy.dot(self.gdm_step_vec, self.gdm_step_vec)
+            self.x_cur = numpy.sqrt(xx)
+            self.g_cur = self.g_cur/self.x_cur
+
+            if self.g_cur >= CURV_CONDITION_SCALE * self.g_ref:
+                self.is_wolfe2 = True
+                if self.iter_line_search > 15:
+                    self.is_wolfe2     = True
+                    self.is_first_step = True
+
+        if self.is_wolfe1 and self.is_wolfe2:
+            self.iter_line_search = 0
+            ## save new origin
+            tmp_grad_list = numpy.einsum("ab,tai,ij->tbj", c_vv, self.grad_list, c_oo)
+            self.grad_list = tmp_grad_list
+            tmp_step_list = numpy.einsum("ab,tai,ij->tbj", c_vv, self.step_list, c_oo)
+            self.step_list = tmp_step_list
+
+            nssv += 1
+            n_ss  = -1
+
+
+        return 
+
+    def next_line_search_step(self, iter_line_search):
+        pass
+
+    def next_dogleg_step(self):
+        pass
 
     def kernel(self, mo_coeff=None, mo_occ=None, dm0=None):
         cput0 = (time.clock(), time.time())
@@ -376,33 +486,7 @@ class GDMOptimizer(object):
         self._finalize()
         return self.e_tot
 
-    gen_grad_and_hess = gen_grad_and_hess_rhf
-
-    def update_rotate_matrix(self, dx, mo_occ, u0=1, mo_coeff=None):
-        dr = hf.unpack_uniq_var(dx, mo_occ)
-
-        if WITH_EX_EY_DEGENERACY:
-            mol = self._scf.mol
-            if mol.symmetry and mol.groupname in ('Dooh', 'Coov'):
-                orbsym = hf_symm.get_orbsym(mol, mo_coeff)
-                _force_Ex_Ey_degeneracy_(dr, orbsym)
-        return numpy.dot(u0, expmat(dr))
-
-    def rotate_mo(self, mo_coeff, u, log=None):
-        mo = numpy.dot(mo_coeff, u)
-        if self._scf.mol.symmetry:
-            orbsym = hf_symm.get_orbsym(self._scf.mol, mo_coeff)
-            mo = lib.tag_array(mo, orbsym=orbsym)
-
-        if isinstance(log, logger.Logger) and log.verbose >= logger.DEBUG:
-            idx = self.mo_occ > 0
-            s = reduce(numpy.dot, (mo[:,idx].conj().T, self._scf.get_ovlp(),
-                                   self.mo_coeff[:,idx]))
-            log.debug('Overlap to initial guess, SVD = %s',
-                      _effective_svd(s, 1e-5))
-            log.debug('Overlap to last step, SVD = %s',
-                      _effective_svd(u[idx][:,idx], 1e-5))
-        return mo
+    get_orb_grad_hess = get_orb_grad_hess_rhf
 
 def gdm(mf):
     from pyscf import scf
@@ -475,5 +559,5 @@ def gdm(mf):
     else:
         class SecondOrderRHF(GDMOptimizer, mf.__class__):
             __doc__ = mf_doc + GDMOptimizer.__doc__
-            gen_grad_and_hess = gen_grad_and_hess_rhf
+            gen_grad_and_hess = get_orb_grad_hess_rhf
         return SecondOrderRHF(mf)
