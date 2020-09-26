@@ -4,33 +4,6 @@ from numpy import dot
 class OptimizeAlgorithm(object):
     pass
 
-class BFGS(OptimizeAlgorithm):
-    def __init__(self):
-        self.eff_thresh       = 0.0
-        self.num_subspace_vec = 0
-
-        self.pre_min          = 0.05
-        self.def_eff_thrsh    = -1000.0
-        self.max_subspace_vec = 20
-
-        self.step_list    = None
-        self.grad_list    = None
-
-        self.subspace_mat        = None
-        self.hess_inv            = None
-        self.ene_weight_subspace = None
-        self.is_first_step = True
-
-    def proj_to_ene_weight_subspace(self):
-        assert self.num_subspace_vec <= self.max_subspace_vec
-        num_scal_prec = 0
-        prec2 = self.pre_min * self.pre_min
-        precond_scale_fac = self.hess_inv
-        precond_scale_inv = 1/self.hess_inv
-
-
-        
-
 class LineSearch(OptimizeAlgorithm):
     def __init__(self):
         self.scale = 0.1
