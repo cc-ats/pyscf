@@ -191,77 +191,33 @@ class DogLegSearch(OptimizeAlgorithm):
             self._delta_y_model = -numpy.dot(step_vec, sd_step)
         return step_vec
 
+        # self.effective_thresh = DEF_EFF_THRSH
 
+        # self.tmp_mo_coeff = None
+        # self.ene_pre = 0.0
+        # self.ene_cur = 0.0
 
-def main(f, gradf, hessf, x, alpha=5.0, beta=1e-4, sigma=0.1, max_line_search=15):
-    line_search_obj   = LineSearch()
-    dog_leg_obj       = DogLegSearch()
+        # self.x_cur = 0.0
+        # self.g_cur = 0.0
+        # self.g_ref = 0.0
+        # self.x_ref = 0.0
+        # self.ref_len = 0.0
+        # self.r_trust = 0.0
+        # self.de_model = 0.0
+        # self.step_max = 0.0
 
-    step       = None
-    alpha_cur  = None
-    alpha_prev = None
-    alpha_low  = None
-    alpha_high = None
-    
-    x_prev = None
-    x_cur  = x
-    y_prev = None
-    y_cur  = None
+        # self.rms = 0.0
+        # self.error = 0.0
 
-    grad_cur  = None
-    grad_list = []
-    step_cur  = None
-    step_list = []
+        # self.is_first_step    = True
+        # self.nssv             = 0
+        # self.iter_line_search = 0
 
-    g_prev = None
-    g_cur  = None
+        # # Line search wolfe1 condition 1
+        # self.is_wolfe1 = True
+        # # Line search wolfe1 condition 1
+        # self.is_wolfe2 = True
 
-    is_wolfe1 = False
-    is_wolfe2 = False
-    is_first  = True
-
-    iter_line_search = 0
-    nssv             = 0
-
-    while True:
-        y_cur    = f(x_cur)
-        grad_cur = gradf(x_cur)
-        hess_cur = hessf(x_cur)
-        hinv_cur = numpy.linalg.inv(hess_cur)
-        rms      = numpy.linalg.norm(grad_cur)/grad_cur.size
-        if rms < beta * beta:
-            return True
-
-        if is_first:
-            step_cur = numpy.empty_like(grad_cur)
-        else:
-            y_diff = y_cur - y_prev
-            if -y_diff > beta*alpha*g_prev:
-                is_wolfe1 = True
-            else:
-                is_wolfe1 = False
-            g_cur     = numpy.dot(step_cur, grad_cur)
-            alpha2    = numpy.dot(step_cur, step_cur)
-            alpha_cur = numpy.sqrt(alpha2)
-            g_cur     = g_cur/alpha_cur
-
-            if g_cur >= 0.9*g_prev:
-                is_wolfe2 = True
-                if iter_line_search > max_line_search:
-                    is_wolfe2 = True
-                    is_first  = True
-            else:
-                is_wolfe2 = False
-            
-            if is_wolfe1 and is_wolfe2:
-                iter_line_search = 0
-                nssv += 1
-            else:
-                if not is_wolfe1:
-                    print("Line search: overstep")
-                else:
-                    print("Line search: understep")
-                iter_line_search += 1
-                alpha_cur = line_search_obj.next_step(y_prev, )
-                step_cur *= alpha_cur / numpy.sqrt(alpha2)
-
+        # self.gdm_step_vec = None
+        # self.step_list    = None
+        # self.grad_list    = None

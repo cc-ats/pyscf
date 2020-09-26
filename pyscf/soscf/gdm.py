@@ -24,6 +24,7 @@ from .optimizer import LineSearch, DogLegSearch
 SVD_TOL               = getattr(__config__, 'soscf_gdm_effective_svd_tol',   1e-5)
 DEF_EFF_THRSH         = getattr(__config__, 'soscf_gdm_def_eff_thrsh',    -1000.0)
 CURV_CONDITION_SCALE  = getattr(__config__, 'soscf_gdm_curv_condition_scale', 0.9)
+PREC_MIN              = getattr(__config__, 'soscf_gdm_prec_min',            0.05)
 
 def _effective_svd(a, tol=SVD_TOL):
     w = svd(a)[1]
@@ -36,8 +37,8 @@ def kernel(mf, mo_coeff=None, mo_occ=None, dm=None,
            conv_tol=1e-10, conv_tol_grad=None, max_cycle=50, dump_chk=True,
            callback=None, verbose=logger.NOTE):
     cput0 = (time.clock(), time.time())
-    log = logger.new_logger(mf, verbose)
-    mol = mf._scf.mol
+    log   = logger.new_logger(mf, verbose)
+    mol   = mf._scf.mol
     if mol != mf.mol:
         logger.warn(mf, 'dual-basis SOSCF is an experimental feature. It is '
                     'still in testing.')
@@ -46,19 +47,15 @@ def kernel(mf, mo_coeff=None, mo_occ=None, dm=None,
         conv_tol_grad = numpy.sqrt(conv_tol)
         log.info('Set conv_tol_grad to %g', conv_tol_grad)
 
-# call mf._scf.get_hcore, mf._scf.get_ovlp because they might be overloaded
     h1e = mf._scf.get_hcore(mol)
     s1e = mf._scf.get_ovlp(mol)
 
     if mo_coeff is not None and mo_occ is not None:
         dm = mf.make_rdm1(mo_coeff, mo_occ)
-        # call mf._scf.get_veff, to avoid "newton().density_fit()" polluting get_veff
         vhf = mf._scf.get_veff(mol, dm)
         fock = mf.get_fock(h1e, s1e, vhf, dm, level_shift_factor=0)
-        mo_energy, mo_tmp = mf.eig(fock, s1e)
-        mf.get_occ(mo_energy, mo_tmp)
-        mo_tmp = None
-
+        mo_energy, mo_coeff = mf.eig(fock, s1e)
+        mo_occ = mf.get_occ(mo_energy, mo_coeff)
     else:
         if dm is None:
             logger.debug(mf, 'Initial guess density matrix is not given. '
@@ -82,21 +79,133 @@ def kernel(mf, mo_coeff=None, mo_occ=None, dm=None,
     if dump_chk and mf.chkfile:
         chkfile.save_mol(mol, mf.chkfile)
 
-# Copy the integral file to soscf object to avoid the integrals being cached
-# twice.
+    # Copy the integral file to soscf object to avoid the integrals being cached
+    # twice.
     if mol is mf.mol and not getattr(mf, 'with_df', None):
         mf._eri = mf._scf._eri
-        # If different direct_scf_cutoff is assigned to newton_ah mf.opt
-        # object, mf.opt should be different to mf._scf.opt
-        #mf.opt = mf._scf.opt
 
-    scf_conv = False
-    while not scf_conv:
-        pass
+    scf_conv         = False
+    is_first_step    = True
+    iter_gdm         = 0
+    iter_line_search = 0
+
+    eff_thresh       = -100.00
+
+    line_search_obj    = LineSearch()
+    dog_leg_search_obj = DogLegSearch()
+
+    grad_list    = None
+    step_list    = None
+
+    num_subspace_vec = None
+
+    gdm_orb_step     = None
+
+    ene_cur = e_tot
+    ene_pre = None
+    g_pre   = None
+    g_cur   = None
+
+    cur_mo_coeff = mf.mo_coeff
+    pre_mo_coeff = None
+
+    cput1 = log.timer('initializing second order scf', *cput0)
+
+    while not scf_conv and iter_gdm < mf.gdm_max_cycle:
+        if verbose is None:
+            verbose = mf.verbose
+
+        log = logger.new_logger(mf, verbose)
+        log.note('\n')
+        log.info('Geometric Direct Minimization')
+
+        coo, cvv, mo_cano = mf.get_canonicalize()
+
+        grad, diag_hess = mf.get_orb_grad_hess(mo_cano, mo_occ, fock_ao=fock)
+        prec  = 1.0/numpy.sqrt(diag_hess)
+
+        norm_gorb = numpy.linalg.norm(grad)
+        norm_gorb = norm_gorb / numpy.sqrt(norm_gorb.size)
+
+        if (norm_gorb < mf.gdm_conv_tol * mf.gdm_conv_tol):
+            log.debug("---------- Successful GDM Step ----------")
+            log.debug("Hopefully we are in the right direction.")
+            scf_conv = True
+
+        if gdm_step_vec is None:
+            gdm_step_vec = numpy.empty_like(grad)
+
+        if grad_list is None:
+            grad_list = []
+            grad_list.append(grad)
+        else:
+            num_grad = len(grad_list)
+            if (num_subspace_vec == num_grad):
+                grad_list.append(grad)
+            elif num_subspace_vec < num_grad:
+                grad_list[num_subspace_vec] = grad
+            else:
+                RuntimeError("GDM dimensioning error!")
+
+        if not is_first_step:
+            diff_ene = ene_cur - ene_pre
+            trust_radius = dog_leg_search_obj.get_trust_radius(diff_ene)
+            if - diff_ene >= 1e-4 * g_pre:
+                is_wolfe1 = True
+            elif numpy.abs(diff_ene) <= eff_thresh:
+                is_wolfe1 = True
+            else:
+                is_wolfe1 = False
+            
+            g_cur      = numpy.dot(gdm_step_vec, grad)
+            xx         = numpy.dot(gdm_step_vec, gdm_step_vec)
+            x_cur      = numpy.sqrt(xx)
+            g_cur      = g_cur/x_cur
+
+            if g_cur >= CURV_CONDITION_SCALE * g_pre:
+                is_wolfe2 = True
+                if iter_line_search > mf.max_line_search:
+                    is_wolfe2     = True
+                    is_first_step = True
+
+        if is_wolfe1 and is_wolfe2:
+            if grad_list is not None:
+                grad_list = mf.update_grad_list(coo, cvv, grad_list)
+            if step_list is not None:
+                step_list = mf.update_grad_list(coo, cvv, step_list)
+
+            iter_line_search = 0
+            mf.mo_coeff = mo_coeff
+
+            num_subspace_vec += 1
+            n_ss  = -1
+
+            subspace_mat, ene_weight_subspace, proj_err = self.proj_ene_weight_subspace()
+
+            self.eff_thresh = numpy.max(proj_err, self.eff_thresh)
+            qn_step = self.get_qn_step(subspace_mat)
+            qn_step = line_search_obj.next_step()
+
+            self.gdm_step_vec = numpy.dot(ene_weight_subspace, qn_step)
+        else:
+            self.back_to_origin()
+            line_search_iter += 1
+            alpha_cur = line_search_obj.next_step()
+            step *= alpha_cur/sqrt(xx)
+
+            step_max = numpy.max(step)
+
+        s3  = grad * prec
+        err = numpy.max(numpy.abs(s3))
+        self._step_list.append(step)
+        self.update(step)
+
+        self.is_first_step = False
+
+        self.ene_pre = ene_prev
+        self.ene_cur = self._scf.energy_tot()
 
     for imacro in range(max_cycle):
-        u, g_orb, kfcount, jkcount, dm_last, vhf = \
-                rotaiter.send((mo_coeff, mo_occ, dm, vhf, e_tot))
         kftot += kfcount + 1
         jktot += jkcount + 1
 
@@ -174,31 +283,47 @@ def get_orb_grad_hess_rhf(mf, mo_coeff, mo_occ, fock_ao=None):
     return grad.reshape(-1), abs_h_diag
 
 def get_canonicalize_rhf(mf, mo_coeff, mo_occ, fock_ao=None):
-    '''Canonicalization diagonalizes the Fock matrix within occupied, open,
-    virtual subspaces separatedly (without change occupancy).
-    '''
     if fock_ao is None:
         dm      = mf.make_rdm1(mo_coeff, mo_occ)
         fock_ao = mf.get_fock(dm=dm)
 
-    occidx = mo_occ == 2
-    viridx = mo_occ == 0
+    occidx  = mo_occ == 2
+    viridx  = mo_occ == 0
 
-    mo   = numpy.empty_like(mo_coeff)
-    mo_e = numpy.empty(mo_occ.size)
+    mo_cano = numpy.empty_like(mo_coeff)
 
-    orbo   = mo_coeff[:,occidx]
-    foo    = reduce(numpy.dot, (orbo.conj().T, fock_ao, orbo))
+    orbo    = mo_coeff[:,occidx]
+    foo     = reduce(numpy.dot, (orbo.conj().T, fock_ao, orbo))
     e, cano_trans_orb_oo = scipy.linalg.eig(foo)
-    mo[:,occidx] = numpy.dot(orbo, cano_trans_orb_oo)
+    mo_cano[:,occidx] = numpy.dot(orbo, cano_trans_orb_oo)
 
     orbv   = mo_coeff[:,viridx]
     fvv    = reduce(numpy.dot, (orbv.conj().T, fock_ao, orbv))
     e, cano_trans_orb_vv = scipy.linalg.eig(fvv)
-    mo[:,viridx] = numpy.dot(orbv, cano_trans_orb_vv)
+    mo_cano[:,viridx] = numpy.dot(orbv, cano_trans_orb_vv)
 
-    return cano_trans_orb_oo, cano_trans_orb_vv, mo
+    return cano_trans_orb_oo, cano_trans_orb_vv, mo_cano
 
+def update_grad_list_rhf(mf, coo, cvv, grad_list):
+    tmp_grad_list = numpy.einsum("ab,tai,ij->tbj", cvv.T, grad_list, coo)
+    return list(tmp_grad_list)
+
+def update_mo_coeff_rhf(mf, gdm_orb_step, mo_coeff, mo_occ):
+    nmo     = len(mo_occ)
+    occidxa = mo_occ>0
+    occidxb = mo_occ==2
+    viridxa = ~occidxa
+    viridxb = ~occidxb
+    idx     = (viridxa[:,None] & occidxa) | (viridxb[:,None] & occidxb)
+
+    dtheta      = numpy.zeros((nmo,nmo), dtype=gdm_orb_step.dtype)
+    dtheta[idx] = gdm_orb_step
+    u           = expm(dtheta)
+
+    if mo_coeff is not None:
+        u = numpy.dot(mo_coeff, u)
+    tmp_mo_coeff = u
+    return tmp_mo_coeff
 
 class GDMOptimizer(object):
     '''
@@ -215,15 +340,11 @@ class GDMOptimizer(object):
             Default is True.
     '''
 
-    gdm_start_tol   = getattr(__config__, 'soscf_gdm_start_tol',  1e9)
-    gdm_start_cycle = getattr(__config__, 'soscf_gdm_start_cycle',  1)
-    gdm_level_shift = getattr(__config__, 'soscf_gdm_level_shift',0.0)
-    gdm_conv_tol    = getattr(__config__, 'soscf_gdm_conv_tol', 1e-12)
-    gdm_lindep      = getattr(__config__, 'soscf_gdm_lindep',   1e-14)
-    gdm_max_cycle   = getattr(__config__, 'soscf_gdm_max_cycle',   40)
-
-    max_cycle_ls     = getattr(__config__, 'soscf_gdm_max_cycle_inner'   , 12)
-    max_stepsize_ls  = getattr(__config__, 'soscf_gdm_max_stepsize',      .05)
+    gdm_conv_tol      = getattr(__config__, 'soscf_gdm_conv_tol', 1e-6)
+    max_cycle_gdm     = getattr(__config__, 'soscf_gdm_max_cycle',   40)
+    max_cycle_ls      = getattr(__config__, 'soscf_gdm_max_cycle_inner'   , 12)
+    max_stepsize_ls   = getattr(__config__, 'soscf_gdm_max_stepsize',      .05)
+    max_subspace_size = getattr(__config__, 'soscf_gdm_max_subspace_size',  20)
     
 
     def __init__(self, mf):
@@ -232,42 +353,9 @@ class GDMOptimizer(object):
 
         self._keys.update((   'max_cycle_ls',
                            'max_stepsize_ls',
-                             'gdm_start_tol',
-                           'gdm_start_cycle',
-                           'gdm_level_shift',
+                         'max_subspace_size',
                               'gdm_conv_tol',
-                                'gdm_lindep',
-                             'gdm_max_cycle'))
-
-        self.effective_thresh = DEF_EFF_THRSH
-
-        self.ene_pre = 0.0
-        self.ene_cur = 0.0
-
-        self.x_cur = 0.0
-        self.g_cur = 0.0
-        self.g_ref = 0.0
-        self.x_ref = 0.0
-        self.ref_len = 0.0
-        self.r_trust = 0.0
-        self.de_model = 0.0
-        self.step_max = 0.0
-
-        self.rms = 0.0
-        self.error = 0.0
-
-        self.is_first_step    = True
-        self.nssv             = 0
-        self.iter_line_search = 0
-
-        # Line search wolfe1 condition 1
-        self.is_wolfe1 = True
-        # Line search wolfe1 condition 1
-        self.is_wolfe2 = True
-
-        self.gdm_step_vec = None
-        self.step_list    = None
-        self.grad_list    = None
+                             'max_cycle_gdm'))
 
     def dump_flags(self, verbose=None):
         log = logger.new_logger(self, verbose)
@@ -276,69 +364,85 @@ class GDMOptimizer(object):
         log.info('******** %s GDM solver flags ********', self._scf.__class__)
         return self
 
-    def build(self, mol=None):
-        if mol is None: mol = self.mol
-        if self.verbose >= logger.WARN:
-            self.check_sanity()
-        self._scf.build(mol)
-        self.opt = None
-        self._eri = None
-        return self
+    def proj_ene_weight_subspace(self, grad_list, step_list, prec):
+        num_scale_prec   = 0
+        num_subspace_vec = len(grad_list)
+        
+        prec_inv         = numpy.empty_like(prec)
+        for i, p in enumerate(prec):
+            prec_inv[i] = 1.0/numpy.abs(p)
+            if prec_inv[i] < PREC_MIN:
+                num_scale_prec += 1
+                prec_inv[i]     = PREC_MIN
+        prec     = 1.0/prec_inv
 
-    def reset(self, mol=None):
-        if mol is not None:
-            self.mol = mol
-        return self._scf.reset(mol)
+        cur_norm = numpy.linalg.norm(grad_list[-1])
+        for i in range(num_subspace_vec):
+            igrad    = num_subspace_vec - i - 1
+            grad     = grad_list[igrad]
+            tmp_vec  = grad * prec
+            tmp_norm = numpy.linalg.norm(tmp_vec)
+            if tmp_norm > cur_norm*1e10 or (igrad==1 and num_subspace_vec==self.max_subspace_size):
+                del grad_list[0:igrad]
+                del step_list[0:igrad]
+                num_subspace_vec = num_subspace_vec - i
+                break
+        
+        ene_weight_subspace_1    = [grad*prec     for grad in grad_list]
+        ene_weight_subspace_2    = [step*prec_inv for step in step_list]
+        # ene_weight_subspace_orig = numpy.asarray(ene_weight_subspace_1 + ene_weight_subspace_2)
+        ene_weight_subspace      = numpy.asarray(ene_weight_subspace_1 + ene_weight_subspace_2)
+        orth_ene_weight_subspace = scipy.linalg.orth(ene_weight_subspace)
+        subspace_mat             = numpy.dot(ene_weight_subspace, orth_ene_weight_subspace)
+        # subspace_mat             = numpy.einsum("ik,ij->kj",ene_weight_subspace,ene_weight_subspace)
+        # ncol, nrow               = subspace_mat.shape
 
-    def update_rotate_matrix(self, dx, mo_occ, u0=1, mo_coeff=None):
-        dr = hf.unpack_uniq_var(dx, mo_occ)
-        return numpy.dot(u0, expmat(dr))
+        # for i in range(ncol):
+        #     for j in range(i,nrow):
+        #         tmp = numpy.sqrt(subspace_mat[i,i]*subspace_mat[j*j])
+        #         subspace_mat[i,j] /= tmp
+        #         subspace_mat[j,i] /= tmp
+        #     subspace_mat[i,i] = 1.0
 
-    def rotate_mo(self, mo_coeff, u, log=None):
-        mo = numpy.dot(mo_coeff, u)
+        # eig_vals, eig_vecs = numpy.linalg.eig(subspace_mat)
+        # eig_val_max = eig_vals.max()
+        # tmp_eig_vals = eig_vals/eig_val_max
+        # lin_dep_idx  = tmp_eig_vals<1e-8
 
-        if isinstance(log, logger.Logger) and log.verbose >= logger.DEBUG:
-            idx = self.mo_occ > 0
-            s = reduce(numpy.dot, (mo[:,idx].conj().T, self._scf.get_ovlp(),
-                                   self.mo_coeff[:,idx]))
-            log.debug('Overlap to initial guess, SVD = %s',
-                      _effective_svd(s, 1e-5))
-            log.debug('Overlap to last step, SVD = %s',
-                      _effective_svd(u[idx][:,idx], 1e-5))
-        return mo
+        # eig_vals = eig_vals[lin_dep_idx]
+        # eig_vecs = eig_vecs[:,lin_dep_idx]
 
-    def update_orb(self, orb_step, mo_coeff=None, mo_occ=None, dm0=None,
-                         s1e=None, hie=None, vhf0=None):
-        if s1e is None:
-            s1e = self._scf.get_ovlp()
-        if h1e is None:
-            h1e = self._scf.get_hcore()
+        # tmp_subspace_mat = numpy.dot(eig_vecs, numpy.diag(eig_vals))
 
-        u = self.update_rotate_matrix(orb_step, mo_occ, mo_coeff=mo_coeff)
-        if mo_coeff is not None:
-            u = self.rotate_mo(mo_coeff, u)
-        mo_coeff = u
+        # dev_max = 0.0
+        # for 
+        return orth_ene_weight_subspace, subspace_mat
 
-        return mo_coeff
+
+
+
+
+
 
     def update_hess_inv(self): # BFGS update hess inv
         pass
 
-    def save_orb(self, mo_coeff):
-        self.mo_coeff = mo_coeff
-
-    def next_gdm_step(self, ene_prev, mo_coeff, mo_occ, fock_ao, verbose=None, iter_gdm_step=None):
+    def next_gdm_step(self, ene_prev, mo_coeff, mo_occ, fock_ao, verbose=None, iter_gdm_step=None, line_search_obj=None, dog_leg_search_obj=None):
         if verbose is None:
             verbose = self.verbose
+        if line_search_obj is None:
+            line_search_obj = self._line_search_obj
+        if dog_leg_search_obj is None:
+            dog_leg_search_obj = self._dog_leg_search_obj
 
         log = logger.new_logger(self, verbose)
         log.note('\n')
         log.info('Geometric Direct Minimization')
 
         grad, diag_hess = self.get_orb_grad_hess(mo_coeff, mo_occ, fock_ao=fock_ao)
-        prec  = 1.0/numpy.sqrt(ndiag_hess)
+        prec  = 1.0/numpy.sqrt(diag_hess)
 
-        self.ene_pre = self.e_tot
+        self.ene_pre = ene_prev
         self.ene_cur = self._scf.energy_tot()
 
         norm_gorb = numpy.linalg.norm(grad)
@@ -389,10 +493,7 @@ class GDMOptimizer(object):
         if self.is_wolfe1 and self.is_wolfe2: 
             self.iter_line_search = 0
             self.save_orb()
-            tmp_grad_list = numpy.einsum("ab,tai,ij->tbj", c_vv, self.grad_list, c_oo)
-            self.grad_list = tmp_grad_list
-            tmp_step_list = numpy.einsum("ab,tai,ij->tbj", c_vv, self.step_list, c_oo)
-            self.step_list = tmp_step_list
+
 
             nssv += 1
             n_ss  = -1
@@ -401,16 +502,16 @@ class GDMOptimizer(object):
 
             self.eff_thresh = numpy.max(proj_err, self.eff_thresh)
             qn_step = self.get_qn_step(subspace_mat)
+            qn_step = line_search_obj.next_step()
 
             self.gdm_step_vec = numpy.dot(ene_weight_subspace, qn_step)
         else:
             self.back_to_origin()
             line_search_iter += 1
-            self.do_line_search()
+            alpha_cur = line_search_obj.next_step()
             step *= alpha_cur/sqrt(xx)
 
             step_max = numpy.max(step)
-
 
         s3  = grad * prec
         err = numpy.max(numpy.abs(s3))
@@ -419,17 +520,21 @@ class GDMOptimizer(object):
 
         self.is_first_step = False
 
-
-
         return 
+    
+    def kernel(self):
+        pass
 
     def next_line_search_step(self, iter_line_search):
         pass
 
-    def next_dogleg_step(self):
+    def next_dogleg_step(self, sd_step, qn_step, hess_inv, ):
         pass
 
     get_orb_grad_hess = get_orb_grad_hess_rhf
+    get_canonicalize  = get_canonicalize_rhf
+    update_grad_list  = update_grad_list_rhf
+    update_mo_coeff   = update_mo_coeff_rhf
 
 def gdm(mf):
     from pyscf import scf
@@ -461,13 +566,6 @@ def gdm(mf):
                                     viridxb[:,None] & occidxb))
                 dr[uniq] = dx
                 dr = dr - dr.conj().transpose(0,2,1)
-
-                if WITH_EX_EY_DEGENERACY:
-                    mol = self._scf.mol
-                    if mol.symmetry and mol.groupname in ('Dooh', 'Coov'):
-                        orbsyma, orbsymb = uhf_symm.get_orbsym(mol, mo_coeff)
-                        _force_Ex_Ey_degeneracy_(dr[0], orbsyma)
-                        _force_Ex_Ey_degeneracy_(dr[1], orbsymb)
 
                 if isinstance(u0, int) and u0 == 1:
                     return numpy.asarray((expmat(dr[0]), expmat(dr[1])))
