@@ -118,10 +118,15 @@ def kernel(mf, mo_coeff=None, mo_occ=None, dm=None,
         log.note('\n')
         log.info('Geometric Direct Minimization')
 
-        coo, cvv, mo_cano = mf.get_canonicalize()
+        dm   = mf.make_rdm1(cur_mo_coeff, mo_occ)
+        dm   = lib.tag_array(dm, mo_coeff=cur_mo_coeff, mo_occ=mo_occ)
+        vhf  = mf.get_veff(mol, dm, dm_last, vhf)
+        fock = mf.get_fock(h1e, s1e, vhf, dm, level_shift_factor=0)
+        coo, cvv, cur_mo_coeff, mo_energy = mf.get_canonicalize(cur_mo_coeff, mo_occ, fock_ao=fock)
+        mo_occ = mo_occ = mf.get_occ(mo_energy=mo_energy, mo_coeff=cur_mo_coeff)
 
-        grad, diag_hess = mf.get_orb_grad_hess(mo_cano, mo_occ, fock_ao=fock)
-        prec  = 1.0/numpy.sqrt(diag_hess)
+        grad, diag_hess = mf.get_orb_grad_hess(cur_mo_coeff, mo_occ, fock_ao=fock)
+        prec      = 1.0/numpy.sqrt(diag_hess)
 
         norm_gorb = numpy.linalg.norm(grad)
         norm_gorb = norm_gorb / numpy.sqrt(norm_gorb.size)
@@ -190,62 +195,26 @@ def kernel(mf, mo_coeff=None, mo_occ=None, dm=None,
                                                   ene_cur, alpha_cur, g_cur,
                                                   is_wolfe1, is_wolfe2)
             gdm_orb_step *= alpha_cur/numpy.sqrt(xx)
-
             step_max = numpy.max(gdm_orb_step)
 
-        s3  = grad * prec
-        err = numpy.max(numpy.abs(s3))
-        self._step_list.append(step)
-        self.update(step)
+        grad_prec  = grad * prec
+        err        = numpy.max(numpy.abs(grad_prec))
 
-        self.is_first_step = False
+        print("num_subspace_vec = %d"%num_subspace_vec)
+        if step_list is None:
+            step_list = []
+            step_list.append(gdm_orb_step)
+        else:
+            step_list.append(gdm_orb_step)
 
-        self.ene_pre = ene_prev
-        self.ene_cur = self._scf.energy_tot()
+        is_first_step = False
 
-    for imacro in range(max_cycle):
-        kftot += kfcount + 1
-        jktot += jkcount + 1
+        pre_mo_coeff = cur_mo_coeff
+        cur_mo_coeff = mf.update_mo_coeff(gdm_orb_step, pre_mo_coeff, mo_occ)
 
-        last_hf_e = e_tot
-        norm_gorb = numpy.linalg.norm(g_orb)
-        mo_coeff = mf.rotate_mo(mo_coeff, u, log)
-        dm = mf.make_rdm1(mo_coeff, mo_occ)
-        vhf = mf._scf.get_veff(mol, dm, dm_last=dm_last, vhf_last=vhf)
-        fock = mf.get_fock(h1e, s1e, vhf, dm, level_shift_factor=0)
-# NOTE: DO NOT change the initial guess mo_occ, mo_coeff
-        if mf.verbose >= logger.DEBUG:
-            mo_energy, mo_tmp = mf.eig(fock, s1e)
-            mf.get_occ(mo_energy, mo_tmp)
-# call mf._scf.energy_tot for dft, because the (dft).get_veff step saved _exc in mf._scf
-        e_tot = mf._scf.energy_tot(dm, h1e, vhf)
+        ene_pre       = ene_cur
+        dm_last       = dm
 
-        log.info('macro= %d  E= %.15g  delta_E= %g  |g|= %g  %d KF %d JK',
-                 imacro, e_tot, e_tot-last_hf_e, norm_gorb,
-                 kfcount+1, jkcount)
-        cput1 = log.timer('cycle= %d'%(imacro+1), *cput1)
-
-        if callable(mf.check_convergence):
-            scf_conv = mf.check_convergence(locals())
-        elif abs(e_tot-last_hf_e) < conv_tol and norm_gorb < conv_tol_grad:
-            scf_conv = True
-
-        if dump_chk:
-            mf.dump_chk(locals())
-    
-    mo_energy, mo_coeff1 = mf._scf.canonicalize(mo_coeff, mo_occ, fock)
-    if mf.canonicalization:
-        log.info('Canonicalize SCF orbitals')
-        mo_coeff = mo_coeff1
-        if dump_chk:
-            mf.dump_chk(locals())
-    log.info('macro X = %d  E=%.15g  |g|= %g  total %d KF %d JK',
-             imacro+1, e_tot, norm_gorb, kftot+1, jktot+1)
-    if (numpy.any(mo_occ==0) and
-        mo_energy[mo_occ>0].max() > mo_energy[mo_occ==0].min()):
-        log.warn('HOMO %s > LUMO %s was found in the canonicalized orbitals.',
-                 mo_energy[mo_occ>0].max(), mo_energy[mo_occ==0].min())
-    return scf_conv, e_tot, mo_energy, mo_coeff, mo_occ
 
 # returns an exact gradient and approximate hessian
 def get_orb_grad_hess_rhf(mf, mo_coeff, mo_occ, fock_ao=None):
@@ -288,19 +257,23 @@ def get_canonicalize_rhf(mf, mo_coeff, mo_occ, fock_ao=None):
     occidx  = mo_occ == 2
     viridx  = mo_occ == 0
 
-    mo_cano = numpy.empty_like(mo_coeff)
+    nao, nmo      = mo_coeff.shape
+    mo_coeff_cano = numpy.empty_like(mo_coeff)
+    mo_energy     = numpy.empty(nmo)
 
     orbo    = mo_coeff[:,occidx]
     foo     = reduce(numpy.dot, (orbo.conj().T, fock_ao, orbo))
-    e, cano_trans_orb_oo = scipy.linalg.eig(foo)
-    mo_cano[:,occidx] = numpy.dot(orbo, cano_trans_orb_oo)
+    e, cano_trans_orb_oo    = scipy.linalg.eig(foo)
+    mo_coeff_cano[:,occidx] = numpy.dot(orbo, cano_trans_orb_oo)
+    mo_energy[occidx]       = e
 
     orbv   = mo_coeff[:,viridx]
     fvv    = reduce(numpy.dot, (orbv.conj().T, fock_ao, orbv))
-    e, cano_trans_orb_vv = scipy.linalg.eig(fvv)
-    mo_cano[:,viridx] = numpy.dot(orbv, cano_trans_orb_vv)
+    e, cano_trans_orb_vv    = scipy.linalg.eig(fvv)
+    mo_coeff_cano[:,viridx] = numpy.dot(orbv, cano_trans_orb_vv)
+    mo_energy[viridx]       = e
 
-    return cano_trans_orb_oo, cano_trans_orb_vv, mo_cano
+    return cano_trans_orb_oo, cano_trans_orb_vv, mo_coeff_cano, mo_energy
 
 def update_grad_list_rhf(mf, coo, cvv, grad_list):
     tmp_grad_list = numpy.einsum("ab,tai,ij->tbj", cvv.T, grad_list, coo)
@@ -454,110 +427,8 @@ class GDMOptimizer(object):
         abs_eig_vals       = numpy.abs(eig_vals)
         hess_inv           = reduce(dot, [eig_vecs, abs_eig_vals, eig_vecs.T])
         return hess_inv
-        
-
-    def next_gdm_step(self, ene_prev, mo_coeff, mo_occ, fock_ao, verbose=None, iter_gdm_step=None, line_search_obj=None, dog_leg_search_obj=None):
-        if verbose is None:
-            verbose = self.verbose
-        if line_search_obj is None:
-            line_search_obj = self._line_search_obj
-        if dog_leg_search_obj is None:
-            dog_leg_search_obj = self._dog_leg_search_obj
-
-        log = logger.new_logger(self, verbose)
-        log.note('\n')
-        log.info('Geometric Direct Minimization')
-
-        grad, diag_hess = self.get_orb_grad_hess(mo_coeff, mo_occ, fock_ao=fock_ao)
-        prec  = 1.0/numpy.sqrt(diag_hess)
-
-        self.ene_pre = ene_prev
-        self.ene_cur = self._scf.energy_tot()
-
-        norm_gorb = numpy.linalg.norm(grad)
-        norm_gorb = norm_gorb / numpy.sqrt(norm_gorb.size)
-
-        if (norm_gorb < self.gdm_conv_tol * self.gdm_conv_tol):
-            log.debug("---------- Successful GDM Step ----------")
-            log.debug("Hopefully we are in the right direction.")
-            self.e_tot = self.ene_cur
-            return True
-
-        if self.gdm_orb_step is None:
-            self.gdm_orb_step = numpy.empty_like(grad)
-
-        if self.grad_list is None:
-            self.grad_list = []
-            self.grad_list.append(grad)
-        else:
-            num_grad = len(self.grad_list)
-            if (self.num_subspace_vec == num_grad):
-                self.grad_list.append(grad)
-            elif (self.num_subspace_vec < num_grad):
-                self.grad_list[self.num_subspace_vec] = grad
-            else:
-                RuntimeError("GDM dimensioning error!")
-
-        if not self.is_first_step:
-            diff_ene = self.ene_cur-self.ene_pre
-            self.trust_radius = self.get_trust_radius(diff_ene)
-            if -diff_ene >= 1e-4*self.g_ref:
-                self.is_wolfe1 = True
-            elif numpy.abs(diff_ene) <= self.effective_thresh:
-                self.is_wolfe1 = True
-            else:
-                self.is_wolfe1 = False
-            
-            self.g_cur = numpy.dot(self.gdm_orb_step, grad)
-            xx         = numpy.dot(self.gdm_orb_step, self.gdm_orb_step)
-            self.x_cur = numpy.sqrt(xx)
-            self.g_cur = self.g_cur/self.x_cur
-
-            if self.g_cur >= CURV_CONDITION_SCALE * self.g_ref:
-                self.is_wolfe2 = True
-                if self.iter_line_search > 15:
-                    self.is_wolfe2     = True
-                    self.is_first_step = True
-
-        if self.is_wolfe1 and self.is_wolfe2: 
-            self.iter_line_search = 0
-            self.save_orb()
-
-
-            num_subspace_vec += 1
-            dim_subspace  = -1
-
-            subspace_mat, ene_weight_subspace, proj_err = self.proj_ene_weight_subspace()
-
-            self.eff_thresh = numpy.max(proj_err, self.eff_thresh)
-            qn_step = self.get_qn_step(subspace_mat)
-            qn_step = line_search_obj.next_step()
-
-            self.gdm_orb_step = numpy.dot(ene_weight_subspace, qn_step)
-        else:
-            self.back_to_origin()
-            line_search_iter += 1
-            alpha_cur = line_search_obj.next_step()
-            step *= alpha_cur/sqrt(xx)
-
-            step_max = numpy.max(step)
-
-        s3  = grad * prec
-        err = numpy.max(numpy.abs(s3))
-        self._step_list.append(step)
-        self.update(step)
-
-        self.is_first_step = False
-
-        return 
     
     def kernel(self):
-        pass
-
-    def next_line_search_step(self, iter_line_search):
-        pass
-
-    def next_dogleg_step(self, sd_step, qn_step, hess_inv, ):
         pass
 
     get_orb_grad_hess = get_orb_grad_hess_rhf

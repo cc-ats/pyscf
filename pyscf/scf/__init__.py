@@ -201,6 +201,10 @@ def newton(mf):
 
 fast_newton = addons.fast_newton
 
+def gdm(mf):
+    from pyscf.soscf import gdm
+    return gdm.gdm(mf)
+
 def KS(mol, *args):
     from pyscf import dft
     return dft.KS(mol)

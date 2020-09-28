@@ -1771,6 +1771,10 @@ class SCF(lib.StreamObject):
         import pyscf.soscf.newton_ah
         return pyscf.soscf.newton_ah.newton(self)
 
+    def gdm(self):
+        import pyscf.soscf.gdm
+        return pyscf.soscf.gdm.gdm(self)
+
     def nuc_grad_method(self):  # pragma: no cover
         '''Hook to create object for analytical nuclear gradients.'''
         pass
