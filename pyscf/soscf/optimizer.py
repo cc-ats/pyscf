@@ -124,10 +124,15 @@ class DogLegSearch(OptimizeAlgorithm):
                 self._r_trust = r_trust
                 return r_trust
     
-    def next_step(self, sd_step, qn_step, hess_inv):
+    def next_step(self, subspace_mat, hess_inv):
         assert self._r_trust is not None
         r_trust = self._r_trust
 
+        dim_subspace, tmp_num = subspace_mat.shape
+        num_subspace_vec = (tmp_num+1)//2
+
+        sd_step      = subspace_mat[:,num_subspace_vec-1]
+        qn_step      = dot(hess_inv, sd_step)
         norm_sd_step = numpy.linalg.norm(sd_step)
         norm_qn_step = numpy.linalg.norm(qn_step)
 

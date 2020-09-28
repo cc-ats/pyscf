@@ -5,7 +5,8 @@ from functools import reduce
 
 import numpy
 import scipy
-from scipy.linalg import expm
+from numpy        import dot
+from scipy.linalg import expm, orth
 from numpy.linalg import svd
 
 from pyscf     import gto
@@ -25,10 +26,6 @@ SVD_TOL               = getattr(__config__, 'soscf_gdm_effective_svd_tol',   1e-
 DEF_EFF_THRSH         = getattr(__config__, 'soscf_gdm_def_eff_thrsh',    -1000.0)
 CURV_CONDITION_SCALE  = getattr(__config__, 'soscf_gdm_curv_condition_scale', 0.9)
 PREC_MIN              = getattr(__config__, 'soscf_gdm_prec_min',            0.05)
-
-def _effective_svd(a, tol=SVD_TOL):
-    w = svd(a)[1]
-    return w[(tol<w) & (w<1-tol)]
 
 def expmat(a):
     return expm(a)
@@ -101,10 +98,12 @@ def kernel(mf, mo_coeff=None, mo_occ=None, dm=None,
 
     gdm_orb_step     = None
 
-    ene_cur = e_tot
-    ene_pre = None
-    g_pre   = None
-    g_cur   = None
+    ene_cur   = e_tot
+    ene_pre   = None
+    g_pre     = None
+    g_cur     = None
+    alpha_pre = None
+    alpha_cur = None
 
     cur_mo_coeff = mf.mo_coeff
     pre_mo_coeff = None
@@ -132,8 +131,8 @@ def kernel(mf, mo_coeff=None, mo_occ=None, dm=None,
             log.debug("Hopefully we are in the right direction.")
             scf_conv = True
 
-        if gdm_step_vec is None:
-            gdm_step_vec = numpy.empty_like(grad)
+        if gdm_orb_step is None:
+            gdm_orb_step = numpy.empty_like(grad)
 
         if grad_list is None:
             grad_list = []
@@ -157,8 +156,8 @@ def kernel(mf, mo_coeff=None, mo_occ=None, dm=None,
             else:
                 is_wolfe1 = False
             
-            g_cur      = numpy.dot(gdm_step_vec, grad)
-            xx         = numpy.dot(gdm_step_vec, gdm_step_vec)
+            g_cur      = numpy.dot(gdm_orb_step, grad)
+            xx         = numpy.dot(gdm_orb_step, gdm_orb_step)
             x_cur      = numpy.sqrt(xx)
             g_cur      = g_cur/x_cur
 
@@ -178,22 +177,21 @@ def kernel(mf, mo_coeff=None, mo_occ=None, dm=None,
             mf.mo_coeff = mo_coeff
 
             num_subspace_vec += 1
-            n_ss  = -1
+            dim_subspace  = -1
 
-            subspace_mat, ene_weight_subspace, proj_err = self.proj_ene_weight_subspace()
-
-            self.eff_thresh = numpy.max(proj_err, self.eff_thresh)
-            qn_step = self.get_qn_step(subspace_mat)
-            qn_step = line_search_obj.next_step()
-
-            self.gdm_step_vec = numpy.dot(ene_weight_subspace, qn_step)
+            subspace_mat, ene_weight_subspace = mf.proj_ene_weight_subspace(grad_list,step_list,prec)
+            hess_inv = mf.get_hess_inv(subspace_mat)
+            tmp_step_vec = dog_leg_search_obj.next_step(subspace_mat, hess_inv)
+            gdm_orb_step = numpy.dot(ene_weight_subspace, tmp_step_vec)
         else:
-            self.back_to_origin()
-            line_search_iter += 1
-            alpha_cur = line_search_obj.next_step()
-            step *= alpha_cur/sqrt(xx)
+            mo_coeff = mf.mo_coeff
+            iter_line_search += 1
+            alpha_cur = line_search_obj.next_step(ene_pre, alpha_pre, g_pre,
+                                                  ene_cur, alpha_cur, g_cur,
+                                                  is_wolfe1, is_wolfe2)
+            gdm_orb_step *= alpha_cur/numpy.sqrt(xx)
 
-            step_max = numpy.max(step)
+            step_max = numpy.max(gdm_orb_step)
 
         s3  = grad * prec
         err = numpy.max(numpy.abs(s3))
@@ -390,42 +388,73 @@ class GDMOptimizer(object):
         
         ene_weight_subspace_1    = [grad*prec     for grad in grad_list]
         ene_weight_subspace_2    = [step*prec_inv for step in step_list]
-        # ene_weight_subspace_orig = numpy.asarray(ene_weight_subspace_1 + ene_weight_subspace_2)
         ene_weight_subspace      = numpy.asarray(ene_weight_subspace_1 + ene_weight_subspace_2)
-        orth_ene_weight_subspace = scipy.linalg.orth(ene_weight_subspace)
-        subspace_mat             = numpy.dot(ene_weight_subspace, orth_ene_weight_subspace)
-        # subspace_mat             = numpy.einsum("ik,ij->kj",ene_weight_subspace,ene_weight_subspace)
-        # ncol, nrow               = subspace_mat.shape
 
-        # for i in range(ncol):
-        #     for j in range(i,nrow):
-        #         tmp = numpy.sqrt(subspace_mat[i,i]*subspace_mat[j*j])
-        #         subspace_mat[i,j] /= tmp
-        #         subspace_mat[j,i] /= tmp
-        #     subspace_mat[i,i] = 1.0
+        ew_ss_t_dot_ew_ss = dot(ene_weight_subspace.T, ene_weight_subspace)
+        tmp_ew_ss = numpy.copy(ene_weight_subspace)
+        
+        nrow, ncol = ew_ss_t_dot_ew_ss.shape
+        tmp_diag = numpy.diag(ew_ss_t_dot_ew_ss)
+        for i in range(nrow):
+            for j in range(i+1,ncol):
+                tmp = ew_ss_t_dot_ew_ss[i,j]/numpy.sqrt(tmp_diag[i]*tmp_diag[j])
+                ew_ss_t_dot_ew_ss[i,j] = tmp
+                ew_ss_t_dot_ew_ss[j,i] = tmp
+            ew_ss_t_dot_ew_ss[i,i] = 1.0
+        
+        eig_vals, eig_vecs = numpy.linalg.eigh(ew_ss_t_dot_ew_ss)
+        sort_idx           = eig_vals.argsort()
+        sort_eig_vals      = numpy.abs(eig_vals[sort_idx])
+        tmp_eig_vals       = sort_eig_vals/sort_eig_vals[-1]
+        sort_eig_vecs      = eig_vecs[:, sort_idx]
+        
+        tmp_idx            = tmp_eig_vals>1e-8
+        tmp_vals           = sort_eig_vals[tmp_idx]
+        inv_sqrt_vals      = 1/numpy.sqrt(tmp_vals)
+        tmp_vecs           = sort_eig_vecs[:,tmp_idx]
+        
+        vecs_dot_inv_sqrt_vals = dot(tmp_vecs, numpy.diag(inv_sqrt_vals))
+        
+        for i in range(ncol):
+            tmp_norm = numpy.linalg.norm(tmp_ew_ss[:,i])
+            tmp_ew_ss[:,i] = tmp_ew_ss[:,i]/tmp_norm
+        
+        tmp_mat = dot(tmp_ew_ss, vecs_dot_inv_sqrt_vals)
+        for i in range(tmp_vals.size):
+            tmp_norm = numpy.linalg.norm(tmp_mat[:,i])
+            tmp_mat[:,i] = tmp_mat[:,i]/tmp_norm
+        
+        subspace_mat = dot(ene_weight_subspace.T, tmp_mat)
+        return subspace_mat, tmp_mat
 
-        # eig_vals, eig_vecs = numpy.linalg.eig(subspace_mat)
-        # eig_val_max = eig_vals.max()
-        # tmp_eig_vals = eig_vals/eig_val_max
-        # lin_dep_idx  = tmp_eig_vals<1e-8
-
-        # eig_vals = eig_vals[lin_dep_idx]
-        # eig_vecs = eig_vecs[:,lin_dep_idx]
-
-        # tmp_subspace_mat = numpy.dot(eig_vecs, numpy.diag(eig_vals))
-
-        # dev_max = 0.0
-        # for 
-        return orth_ene_weight_subspace, subspace_mat
-
-
-
-
-
-
-
-    def update_hess_inv(self): # BFGS update hess inv
-        pass
+    def get_hess_inv(self, subspace_mat):
+        dim_subspace, tmp_num = subspace_mat.shape
+        num_subspace_vec = (tmp_num+1)//2
+        gmat = subspace_mat[:,:num_subspace_vec]
+        smat = subspace_mat[:,num_subspace_vec:(2*num_subspace_vec)]
+        
+        hess_inv = numpy.eye(dim_subspace)
+        for i_subspace_vec in range(1,num_subspace_vec):
+            g_new = gmat[:,i_subspace_vec]
+            g_old = gmat[:,i_subspace_vec-1]
+            
+            yk    = (g_new - g_old).reshape(4,1)
+            sk    = (smat[:,i_subspace_vec-1]).reshape(4,1)
+            
+            yk_dot_sk = dot(yk.T,sk)
+            sk_dot_sk = dot(sk.T,sk)
+            yk_dot_yk = dot(yk.T,yk)
+            inv_hess_thresh = numpy.sqrt(sk_dot_sk) * numpy.sqrt(yk_dot_yk)
+            
+            if numpy.abs(yk_dot_sk) >= 1e-8 * inv_hess_thresh:
+                u = numpy.eye(dim_subspace) - dot(sk, yk.T)/yk_dot_sk
+                hess_inv = reduce(dot, [u, hess_inv, u.T]) + dot(sk,sk.T)/yk_dot_sk
+        
+        eig_vals, eig_vecs = numpy.linalg.eigh(hess_inv)
+        abs_eig_vals       = numpy.abs(eig_vals)
+        hess_inv           = reduce(dot, [eig_vecs, abs_eig_vals, eig_vecs.T])
+        return hess_inv
+        
 
     def next_gdm_step(self, ene_prev, mo_coeff, mo_occ, fock_ao, verbose=None, iter_gdm_step=None, line_search_obj=None, dog_leg_search_obj=None):
         if verbose is None:
@@ -454,18 +483,18 @@ class GDMOptimizer(object):
             self.e_tot = self.ene_cur
             return True
 
-        if self.gdm_step_vec is None:
-            self.gdm_step_vec = numpy.empty_like(grad)
+        if self.gdm_orb_step is None:
+            self.gdm_orb_step = numpy.empty_like(grad)
 
         if self.grad_list is None:
             self.grad_list = []
             self.grad_list.append(grad)
         else:
             num_grad = len(self.grad_list)
-            if (self.nssv == num_grad):
+            if (self.num_subspace_vec == num_grad):
                 self.grad_list.append(grad)
-            elif (self.nssv < num_grad):
-                self.grad_list[self.nssv] = grad
+            elif (self.num_subspace_vec < num_grad):
+                self.grad_list[self.num_subspace_vec] = grad
             else:
                 RuntimeError("GDM dimensioning error!")
 
@@ -479,8 +508,8 @@ class GDMOptimizer(object):
             else:
                 self.is_wolfe1 = False
             
-            self.g_cur = numpy.dot(self.gdm_step_vec, grad)
-            xx         = numpy.dot(self.gdm_step_vec, self.gdm_step_vec)
+            self.g_cur = numpy.dot(self.gdm_orb_step, grad)
+            xx         = numpy.dot(self.gdm_orb_step, self.gdm_orb_step)
             self.x_cur = numpy.sqrt(xx)
             self.g_cur = self.g_cur/self.x_cur
 
@@ -495,8 +524,8 @@ class GDMOptimizer(object):
             self.save_orb()
 
 
-            nssv += 1
-            n_ss  = -1
+            num_subspace_vec += 1
+            dim_subspace  = -1
 
             subspace_mat, ene_weight_subspace, proj_err = self.proj_ene_weight_subspace()
 
@@ -504,7 +533,7 @@ class GDMOptimizer(object):
             qn_step = self.get_qn_step(subspace_mat)
             qn_step = line_search_obj.next_step()
 
-            self.gdm_step_vec = numpy.dot(ene_weight_subspace, qn_step)
+            self.gdm_orb_step = numpy.dot(ene_weight_subspace, qn_step)
         else:
             self.back_to_origin()
             line_search_iter += 1
