@@ -29,24 +29,51 @@ def apply_field(mol, field=[0,0,0], dm0=None):
     mf.kernel(dm0)
     return mf.make_rdm1()
 
+import unittest
+import copy
+import numpy
+import scipy.linalg
 
-h2o =   gto.Mole( atom='''
-O     0.00000000    -0.00001441    -0.34824012
-H    -0.00000000     0.76001092    -0.93285191
-H     0.00000000    -0.75999650    -0.93290797
-'''
-, basis='sto-3g', symmetry=False).build() # water
-h2o.set_common_orig([0, 0, 0])  # The gauge origin for dipole integral
+from pyscf import gto, lib
+from pyscf import scf, dft
+from pyscf.scf import addons
 
-h2o_rks    = scf.RKS(h2o)
-h2o_rks.max_cycle = 100
-h2o_rks.xc = "pbe0"
-h2o_rks.conv_tol  = 1e-10
-h2o_rks.verbose = 4
-h2o_rks.kernel()
-dm = h2o_rks.make_rdm1()
-ref_dipole = h2o_rks.dip_moment(unit="au")
-dm_ = apply_field(h2o, field=[1e-4, 0, 0], dm0=dm)
+mol1 = gto.Mole()
+mol1.verbose = 7
+mol1.output = '/dev/null'
+mol1.atom = [
+    ["O" , (0. , 0.     , 0.)],
+    [1   , (0. , -0.757 , 0.587)],
+    [1   , (0. , 0.757  , 0.587)] ]
+
+mol1.basis = {"H": '6-31g',
+             "O": '6-31g',}
+mol1.build()
+
+mf1 = scf.RHF(mol1).run()
+mf2 = scf.RKS(mol1).run()
+mf3 = scf.UHF(mol1).run()
+mf4 = scf.UKS(mol1).run()
+
+mol2 = gto.Mole()
+mol2.verbose = 7
+mol2.output = '/dev/null'
+mol2.atom = [
+    ["O" , (0. , 0.     , 0.)],
+    [1   , (0. , -0.757 , 0.587)],
+    [1   , (0. , 0.757  , 0.587)] ]
+
+mol2.basis = "cc-pVDZ"
+mol2.build()
+
+mf5 = scf.RHF(mol2).run()
+mf6 = scf.RKS(mol2).run()
+mf7 = scf.UHF(mol2).run()
+mf8 = scf.UKS(mol2).run()
+
+
+
+
 
 rttd = rt.TDDFT(h2o_rks)
 rttd.verbose        = 4
