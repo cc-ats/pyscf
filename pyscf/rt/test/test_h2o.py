@@ -1,3 +1,4 @@
+# Author: Junjie Yang <yangjunjie0320@gmail.com> Zheng Pei and Yihan Shao
 import unittest
 import copy
 import numpy
@@ -17,8 +18,7 @@ mol1.atom = [
     [1   , (0. , -0.757 , 0.587)],
     [1   , (0. , 0.757  , 0.587)] ]
 
-mol1.basis = {"H": '6-31g',
-             "O": '6-31g',}
+mol1.basis = '6-31g'
 mol1.build()
 
 rhf_631g = scf.RHF(mol1).run()
