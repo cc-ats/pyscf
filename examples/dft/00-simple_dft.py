@@ -19,7 +19,7 @@ mol = pyscf.M(
 )
 
 mf = mol.KS()
-mf.xc = 'cam-b3lyp' # shorthand for slater,vwn
+#mf.xc = 'svwn' # shorthand for slater,vwn
 #mf.xc = 'bp86' # shorthand for b88,p86
 #mf.xc = 'blyp' # shorthand for b88,lyp
 #mf.xc = 'pbe' # shorthand for pbe,pbe
@@ -29,7 +29,7 @@ mf.xc = 'cam-b3lyp' # shorthand for slater,vwn
 #mf.xc = 'b3p86'
 #mf.xc = 'wb97x'
 #mf.xc = '' or mf.xc = None # Hartree term only, without exchange
-#mf.xc = 'b3lyp'
+mf.xc = 'b3lyp'
 mf.kernel()
 
 # Orbital energies, Mulliken population etc.

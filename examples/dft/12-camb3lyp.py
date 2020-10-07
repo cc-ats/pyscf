@@ -11,7 +11,6 @@ xcfun library as the default XC functional library.
 '''
 
 from pyscf import gto, dft
-from pyscf.dft import xcfun
 
 mol = gto.M(atom="H; F 1 1.", basis='631g')
 mf = dft.UKS(mol)
@@ -30,7 +29,7 @@ print(hess.reshape(2,3,2,3))
 
 from pyscf import tdscf
 # Switching to xcfun library on the fly
-mf._numint.libxc = xcfun
+mf._numint.libxc = dft.xcfun
 tdks = tdscf.TDA(mf)
 tdks.nstates = 3
 tdks.kernel()
