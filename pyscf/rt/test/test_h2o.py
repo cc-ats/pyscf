@@ -7,12 +7,7 @@ from pyscf import gto, lib
 from pyscf import scf, dft
 from pyscf import rt
 
-from pyscf.rt.rhf        import kernel
-from pyscf.rt.util       import print_cx_matrix
-from pyscf.rt.propagator import EulerPropagator, MMUTPropagator
-from pyscf.rt.propagator import EPPCPropagator, LFLPPCPropagator
-from pyscf.rt.result     import RealTimeStep, RealTimeResult
-from pyscf.rt.result     import read_index_list, read_step_dict, read_keyword_value
+from pyscf.rt.result import read_keyword_value
 
 mol1 = gto.Mole()
 mol1.verbose = 7
@@ -54,51 +49,121 @@ class KnownValues(unittest.TestCase):
         dm0 = mf.make_rdm1()
         rttd = rt.TDDFT(mf)
         rttd.verbose        = 4
-        rttd.total_step     = None
-        rttd.step_size      = None
-
-        prop_euler       = EulerPropagator(rttd, verbose=3)
-        step_obj_1       = RealTimeStep(rttd,    verbose=3)
-        step_obj_1.calculate_dipole = True
-        step_obj_1.calculate_pop    = True
-        step_obj_1.calculate_energy = True
-        result_obj_1     = RealTimeResult(rttd,  verbose=3)
-        result_obj_1._save_in_memory = True
-        result_obj_1._save_in_disk   = False
-        kernel(rttd, step_size = 0.02, total_step = 50, save_frequency = 1, dm_ao_init=dm0,
-                    result_obj=result_obj_1, prop_obj=prop_euler, step_obj = step_obj_1, verbose=4)
+        rttd.total_step     = 50
+        rttd.step_size      = 0.02
+        rttd.kernel(dm0)
 
         e_ref           = mf.e_tot
-        energy_euler    = read_keyword_value("energy_tot", result_obj=result_obj_1)
+        energy_euler    = read_keyword_value("energy_tot", result_obj=rttd.result_obj, chk_file=None)
         e_diff_list     = energy_euler-e_ref
         for e in e_diff_list:
             self.assertAlmostEqual(e, 0.0)
 
     def test_rt_tdhf2(self):
+        mf = rhf_dz
+        dm0 = mf.make_rdm1()
+        rttd = rt.TDDFT(mf)
+        rttd.verbose        = 4
+        rttd.total_step     = 50
+        rttd.step_size      = 0.02
+        rttd.kernel(dm0)
+
+        e_ref           = mf.e_tot
+        energy_euler    = read_keyword_value("energy_tot", result_obj=rttd.result_obj, chk_file=None)
+        e_diff_list     = energy_euler-e_ref
+        for e in e_diff_list:
+            self.assertAlmostEqual(e, 0.0)
+
+    def test_rt_tdhf3(self):
+        mf = uhf_631g
+        dm0 = mf.make_rdm1()
+        rttd = rt.TDDFT(mf)
+        rttd.verbose        = 4
+        rttd.total_step     = 50
+        rttd.step_size      = 0.02
+        rttd.kernel(dm0)
+
+        e_ref           = mf.e_tot
+        energy_euler    = read_keyword_value("energy_tot", result_obj=rttd.result_obj, chk_file=None)
+        e_diff_list     = energy_euler-e_ref
+        for e in e_diff_list:
+            self.assertAlmostEqual(e, 0.0)
+
+    def test_rt_tdhf4(self):
+        mf = uhf_dz
+        dm0 = mf.make_rdm1()
+        rttd = rt.TDDFT(mf)
+        rttd.verbose        = 4
+        rttd.total_step     = 50
+        rttd.step_size      = 0.02
+        rttd.kernel(dm0)
+
+        e_ref           = mf.e_tot
+        energy_euler    = read_keyword_value("energy_tot", result_obj=rttd.result_obj, chk_file=None)
+        e_diff_list     = energy_euler-e_ref
+        for e in e_diff_list:
+            self.assertAlmostEqual(e, 0.0)
+
+    def test_rt_tdks1(self):
         mf = rks_631g
         dm0 = mf.make_rdm1()
         rttd = rt.TDDFT(mf)
         rttd.verbose        = 4
-        rttd.total_step     = None
-        rttd.step_size      = None
-
-        prop_euler       = EulerPropagator(rttd, verbose=3)
-        step_obj_1       = RealTimeStep(rttd,    verbose=3)
-        step_obj_1.calculate_dipole = True
-        step_obj_1.calculate_pop    = True
-        step_obj_1.calculate_energy = True
-        result_obj_1     = RealTimeResult(rttd,  verbose=3)
-        result_obj_1._save_in_memory = True
-        result_obj_1._save_in_disk   = False
-        kernel(rttd, step_size = 0.02, total_step = 50, save_frequency = 1, dm_ao_init=dm0,
-                    result_obj=result_obj_1, prop_obj=prop_euler, step_obj = step_obj_1, verbose=4)
+        rttd.total_step     = 50
+        rttd.step_size      = 0.02
+        rttd.kernel(dm0)
 
         e_ref           = mf.e_tot
-        energy_euler    = read_keyword_value("energy_tot", result_obj=result_obj_1)
+        energy_euler    = read_keyword_value("energy_tot", result_obj=rttd.result_obj, chk_file=None)
+        e_diff_list     = energy_euler-e_ref
+        for e in e_diff_list:
+            self.assertAlmostEqual(e, 0.0)
+
+    def test_rt_tdks2(self):
+        mf = rks_dz
+        dm0 = mf.make_rdm1()
+        rttd = rt.TDDFT(mf)
+        rttd.verbose        = 4
+        rttd.total_step     = 50
+        rttd.step_size      = 0.02
+        rttd.kernel(dm0)
+
+        e_ref           = mf.e_tot
+        energy_euler    = read_keyword_value("energy_tot", result_obj=rttd.result_obj, chk_file=None)
+        e_diff_list     = energy_euler-e_ref
+        for e in e_diff_list:
+            self.assertAlmostEqual(e, 0.0)
+
+    def test_rt_tdks3(self):
+        mf = uks_631g
+        dm0 = mf.make_rdm1()
+        rttd = rt.TDDFT(mf)
+        rttd.verbose        = 4
+        rttd.total_step     = 50
+        rttd.step_size      = 0.02
+        rttd.kernel(dm0)
+
+        e_ref           = mf.e_tot
+        energy_euler    = read_keyword_value("energy_tot", result_obj=rttd.result_obj, chk_file=None)
+        e_diff_list     = energy_euler-e_ref
+        for e in e_diff_list:
+            self.assertAlmostEqual(e, 0.0)
+
+    def test_rt_tdks4(self):
+        mf = uks_dz
+        dm0 = mf.make_rdm1()
+        rttd = rt.TDDFT(mf)
+        rttd.verbose        = 4
+        rttd.total_step     = 50
+        rttd.step_size      = 0.02
+        rttd.kernel(dm0)
+
+        e_ref           = mf.e_tot
+        energy_euler    = read_keyword_value("energy_tot", result_obj=rttd.result_obj, chk_file=None)
         e_diff_list     = energy_euler-e_ref
         for e in e_diff_list:
             self.assertAlmostEqual(e, 0.0)
 
 if __name__ == "__main__":
-    print("Full Tests for H2O vdz")
+    print("Full Tests for H2O")
     unittest.main()

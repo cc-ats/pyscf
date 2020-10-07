@@ -144,11 +144,7 @@ class TDHF(lib.StreamObject):
 
         self.max_memory     = scf_obj.max_memory
         self.stdout         = scf_obj.stdout
-
-# the chkfile will be removed automatically, to save the chkfile, assign a
-# filename to self.chk_file
-        self._chkfile   = tempfile.NamedTemporaryFile(dir=lib.param.TMPDIR)
-        self.chk_file   = self._chkfile.name
+        self.chk_file   = None
         self.step_obj   = None
 
 # propagation method
