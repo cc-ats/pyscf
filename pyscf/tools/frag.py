@@ -140,8 +140,19 @@ class FragmentMethod(lib.StreamObject):
             frag_partition = numpy.einsum("i,i,ji->j", self.grid.weights, rho, becke_weight)
             return frag_partition
 
-
-
+    def real_space_func_partition2(self, rho, rhov2, method='FBH'):
+        frag_v2 = numpy.zeros(self.nfrg)
+        for i in range(self.nfrg):
+            for j in self.frag_idx[i]:
+                frag_v2[i] += numpy.einsum("i,i->", self.grid.weights, rhov2[j])
+        if method.lower() == 'fbh':
+            fbh_weight = self.build_fbh_weight()
+            frag_partition = numpy.einsum("i,i,ji->j", self.grid.weights, rho, fbh_weight)
+            return frag_partition + 0.5*frag_v2
+        elif method.lower() == 'becke':
+            becke_weight = self.build_becke_weight()
+            frag_partition = numpy.einsum("i,i,ji->j", self.grid.weights, rho, becke_weight)
+            return frag_partition + 0.5*frag_v2
 
 if __name__ == "__main__":
     frag1 = gto.Mole()

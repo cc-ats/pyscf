@@ -196,7 +196,16 @@ def proj_ex_states(tdscf, dm_ao):
 
         xmy = [(tdscf.xy[i][0]-tdscf.xy[i][1]).reshape(nocc,nvir).T for i in range(len(tdscf.xy))]
         proj = 2*numpy.einsum("ijk,jk->i",xmy, dm_mo_ov)
-        return proj
+ 
+        xmy = [2*(xy[0]-xy[1]).reshape(nocc,nvir) for xy in tdscf.xy]
+        xpy = [2*(xy[0]+xy[1]).reshape(nocc,nvir) for xy in tdscf.xy]
+        am = numpy.einsum("mia,ai->m", xmy, dm_mo_ov)
+        bm = numpy.einsum("mia,ai->m", xpy, dm_mo_ov)
+        r  = numpy.einsum("m,m->", am, bm)/2/numpy.einsum("ia,ia->", dm_mo_ov, dm_mo_ov)
+        print("# r = %f"%r)
+        print("# am = \n", am)
+        print("# bm = \n", bm)
+        return am, bm# , 2*numpy.einsum("ia,ia->", dm_mo_ov, dm_mo_ov)
 
 def eval_rt_dm(tdscf, dm_ao, am, e, t_array):
     mf  = tdscf._scf

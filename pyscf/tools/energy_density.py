@@ -64,6 +64,60 @@ def calc_rho_t(mf, coords, dms, ao_value=None):
     else:
         raise RuntimeError("Wrong AO value")
 
+def calc_rhov1(mf, coords, dms, ao_value=None):
+    mol = mf.mol
+
+    if (dms.ndim == 3 and dms.shape[0] == 2):
+        dm = dms[0] + dms[1]
+    else:
+        dm = dms
+
+    rhov = numpy.zeros(coords.shape[0])
+    for i in range(mol.natm):
+        r = mol.atom_coord(i)
+        Z = mol.atom_charge(i)
+        rp = r - coords
+        rhov += Z / numpy.einsum('xi,xi->x', rp, rp)**.5
+
+    return -rhov
+
+def calc_rhov2(mf, coords, dms, ao_value=None):
+    mol = mf.mol
+
+    if (dms.ndim == 3 and dms.shape[0] == 2):
+        dm = dms[0] + dms[1]
+    else:
+        dm = dms
+        
+    if ao_value is None:
+        ao_value = numint.eval_ao(mol, coords, deriv=2)
+    if len(ao_value.shape) == 3 and ao_value.shape[0]==10:
+        rho  = calc_rho(mf, coords, dms, ao_value=ao_value)
+
+    rhov = numpy.empty([mol.natm, coords.shape[0]])
+    for i in range(mol.natm):
+        r = mol.atom_coord(i)
+        Z = mol.atom_charge(i)
+        rp = r - coords
+        rhov[i,:] = rho*Z / numpy.einsum('xi,xi->x', rp, rp)**.5
+
+    return -rhov
+
+def calc_rhoj(mf, coords, dms, ao_value=None):
+    mol = mf.mol
+
+    if (dms.ndim == 3 and dms.shape[0] == 2):
+        dm = dms[0] + dms[1]
+    else:
+        dm = dms
+
+    rhoj = numpy.empty(coords.shape[0])
+    for p0, p1 in lib.prange(0, rhoj.size, 600):
+        fakemol = gto.fakemol_for_charges(coords[p0:p1])
+        ints = df.incore.aux_e2(mol, fakemol)
+        rhoj[p0:p1] = lib.einsum('ijp,ij->p', ints, dm)
+    return 0.5*rhoj
+
 def calc_rhov_rhoj(mf, coords, dms, ao_value=None):
     mol = mf.mol
 
@@ -215,6 +269,20 @@ def calc_rho_ene(mf, coords, dms, ao_value=None):
         rhoxc = calc_rhoxc(mf, coords, dms, ao_value=ao_value)
         rhov, rhoj = calc_rhov_rhoj(mf, coords, dms, ao_value=ao_value)
         return (rhoxc + rhot + (rhov + rhoj)*rho)
+    else:
+        raise RuntimeError("Wrong AO value")
+
+def calc_rho_ene2(mf, coords, dms, ao_value=None):
+    mol = mf.mol
+    if ao_value is None:
+        ao_value = numint.eval_ao(mol, coords, deriv=2)
+    if len(ao_value.shape) == 3 and ao_value.shape[0]==10:
+        rho  = calc_rho(mf, coords, dms, ao_value=ao_value)
+        rhot = calc_rho_t(mf, coords, dms, ao_value=ao_value)
+        rhoxc = calc_rhoxc(mf, coords, dms, ao_value=ao_value)
+        rhoj  = calc_rhoj(mf, coords, dms, ao_value=ao_value)
+        rhov1 = calc_rhov1(mf, coords, dms, ao_value=ao_value)
+        return (rhoxc + rhot + (0.5*rhov1 + rhoj)*rho)
     else:
         raise RuntimeError("Wrong AO value")
 
