@@ -58,11 +58,50 @@ class Constraints(object):
                 tmp_fock_ao = fock_add_ao[0]
                 return numpy.asarray(tmp_fock_ao)
 
-    def make_cdft_grad(self, lam_vals, weight_matrices, do_spin_pop=None):
-        pass
+    def make_cdft_grad(self, density_matrix, weight_matrices, do_spin_pop=None):
+        return self.get_pop_minus_nelec_required(self, density_matrix=density_matrix, weight_matrices=weight_matrices, do_spin_pop=do_spin_pop)
 
     def make_cdft_hess(self, lam_vals, weight_matrices, do_spin_pop=None):
-        pass
+        mo_coeff  = self._scf.mo_coeff
+        mo_occ    = self._scf.mo_occ
+        mo_energy = self._scf.mo_energy
+
+        if mo_coeff.ndim == 3:
+            occidxa = numpy.where(mo_occ[0]>0)[0]
+            occidxb = numpy.where(mo_occ[1]>0)[0]
+            viridxa = numpy.where(mo_occ[0]==0)[0]
+            viridxb = numpy.where(mo_occ[1]==0)[0]
+
+            orboa = mo_coeff[0][:,occidxa]
+            orbob = mo_coeff[1][:,occidxb]
+            orbva = mo_coeff[0][:,viridxa]
+            orbvb = mo_coeff[1][:,viridxb]
+            e_vo_a = mo_energy[0][occidxa][:,None] - mo_energy[0][viridxa]
+            e_vo_a = mo_energy[1][occidxb][:,None] - mo_energy[1][viridxb]
+            e_vo   = numpy.asarray([e_vo_a, e_vo_b])
+
+            wvo_a = numpy.einsum("am,mn,in->sai", orbva, wao, orboa)
+            wvo_b = numpy.einsum("am,mn,in->sai", orbvb, wao, orbob)
+            wvo   = numpy.asarray([wvo_a, wvo_b])
+
+            if do_spin_pop:
+                hess = numpy.einsum("smai,snai,sai->smn", wvo, wvo, 1./e_vo)
+            else:
+                hess = numpy.einsum("smai,snai,sai->mn", wvo, wvo, 1./e_vo)
+
+        elif mo_coeff.ndim == 2:
+            occidx = numpy.where(mo_occ==2)[0]
+            viridx = numpy.where(mo_occ==0)[0]
+            nocc = len(occidx)
+            nvir = len(viridx)
+            orbv = mo_coeff[:,viridx]
+            orbo = mo_coeff[:,occidx]
+            e_vo = mo_energy[viridx][:,None] - mo_energy[occidx]
+
+            wvo  = numpy.einsum("am,mn,in->ai", orbv, wao, orbo)
+            hess = numpy.einsum("mai,nai,ai->mn", wvo, wvo, 1./e_vo) 
+
+        return hess
 
 def cdft_inner_cycle(mf, frg_list, nelec_required_list, init_lam_list,
                          dm0=None, old_get_fock=None, old_energy_elec=None,
