@@ -196,9 +196,9 @@ class FragmentPopulation(lib.StreamObject):
     def make_weight_matrix_mo(self, wao):
         mo_coeff = self._scf.mo_coeff
         if mo_coeff.ndim == 3:
-            wmo = numpy.einsum("spm,mn,sqn->spq", mo_coeff, wao, mo_coeff)
+            wmo = numpy.einsum("smp,mn,snq->spq", mo_coeff, wao, mo_coeff)
         elif mo_coeff.ndim == 2:
-            wmo = numpy.einsum("pm,mn,qn->pq", mo_coeff, wao, mo_coeff)
+            wmo = numpy.einsum("mp,mn,nq->pq", mo_coeff, wao, mo_coeff)
         else:
             raise NotImplementedError("Wrong dimension!")
         return wmo
@@ -218,8 +218,8 @@ class FragmentPopulation(lib.StreamObject):
             orbob = mo_coeff[1][:,occidxb]
             orbva = mo_coeff[0][:,viridxa]
             orbvb = mo_coeff[1][:,viridxb]
-            wvo_a = numpy.einsum("am,mn,in->sai", orbva, wao, orboa)
-            wvo_b = numpy.einsum("am,mn,in->sai", orbvb, wao, orbob)
+            wvo_a = numpy.einsum("ma,mn,ni->sai", orbva, wao, orboa)
+            wvo_b = numpy.einsum("ma,mn,ni->sai", orbvb, wao, orbob)
             wvo = numpy.array([wvo_a, wvo_b])
 
         elif mo_coeff.ndim == 2:
@@ -234,7 +234,7 @@ class FragmentPopulation(lib.StreamObject):
             orbob = mo_coeff[1][:,occidxb]
             orbva = mo_coeff[0][:,viridxa]
             orbvb = mo_coeff[1][:,viridxb]
-            wmo = numpy.einsum("pm,mn,qn->pq", mo_coeff, wao, mo_coeff)
+            wmo = numpy.einsum("mp,mn,nq->pq", mo_coeff, wao, mo_coeff)
         else:
             raise NotImplementedError("Wrong dimension!")
         return wmo
@@ -265,7 +265,7 @@ if __name__ == "__main__":
     frag_list = [frag1, frag2]
     fp = FragmentPopulation(frag_list, verbose=0)
     fp.build()
-    w  = fp.make_weight_matrix(method="mulliken")
+    w  = fp.make_weight_matrix_ao(method="mulliken")
     print(fp.get_pop(w))
 
     frag1 = scf.UHF(mol1)
@@ -277,7 +277,7 @@ if __name__ == "__main__":
     frag_list = [frag1, frag2]
     fp = FragmentPopulation(frag_list, verbose=0)
     fp.build()
-    w  = fp.make_weight_matrix(method="mulliken")
+    w  = fp.make_weight_matrix_ao(method="mulliken")
     print(fp.get_pop(w))
     print(fp.get_pop(w, do_spin_pop=True))
 
@@ -292,7 +292,7 @@ if __name__ == "__main__":
     frag_list = [frag1, frag2]
     fp = FragmentPopulation(frag_list, verbose=0)
     fp.build()
-    w  = fp.make_weight_matrix(method="mulliken")
+    w  = fp.make_weight_matrix_ao(method="mulliken")
     print(fp.get_pop(w))
 
     frag1 = dft.UKS(mol1)
@@ -306,6 +306,6 @@ if __name__ == "__main__":
     frag_list = [frag1, frag2]
     fp = FragmentPopulation(frag_list, verbose=0)
     fp.build()
-    w  = fp.make_weight_matrix(method="mulliken")
+    w  = fp.make_weight_matrix_ao(method="mulliken")
     print(fp.get_pop(w))
     print(fp.get_pop(w, do_spin_pop=True))
