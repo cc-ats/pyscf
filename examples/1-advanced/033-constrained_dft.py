@@ -229,6 +229,7 @@ def hess_cdft(mf, constraints, V_c, mo_on_loc_ao):
     t_a, t_b = constraints.site_to_constraints_transform_matrix()
     hess_arr  = np.einsum('pq,pi,qj->ij', hess_a, t_a, t_a)
     hess_arr += np.einsum('pq,pi,qj->ij', hess_b, t_b, t_b)
+    
     return hess_arr
 
 
