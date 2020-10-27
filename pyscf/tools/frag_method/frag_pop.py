@@ -188,6 +188,10 @@ class FragmentPopulation(lib.StreamObject):
                             tmp_val = ovlp_ao[mu, nu]
                             weight_matrix[ifrag, mu, nu] = tmp_val
                             weight_matrix[ifrag, nu, mu] = tmp_val
+        elif method.lower() == "fbh":
+            pass
+        elif method.lower() == "becke":
+            pass
         else:
             raise NotImplementedError()
         

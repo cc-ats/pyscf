@@ -49,7 +49,7 @@ class Constraints(object):
 
         assert isinstance(frag_pop, FragmentPopulation)
         assert self._nelec_required_list.shape == (self.constraints_num, )
-        assert numpy.sum(self._nelec_required_list) == self._mol.nelectron
+        assert numpy.sum(self._nelec_required_list) <= self._mol.nelectron
 
     def get_pop_shape(self):
         return self._nelec_required_list.shape
@@ -79,9 +79,7 @@ class Constraints(object):
         return self.get_pop_minus_nelec_required(weight_matrix, density_matrix=density_matrix)
 
     def make_cdft_hess(self, weight_matrix, mo_coeff, mo_occ, mo_energy):
-
         wao       = weight_matrix
-
         if mo_coeff.ndim == 3:
             occidxa = numpy.where(mo_occ[0]>0)[0]
             occidxb = numpy.where(mo_occ[1]>0)[0]
@@ -112,151 +110,83 @@ class Constraints(object):
             wvo  = numpy.einsum("ma,fmn,ni->fai", orbv, wao, orbo)
             hess = numpy.einsum("mai,nai,ai->mn", wvo, wvo, 1./e_vo) 
 
-        return hess
+        return -hess
 
 def cdft(frag_list, nelec_required_list, init_lam_list=None, pop_scheme="mulliken", 
-                                         alpha=0.2,          tol=1e-5,        constraints_tol=1e-3, 
-                                         maxiter=200,        diis_pos='post', diis_type=1, verbose=4):
+         alpha=0.2, tol=1e-8, max_iter=200, verbose=4):
     frag_pop = FragmentPopulation(frag_list, verbose=verbose, do_spin_pop=False)
     frag_pop.build()
+
     cons_pop = Constraints(frag_pop, nelec_required_list)
-    cons_pop._lam = numpy.array(init_lam_list)
+    wao      = cons_pop.make_weight_matrices(method=pop_scheme)
 
     mf           = cons_pop._scf
-    mf.verbose   = verbose
-    mf.max_cycle = maxiter
+    mf.verbose   = 3
+    mf.max_cycle = max_iter
 
-    old_get_fock = mf.get_fock
+    old_get_fock    = mf.get_fock
+    cdft_diis       = scf.diis.SCF_DIIS(mf, mf.diis_file)
+    cdft_diis.space = 8
 
     if init_lam_list is None:
         init_lam_list = numpy.zeros(cons_pop.constraints_num)
+
+    lam_list      = numpy.asarray(init_lam_list)
     
-    cdft_diis = lib.diis.DIIS()
-    cdft_diis.space = 8
+    iter_cdft          = 0
+    cdft_maxiter       = 20
+    cdft_is_converged  = False
+    constraints_tol    = numpy.sqrt(tol)
 
-    lam_list = numpy.asarray(init_lam_list)
+    e_tot = mf.kernel()
+    assert  mf.converged
+    dm_last = mf.make_rdm1()
 
-    wao = cons_pop.make_weight_matrices(method=pop_scheme)
-
-    def get_fock(h1e, s1e, vhf, dm, cycle=0, mf_diis=None):
-        fock_0   = old_get_fock(h1e, s1e, vhf, dm, cycle, None)
-        lam_list = cons_pop._lam
-        if mf_diis is None:
+    while not cdft_is_converged and iter_cdft < max_iter:
+        def get_fock(h1e=None, s1e=None, vhf=None, dm=None, cycle=-1, mf_diis=None):
+            fock_0 = old_get_fock(h1e=h1e, s1e=s1e, vhf=vhf, dm=dm, cycle=-1, diis=None)
             fock_add = cons_pop.make_cdft_fock_add(lam_list, wao)
-            return fock_0 + fock_add
-
-        cdft_conv_flag = False
-        if cycle < 10:
-            inner_max_cycle = 20
-        else:
-            inner_max_cycle = 50
-
-        if verbose > 3:
-            print("\nCDFT INNER LOOP:")
-
-        fock_0   = old_get_fock(h1e, s1e, vhf, dm, cycle, None)
-        fock_add = cons_pop.make_cdft_fock_add(lam_list, wao)
-        fock = fock_0 + fock_add #ZHC
-
-        if diis_pos == 'pre' or diis_pos == 'both':
-            for it in range(inner_max_cycle): # TO BE MODIFIED
-                fock_add = get_fock_add_cdft(constraints, V_0, C_inv)
-                fock = fock_0 + fock_add #ZHC
-
-                mo_energy, mo_coeff = mf.eig(fock, s1e)
-                mo_occ = mf.get_occ(mo_energy, mo_coeff)
-
-                # Required by hess_cdft function
-                mf.mo_energy = mo_energy
-                mf.mo_coeff = mo_coeff
-                mf.mo_occ = mo_occ
-
-                if lo_method.lower() == 'iao':
-                    mo_on_loc_ao = get_localized_orbitals(mf, lo_method, mo_coeff)[1]
-                else:
-                    mo_on_loc_ao = np.einsum('...jk,...kl->...jl', C_inv, mo_coeff)
-
-                orb_pop = pop_analysis(mf, mo_on_loc_ao, disp=False)
-                W_new = W_cdft(mf, constraints, V_0, orb_pop)
-                jacob, N_cur = jac_cdft(mf, constraints, V_0, orb_pop)
-                hess = hess_cdft(mf, constraints, V_0, mo_on_loc_ao)
-
-                deltaV = get_newton_step_aug_hess(jacob,hess)
-                #deltaV = np.linalg.solve (hess, -jacob)
-
-                if it < 5 :
-                    stp = min(0.05, alpha*0.1)
-                else:
-                    stp = alpha
-
-                V = V_0 + deltaV * stp
-                g_norm = np.linalg.norm(jacob)
-                if verbose > 3:
-                    print("  loop %4s : W: %.5e    V_c: %s     Nele: %s      g_norm: %.3e    "
-                          % (it,W_new, V_0, N_cur, g_norm))
-                if g_norm < tol and np.linalg.norm(V-V_0) < constraints_tol:
-                    cdft_conv_flag = True
-                    break
-                V_0 = V
-
-        if cycle > 1:
-            if diis_type == 1:
-                fock = cdft_diis.update(fock_0, scf.diis.get_err_vec(s1e, dm, fock)) + fock_add
-            elif diis_type == 2:
-                # TO DO difference < threshold...
-                fock = cdft_diis.update(fock)
-            elif diis_type == 3:
-                fock = cdft_diis.update(fock, scf.diis.get_err_vec(s1e, dm, fock))
+            fock   = fock_0 + fock_add
+            if cycle < 0:
+                return fock
             else:
-                print("\nWARN: Unknow CDFT DIIS type, NO DIIS IS USED!!!\n")
+                if s1e is None: s1e = mf.get_ovlp()
+                if cycle >= 8:
+                    fock = cdft_diis.update(s1e, dm, fock, mf, h1e, vhf)
+                return fock
+    
+        mf.get_fock = get_fock
+        e_tot = mf.kernel(dm0=dm_last)
+        assert  mf.converged
+        dm_last = mf.make_rdm1()
 
-        if diis_pos == 'post' or diis_pos == 'both':
-            cdft_conv_flag = False
-            fock_0 = fock - fock_add
-            for it in range(inner_max_cycle): # TO BE MODIFIED
-                fock_add = get_fock_add_cdft(constraints, V_0, C_inv)
-                fock = fock_0 + fock_add #ZHC
+        mo_coeff  = mf.mo_coeff
+        mo_occ    = mf.mo_occ
+        mo_energy = mf.mo_energy
 
-                mo_energy, mo_coeff = mf.eig(fock, s1e)
-                mo_occ = mf.get_occ(mo_energy, mo_coeff)
+        dm_last = mf.make_rdm1(mo_coeff, mo_occ)
+        grad    = cons_pop.make_cdft_grad(wao, mo_coeff, mo_occ, mo_energy)
+        hess    = cons_pop.make_cdft_hess(wao, mo_coeff, mo_occ, mo_energy)
 
-                # Required by hess_cdft function
-                mf.mo_energy = mo_energy
-                mf.mo_coeff = mo_coeff
-                mf.mo_occ = mo_occ
+        d_lam = get_newton_step_aug_hess(grad, hess)
 
-                if lo_method.lower() == 'iao':
-                    mo_on_loc_ao = get_localized_orbitals(mf, lo_method, mo_coeff)[1]
-                else:
-                    mo_on_loc_ao = np.einsum('...jk,...kl->...jl', C_inv, mo_coeff)
+        if iter_cdft < 5 :
+            stp = min(0.05, alpha*0.1)
+        else:
+            stp = alpha
 
-                orb_pop = pop_analysis(mf, mo_on_loc_ao, disp=False)
-                W_new = W_cdft(mf, constraints, V_0, orb_pop)
-                jacob, N_cur = jac_cdft(mf, constraints, V_0, orb_pop)
-                hess = hess_cdft(mf, constraints, V_0, mo_on_loc_ao)
-                deltaV = np.linalg.solve (hess, -jacob)
+        d_lam      = stp * d_lam
+        lam_list   = lam_list + d_lam
+        g_norm     = numpy.linalg.norm(grad)
+        iter_cdft += 1
 
-                if it < 5 :
-                    stp = min(0.05, alpha*0.1)
-                else:
-                    stp = alpha
-
-                V = V_0 + deltaV * stp
-                g_norm = np.linalg.norm(jacob)
-                if verbose > 3:
-                    print("  loop %4s : W: %.5e    V_c: %s     Nele: %s      g_norm: %.3e    "
-                          % (it,W_new, V_0, N_cur, g_norm))
-                if g_norm < tol and np.linalg.norm(V-V_0) < constraints_tol:
-                    cdft_conv_flag = True
-                    break
-                V_0 = V
-
+        cdft_is_converged = g_norm < tol and numpy.linalg.norm(d_lam) < tol
         if verbose > 0:
-            print("CDFT W: %.5e   g_norm: %.3e    "%(W_new, g_norm))
-
-        constraints._converged = cdft_conv_flag
-        constraints._final_V = V_0
-        return fock
+            print()
+            print("iter = %d, etot = % 12.8f, grad = %e"%(iter_cdft, e_tot, g_norm))
+            print("grad  = ", grad)
+            print("lam   = ", lam_list)
+    return dm_last
 
 if __name__ == '__main__':
     mol1 = gto.Mole()
@@ -264,14 +194,14 @@ if __name__ == '__main__':
     O        -1.5191160500    0.1203799285    0.0000000000
     H        -1.9144370615   -0.7531546521    0.0000000000
     H        -0.5641810316   -0.0319363903    0.0000000000'''
-    mol1.basis = '6-31g(d)'
+    mol1.basis = 'cc-pvtz'
     mol1.build()
     mol2 = gto.Mole()
     mol2.atom = '''
     O         1.3908332592   -0.1088624008    0.0000000000
     H         1.7527099026    0.3464799298   -0.7644430086
     H         1.7527099026    0.3464799298    0.7644430086'''
-    mol2.basis = '6-31g(d)'
+    mol2.basis = 'cc-pvtz'
     mol2.build()
 
     frag1 = scf.RHF(mol1)
@@ -283,13 +213,12 @@ if __name__ == '__main__':
     frag_list = [frag1, frag2]
     fp = FragmentPopulation(frag_list, verbose=0)
     fp.build()
+    e0 = fp._scf.energy_tot()
     
-    pop_cons = Constraints(fp, [10, 10])
-    wao      = pop_cons.make_weight_matrices(method="mul")
-    mo_coeff  = pop_cons._scf.mo_coeff
-    mo_occ    = pop_cons._scf.mo_occ
-    mo_energy = pop_cons._scf.mo_energy
-
-    grad = pop_cons.make_cdft_grad(wao, mo_coeff, mo_occ, mo_energy)
-    hess = pop_cons.make_cdft_hess(wao, mo_coeff, mo_occ, mo_energy)
-    print("delta V = \n", get_newton_step_aug_hess(grad, hess))
+    dm_last = cdft(frag_list, [9.7, 10.3], init_lam_list=None, pop_scheme="mul")
+    wao = fp.make_weight_matrix_ao(method="mul")
+    pop = fp.get_pop(wao, density_matrix=dm_last)
+    print("pop = ", pop)
+    etot = fp._scf.energy_tot(dm=dm_last)
+    print("etot = ", etot)
+    print("dene = ", etot-e0)
