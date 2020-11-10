@@ -229,19 +229,14 @@ class FragmentPopulation(lib.StreamObject):
         elif mo_coeff.ndim == 2:
             occidx = numpy.where(mo_occ==2)[0]
             viridx = numpy.where(mo_occ==0)[0]
-            nocc = len(occidx)
-            nvir = len(viridx)
+
             orbv = mo_coeff[:,viridx]
             orbo = mo_coeff[:,occidx]
 
-            orboa = mo_coeff[0][:,occidxa]
-            orbob = mo_coeff[1][:,occidxb]
-            orbva = mo_coeff[0][:,viridxa]
-            orbvb = mo_coeff[1][:,viridxb]
-            wmo = numpy.einsum("mp,mn,nq->pq", mo_coeff, wao, mo_coeff)
+            wvo  = numpy.einsum("ma,fmn,ni->fai", orbv, wao, orbo)
         else:
             raise NotImplementedError("Wrong dimension!")
-        return wmo
+        return wvo
 
 
 if __name__ == "__main__":
