@@ -22,23 +22,7 @@ from pyscf.scf import _response_functions  # noqa
 from pyscf import __config__
 
 def get_newton_step_aug_hess(grad, hess):
-    #lamb = 1.0 / alpha
-    ah = numpy.zeros((hess.shape[0]+1,hess.shape[1]+1))
-    ah[1:,0]  = grad
-    ah[0,1:]  = grad.conj()
-    ah[1:,1:] = hess
-
-    eigval, eigvec = la.eigh(ah)
-    idx = None
-    for i in range(len(eigvec)):
-        if abs(eigvec[0,i]) > 0.1 and eigval[i] > 0.0:
-            idx = i
-            break
-    if idx is None:
-        print("WARNING: ALL EIGENVALUESS in AUG-HESSIAN are NEGATIVE!!! ")
-        return numpy.zeros_like(grad)
-    deltax = eigvec[1:,idx] / eigvec[0,idx]
-    return deltax
+    return -numpy.dot(la.inv(hess), grad)
 
 class Constraints(object):
     def __init__(self, frag_pop, nelec_required_list):
@@ -49,6 +33,7 @@ class Constraints(object):
 
         self.constraints_num      =  frag_pop.frag_num
         self._lam                 = None
+        self.verbose              = 0
 
         assert isinstance(frag_pop, FragmentPopulation)
         assert self._nelec_required_list.shape == (self.constraints_num, )
@@ -66,7 +51,7 @@ class Constraints(object):
 
     def make_cdft_fock_add(self, lam_vals, weight_matrices):
         lam_val_list = numpy.asarray(lam_vals)
-        assert lam_val_list.shape == self._nelec_required_list.shape
+        assert lam_val_list.shape == self._nelec_required_list[:-1].shape
 
         fock_add_ao = numpy.einsum("f,fij->ij", lam_vals, weight_matrices)
 
@@ -112,7 +97,6 @@ class Constraints(object):
 
             wvo  = numpy.einsum("ma,fmn,ni->fai", orbv, wao, orbo)
             hess = 2*numpy.einsum("mai,nai,ai->mn", wvo, wvo, 1./e_vo) 
-
         return -2*hess
 
     def make_cdft_hess_exact(self, weight_matrix, mo_coeff, mo_occ, mo_energy):
@@ -140,21 +124,22 @@ class Constraints(object):
                 v1ao = vresp(dm+dm.T)
                 return reduce(numpy.dot, (orbv.T, v1ao, orbo)).ravel()
 
-            z = [cphf.solve(fvind, mo_energy, mo_occ, w, max_cycle=10, tol=1e-3)[0] for w in wvo]
+            z = [cphf.solve(fvind, mo_energy, mo_occ, w, max_cycle=10, tol=1e-3, verbose=self.verbose)[0] for w in wvo]
             hess = numpy.einsum("fai,gai->fg", z, wvo)
             return 4*hess
 
 
 def cdft(frag_list, nelec_required_list, init_lam_list=None, pop_scheme="mulliken", 
-         alpha=1.0, tol=1e-8, max_iter=200, verbose=4):
+         max_exact_hess=5, tol=1e-8, max_iter=200, verbose=4):
     frag_pop = FragmentPopulation(frag_list, verbose=verbose, do_spin_pop=False)
     frag_pop.build()
 
     cons_pop = Constraints(frag_pop, nelec_required_list)
+    cons_pop.verbose = verbose
     wao      = cons_pop.make_weight_matrices(method=pop_scheme)
 
     mf           = cons_pop._scf
-    mf.verbose   = 0
+    mf.verbose   = verbose
     mf.max_cycle = max_iter
 
     old_get_fock    = mf.get_fock
@@ -162,23 +147,23 @@ def cdft(frag_list, nelec_required_list, init_lam_list=None, pop_scheme="mullike
     cdft_diis.space = 8
 
     if init_lam_list is None:
-        init_lam_list = numpy.zeros(cons_pop.constraints_num)
+        init_lam_list = numpy.zeros(cons_pop.constraints_num)[:-1]
 
     lam_list      = numpy.asarray(init_lam_list)
     
-    iter_cdft          = 0
+    cdft_iter          = 0
     cdft_maxiter       = 20
     cdft_is_converged  = False
-    constraints_tol    = numpy.sqrt(tol)
+    grad_tol           = numpy.sqrt(tol)
 
     e_tot = mf.kernel()
     assert  mf.converged
     dm_last = mf.make_rdm1()
 
-    while not cdft_is_converged and iter_cdft < max_iter:
+    while not cdft_is_converged and cdft_iter < cdft_maxiter:
         def get_fock(h1e=None, s1e=None, vhf=None, dm=None, cycle=-1, mf_diis=None):
             fock_0 = old_get_fock(h1e=h1e, s1e=s1e, vhf=vhf, dm=dm, cycle=-1, diis=None)
-            fock_add = cons_pop.make_cdft_fock_add(lam_list, wao)
+            fock_add = cons_pop.make_cdft_fock_add(lam_list, wao[:-1,:,:])
             fock   = fock_0 + fock_add
             if cycle < 0:
                 return fock
@@ -199,56 +184,62 @@ def cdft(frag_list, nelec_required_list, init_lam_list=None, pop_scheme="mullike
 
         dm_last = mf.make_rdm1(mo_coeff, mo_occ)
         e_tot   = mf.energy_tot(dm=dm_last)
-        grad    = cons_pop.make_cdft_grad(wao, mo_coeff, mo_occ, mo_energy)
+        grad    = cons_pop.make_cdft_grad(wao, mo_coeff, mo_occ, mo_energy)[:-1]
+        g_norm  = numpy.linalg.norm(grad)
 
-        if iter_cdft == 0:
-            hess    = cons_pop.make_cdft_hess_exact(wao, mo_coeff, mo_occ, mo_energy)
+        use_exact_hess = (cdft_iter < max_exact_hess) or (g_norm>0.1)
+
+        if use_exact_hess:
+            hess    = cons_pop.make_cdft_hess_exact(wao, mo_coeff, mo_occ, mo_energy)[:-1,:-1]
         else:
-            hess    = cons_pop.make_cdft_hess(wao, mo_coeff, mo_occ, mo_energy)
+            hess    = cons_pop.make_cdft_hess(wao, mo_coeff, mo_occ, mo_energy)[:-1,:-1]
 
-        g_norm     = numpy.linalg.norm(grad)
-
-        lag       = e_tot + numpy.dot(grad, lam_list)
-        d_lam     = alpha * get_newton_step_aug_hess(grad, hess)
-        dlam_norm = numpy.linalg.norm(d_lam)
+        lag_cdft_add = numpy.dot(grad, lam_list)
+        lag       = e_tot + lag_cdft_add
+        d_lam     = get_newton_step_aug_hess(grad, hess)
 
         if verbose > 0:
             print()
-            print("iter = %d, etot = % 12.8f, lag = % 12.8f, grad = %e, dlam = %e"%(iter_cdft, e_tot, lag, g_norm, dlam_norm))
+            print("iter = % 2d, etot = % 12.8f,   lag          = % 12.8f"%(cdft_iter, e_tot, lag))
+            print("           grad = % 10.8e, lag_cdft_add = % 10.8e"%(g_norm, lag_cdft_add))
             print("grad  = ", grad)
             print("lam   = ", lam_list)
             print("dlam  = ", d_lam)
+            if cdft_iter == 0:
+                est_ene = -numpy.einsum("a,ab,b->", d_lam, hess, d_lam)/2
+                print("E_est: %12.8f"%(est_ene))
 
         lam_list   = lam_list + d_lam
-        iter_cdft += 1
-
-        cdft_is_converged = g_norm < constraints_tol and dlam_norm < constraints_tol
+        cdft_is_converged = (g_norm < grad_tol) and (abs(lag_cdft_add) < tol)
+        cdft_iter += 1
     return mf
 
-def cdft_inner(frag_list, nelec_required_list, lam_list=None, pop_scheme="mulliken", 
-               tol=1e-8, max_iter=200, verbose=0):
-    frag_pop = FragmentPopulation(frag_list, verbose=0, do_spin_pop=False)
+def rdft(frag_list, nelec_required_list, omega_list, pop_scheme="mulliken", 
+         tol=1e-8, max_iter=200, verbose=4):
+    frag_pop = FragmentPopulation(frag_list, verbose=verbose, do_spin_pop=False)
     frag_pop.build()
 
     cons_pop = Constraints(frag_pop, nelec_required_list)
     wao      = cons_pop.make_weight_matrices(method=pop_scheme)
 
     mf           = cons_pop._scf
-    mf.verbose   = 0
+    mf.verbose   = verbose
     mf.max_cycle = max_iter
 
     old_get_fock    = mf.get_fock
     cdft_diis       = scf.diis.SCF_DIIS(mf, mf.diis_file)
     cdft_diis.space = 8
 
-    lam_list      = numpy.asarray(lam_list)
-    
+    omega_list      = numpy.asarray(omega_list)
+
     e_tot = mf.kernel()
     assert  mf.converged
     dm_last = mf.make_rdm1()
 
     def get_fock(h1e=None, s1e=None, vhf=None, dm=None, cycle=-1, mf_diis=None):
         fock_0 = old_get_fock(h1e=h1e, s1e=s1e, vhf=vhf, dm=dm, cycle=-1, diis=None)
+        grad     = cons_pop.make_cdft_grad(wao, mo_coeff, mo_occ, mo_energy)
+        lam_list = grad*omega_list
         fock_add = cons_pop.make_cdft_fock_add(lam_list, wao)
         fock   = fock_0 + fock_add
         if cycle < 0:
@@ -258,23 +249,33 @@ def cdft_inner(frag_list, nelec_required_list, lam_list=None, pop_scheme="mullik
             if cycle >= 8:
                 fock = cdft_diis.update(s1e, dm, fock, mf, h1e, vhf)
             return fock
-
+    
     mf.get_fock = get_fock
     e0          = mf.kernel(dm0=dm_last)
     assert  mf.converged
+    dm_last = mf.make_rdm1()
 
     mo_coeff  = mf.mo_coeff
     mo_occ    = mf.mo_occ
     mo_energy = mf.mo_energy
 
-    dm      = mf.make_rdm1(mo_coeff, mo_occ)
-    e_tot   = mf.energy_tot(dm=dm)
+    dm_last = mf.make_rdm1(mo_coeff, mo_occ)
+    e_tot   = mf.energy_tot(dm=dm_last)
+    grad    = cons_pop.make_cdft_grad(wao, mo_coeff, mo_occ, mo_energy)
+    g_norm  = numpy.linalg.norm(grad)
 
-    grad     = cons_pop.make_cdft_grad(wao, mo_coeff, mo_occ, mo_energy)
-    lag      = e_tot + numpy.dot(grad, lam_list)
-    hess       = cons_pop.make_cdft_hess(wao, mo_coeff, mo_occ, mo_energy)
-    exact_hess = cons_pop.make_cdft_hess_exact(wao, mo_coeff, mo_occ, mo_energy)
-    return e_tot, lag, grad, hess, exact_hess
+    rdft_lag_add = 0.5*numpy.einsum("i,i,i->", grad, grad, omega_list)
+    lag          = e_tot + rdft_lag_add
+    if verbose > 0:
+        print()
+        print("iter = %d, etot = % 12.8f, lag = % 12.8f, grad = %e"%(cdft_iter, e_tot, lag, g_norm))
+        print("rdft_lag_add  = ", rdft_lag_add)
+        print("grad  = ", grad)
+        print("lam   = ", lam_list)
+    lam_list   = new_lam
+    cdft_is_converged = g_norm < grad_tol and rdft_lag_add < tol
+    cdft_iter += 1
+    return mf
 
 if __name__ == '__main__':
     mol1 = gto.Mole()
