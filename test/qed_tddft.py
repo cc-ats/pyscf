@@ -11,60 +11,64 @@ import numpy
 import scipy
 from pyscf import gto, scf, dft, tdscf
 
-def make_qed_test(td_obj, mode_list):
+def make_qed_test(td_obj, mode_list, nroots=10):
     freq_list, vec_list = mode_list
     num_mode = len(freq_list)
     assert len(freq_list) == len(vec_list)
 
-    a0, b0     = td_obj.get_ab()
-    nocc, nvir = a0.shape[:2]
+    a_array,b_array = td_obj.get_ab()
+    mf  = td_obj._scf
+    mol = mf.mol
+    mo_coeff = mf.mo_coeff
+    assert(mo_coeff.dtype == numpy.double)
+    mo_energy = mf.mo_energy
+    mo_occ = mf.mo_occ
+    nao, nmo = mo_coeff.shape
+    occidx = numpy.where(mo_occ==2)[0]
+    viridx = numpy.where(mo_occ==0)[0]
+    nocc = len(occidx)
+    nvir = len(viridx)
+    orbv = mo_coeff[:,viridx]
+    orbo = mo_coeff[:,occidx]
+    e_ia = (mo_energy[viridx].reshape(-1,1) - mo_energy[occidx]).T
+
     dip_ao = td_obj.mol.intor("cint1e_r_sph", comp=3)
-    dip_mo = numpy.einsum('mp,xmn,nq->xpq', td_obj._scf.mo_coeff, dip_ao, td_obj._scf.mo_coeff)
-    dip_vo = dip_mo[:,nocc:,:nocc]
+    dip_vo = numpy.einsum('ma,xmn,ni->xai', orbv, dip_ao, orbo)
 
-    n_list = []
-    m_list = []
-
-    a = a0.reshape(nocc*nvir,nocc*nvir)
-    b = b0.reshape(nocc*nvir,nocc*nvir)
-    e0, v0 = numpy.linalg.eig(a)
-
-    x0 = []
-    for i in range(e0.shape[0]):
-        x0.append(v0[:,i].reshape(nocc,nvir))
+    u_array = numpy.empty([nocc, nvir, nocc, nvir])
+    v_array = numpy.empty([nocc, nvir, num_mode])
 
     for alpha, lam_alpha in enumerate(vec_list):
-        temp = numpy.einsum('x,xai,y,ybj->iajb', lam_alpha, dip_vo, lam_alpha, dip_vo)
-        a0 += temp
+        tmp = numpy.einsum('x,xai,y,ybj->iajb', lam_alpha, dip_vo, lam_alpha, dip_vo)
+        b_array += tmp
+        
+        n_alpha = - numpy.einsum('x,xai->ia', lam_alpha, dip_vo)/2
+        m_alpha = - freq_list[alpha] * numpy.einsum('x,xai->ia', lam_alpha, dip_vo)
+        for i in range(nocc):
+            for a in range(nvir):
+                v_array[i,a,alpha] = 2 * numpy.sqrt(freq_list[alpha]*e_ia[i,a]*n_alpha[i,a]*m_alpha[i,a])
 
-        n_alpha = -numpy.einsum('x,xai->ia', lam_alpha, dip_vo)/2
-        m_alpha = -freq_list[alpha] * numpy.einsum('x,xai->ia', lam_alpha, dip_vo)
+    v_block = v_array.reshape(nocc*nvir, num_mode)
+    for i in range(nocc):
+        for a in range(nvir):
+            for j in range(nocc):
+                for b in range(nvir):
+                    u_array[i,a,j,b] = (i==j)*(a==b)*e_ia[i,a]*e_ia[i,a] + \
+                                       2 * numpy.sqrt(e_ia[i,a]*e_ia[j,b]) * b_array[i,a,j,b]
+    u_block = u_array.reshape(nocc*nvir, nocc*nvir)
+    omega_block = omega_block = numpy.diag([omega*omega for omega in freq_list])
+    e, v = scipy.linalg.eigh(numpy.bmat([[u_block,         v_block    ],
+                                         [v_block.T.conj(),omega_block]]))
+    
 
-        n_list.append(n_alpha)
-        m_list.append(m_alpha)
-
-    n_new = numpy.einsum("nia,lia->ln", x0, n_list)
-    m_new = numpy.einsum("nia,lia->nl", x0, m_list)
-
-    e_block     = numpy.einsum("nia,iajb,mjb->nm", x0, a0, x0)
-    omega_block = numpy.diag(freq_list)
-
-    cis_mat = numpy.bmat([[e_block, m_new], [n_new, omega_block]])
-    print(cis_mat)
-    e, v = scipy.linalg.eig(cis_mat)
-
-    nroots = 16
     index = numpy.argsort(e)[:nroots]
-    ee = e[index]
+    ee = numpy.sqrt(e)[index]
     vv = v[:, index]
 
     x_list = []
     p_list = []
 
     for i in range(len(index)):
-        print(vv[0:nocc*nvir,                    i])
-        print(vv[nocc*nvir:(nocc*nvir+num_mode), i])
-
         x = vv[0:nocc*nvir,                    i].reshape(nvir,nocc)
         p = vv[nocc*nvir:(nocc*nvir+num_mode), i]
 
@@ -73,10 +77,7 @@ def make_qed_test(td_obj, mode_list):
 
     elec_amp  = numpy.einsum("jai,jai->j", x_list, x_list)
     photo_amp = numpy.einsum("ji,ji->j", p_list, p_list)
-
-
     return ee, elec_amp, photo_amp
-
 
 def make_qed_tda(td_obj, mode_list):
     freq_list, vec_list = mode_list
@@ -234,15 +235,25 @@ def make_qed_rpa(td_obj, mode_list):
 
 mol = gto.Mole()
 mol.atom = '''
-  H    0.0000000    0.0000000    0.3540000
-  H    0.0000000    0.0000000   -0.3540000
+  H    2.1489399    1.2406910    0.0000000
+  C    1.2116068    0.6995215    0.0000000
+  C    1.2116068   -0.6995215    0.0000000
+  H    2.1489399   -1.2406910    0.0000000
+  C   -0.0000000   -1.3990430   -0.0000000
+  H   -0.0000000   -2.4813821   -0.0000000
+  C   -1.2116068   -0.6995215   -0.0000000
+  H   -2.1489399   -1.2406910   -0.0000000
+  C   -1.2116068    0.6995215   -0.0000000
+  H   -2.1489399    1.2406910   -0.0000000
+  C    0.0000000    1.3990430    0.0000000
+  H    0.0000000    2.4813821    0.0000000
 '''
 
 mol.basis = '6-31g'
 mol.build()
 
 mf = dft.RKS(mol)
-mf.xc = "LDA"
+mf.xc = "b3lyp"
 mf.kernel()
 td = tdscf.TDDFT(mf)
 td.verbose = 0
@@ -250,25 +261,20 @@ td.nroots  = 20
 td.kernel()
 dips = td.transition_dipole()
 
-for d in [1e-3]:
+for d in [0.0, 1e-2, 2e-2]:
     e, eamp, pamp = make_qed_test(td, 
-    ([0.1, 1.63684123],[[0.00, 0.00, d], [0.00, 0.00, d]])
+    ([0.1, 0.26655978, 0.26655978, 0.26655978],[[0.00, 0.00, 0.00], [0.00, 0.00, d],[0.00, d, 0.00], [d, 0.00, 0.00]]), nroots=16
     )
     print("")
-    fmt_str = "".join(["% .4f" for _ in e])
+    fmt_str = "".join(["% .4f, " for _ in e])
     print("d = %e"%d)
-    print(e)
     print("ex    ene = " + fmt_str%tuple(e))
     print("elec  amp = " + fmt_str%tuple(eamp))
     print("photo amp = " + fmt_str%tuple(pamp))
 
-    e, eamp, pamp = make_qed_tda(td, 
-    ([0.1, 1.63684123],[[0.00, 0.00, d], [0.00, 0.00, d]])
-    )
-    print("")
-    fmt_str = "".join(["% .4f" for _ in e])
-    print("d = %e"%d)
-    print(e)
-    print("ex    ene = " + fmt_str%tuple(e))
-    print("elec  amp = " + fmt_str%tuple(eamp))
-    print("photo amp = " + fmt_str%tuple(pamp))
+    with open("ene.csv", "a") as f:
+        f.write(fmt_str%tuple(e)+"\n")
+    with open("elec_amp.csv", "a") as f:
+        f.write(fmt_str%tuple(eamp)+"\n")
+    with open("photo_amp.csv", "a") as f:
+        f.write(fmt_str%tuple(pamp)+"\n")
